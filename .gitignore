@@ -1,0 +1,17 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.lnk
+* alias
+*.qgs
+*.qgs~
+*.qgz
+*.html
+*.svg
+*.png
+notebook.md
+data
+output/
+ms/submission/1_coauthors
+ms/submission/2_reviewers
