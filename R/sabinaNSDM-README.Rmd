@@ -1,0 +1,182 @@
+---
+title: sabinaNSDM README
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, eval=FALSE}
+knitr::opts_knit$set(root.dir = "../output/sabinaNSDM/READMEexample/")
+```
+
+## Summary of main sabinaNSDM functions
+
+
+| Overall Step            | Function          | Objective                                       |
+|-----------------|-------------------|:-----------------:|
+| Data preparation| NSDM.InputData    | Provides the package with the species occurrences and environmental covariates at both global and regional scales|
+|                 | NSDM.FormattingData| Background data generation and species occurrences (and absences if available) thinning|
+|                 | NSDM.SelectCovariates| Selects uncorrelated and the most relevant environmental covariates|
+|Single scale modelling | NSDM.Global| Calibrates, evaluates, and projects ensemble models at the global scale|
+|     | NSDM.Regional    | Calibrates, evaluates, and projects ensemble models at the regional scale    |
+|Nested modelling  | NSDM.Covariate    | Generate spatially-nested hierarchical species distribution models with the covariate approach. The covariate approach uses the output of the global model as an additional covariate for the regional scale model   |
+|     | NSDM.Multiply   | Generate spatially-nested hierarchical species distribution models with the multiply approach. The multiply approach averages the global and regional models    |
+
+## Tutorials
+
+-   [Single species modelling](https://besjournals.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1111%2F2041-210X.14417&file=mee314417-sup-0001-Supinfo1.pdf)
+-   [Multispecies modelling](https://besjournals.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1111%2F2041-210X.14417&file=mee314417-sup-0002-Supinfo2.pdf)
+
+## Example
+
+This is an example on how to use the <strong>sabinaNSDM</strong> package for conducting spatially-nested hierarchical species distribution modelling.
+
+### Data preparation
+
+First, set your working directory and load the required packages.
+
+```{r eval = TRUE}
+#setwd("../output/sabinaNSDM/READMEexample/")
+
+library(terra)
+library(covsel)
+library(biomod2)
+library(ecospat)
+library(fs)
+library(sgsR)
+
+# Load the sabinaNSDM package
+library(sabinaNSDM)
+```
+
+Define the species name
+```{r eval = TRUE}
+SpeciesName <- "Fagus.sylvativa"
+```
+
+Load species occurrence and environmental covariates data. Species occurrence *data.frame* must include only two columns: “x” and ”y” coordinates. No row names. The coordinate projection must match that used for the covariates.
+
+```{r eval = TRUE}
+# Species occurrences
+data(Fagus.sylvatica.xy.global, package = "sabinaNSDM")
+spp.data.global <- Fagus.sylvatica.xy.global
+data(Fagus.sylvatica.xy.regional, package = "sabinaNSDM")
+spp.data.regional <- Fagus.sylvatica.xy.regional
+```
+
+The covariates for each spatial scale (i.e., global and regional) should be provided as *SpatRaster*, with each band corresponding to a different covariate. The regional-scale *SpatRaster*  must include all the covariates included in the global-scale file, and it can additionally include covariates only available at this level.
+
+```{r eval = TRUE}
+data(expl.var.global, package = "sabinaNSDM")
+data(expl.var.regional, package = "sabinaNSDM")
+expl.var.global <- terra::unwrap(expl.var.global)
+expl.var.regional <- terra::unwrap(expl.var.regional)
+```
+
+Additionally, regional-scale *SpatRaster* or a *list of SpatRaster objects* corresponding to the covariates used to project the models at one or several different scenarios (i.e., new scenarios) can be provided.  
+
+```{r eval = TRUE}
+# new scenarios
+data(new.env, package = "sabinaNSDM")
+new.env <- terra::unwrap(new.env)
+```
+
+Load the required data for the package with the *NSDM.InputData()* function
+```{r eval = TRUE}
+nsdm_input <- NSDM.InputData(SpeciesName = SpeciesName,
+                             spp.data.global = Fagus.sylvatica.xy.global, 
+                             spp.data.regional = Fagus.sylvatica.xy.regional, 
+                             expl.var.global = expl.var.global, 
+                             expl.var.regional = expl.var.regional,
+                             new.env = new.env,
+                             new.env.names = "scenario1",
+                             Background.Global = NULL, 
+                             Background.Regional = NULL,
+                             Absences.Global = NULL,
+                             Absences.Regional = NULL)
+```
+
+Format the data with the *NSDM.FormattingData()* function. This function generates random or stratified background points for model calibration when no specific background or true absence data was loaded in the *NSDM.InputData()* function. Additionally, it applies spatial thinning to species occurrences and absences (if available) to remove duplicates and enforce a minimum distance criterion (by default the resolution of the variables). 
+```{r eval = TRUE}
+nsdm_finput <- NSDM.FormattingData(nsdm_input,
+                                   nPoints = 100, # number of background points
+                                   Min.Dist.Global = "resolution",
+                                   Min.Dist.Regional = "resolution",
+                                   Background.method = "random", # method “random" or "stratified” to generate background points 
+                                   save.output = FALSE) #save outputs locally
+```
+
+*NSDM.SelectCovariates()* function selects the most relevant and uncorrelated environmental covariates for both global and regional scales.
+```{r eval = TRUE}
+nsdm_selvars <- NSDM.SelectCovariates(nsdm_finput,
+                                      maxncov.Global = 5,   # Max number of covariates to be selected at the global scale
+                                      maxncov.Regional = 7, # Max number of covariates to be selected at the regional scale
+                                      corcut = 0.7, #  correlation threshold
+                                      algorithms = c("glm","gam","rf"),
+                                      ClimaticVariablesBands = NULL, # covariate bands to be excluded in the covariate selection at the regional scale
+                                      save.output = FALSE)
+
+```
+
+### Single scale modelling
+*NSDM.Global()* function generates the global component of the NSDM.
+
+```{r eval = TRUE}
+nsdm_global <- NSDM.Global(nsdm_selvars,
+                           algorithms = c("GAM","GBM", "RF", "MAXNET","GLM"),# Statistical algorithms used for modelling
+                           CV.nb.rep = 10, # number of cross-validation repetitions
+                           CV.perc = 0.8, # percentage of the data will be used for training in each cross-validation fold
+                           metric.select.thresh = 0.8, #  AUC threshold to include replicates in the final ensemble model
+                           CustomModelOptions = NULL, # Allows users to apply custom modelling options. 
+                           save.output = FALSE, 
+                           rm.biomod.folder = TRUE) # Remove the temporary folders created by `biomod2` 
+
+```
+
+*NSDM.Regional()* function generates the regional component of the NSDM.
+
+```{r eval = FALSE}
+# nsdm_regional <- NSDM.Regional(nsdm_selvars,
+#                 algorithms = c("GAM","GBM", "RF", "MAXNET","GLM"),
+#                 CV.nb.rep = 10,
+#                 CV.perc = 0.8,
+#                 # metric.select.thresh = 0.8,
+#                 CustomModelOptions = NULL, 
+#                 save.output = FALSE,
+#                 rm.biomod.folder = TRUE)
+# 
+```
+
+### Nested modelling 
+
+*NSDM.Covariate()* function generates a NSDM with the covariate strategy. The covariate strategy incorporates the output of global models as an additional covariate in the regional model. 
+```{r eval = TRUE}
+nsdm_covariate <- NSDM.Covariate(nsdm_global,
+                                 algorithms = c("GAM","GBM", "RF", "MAXNET","GLM"),
+                                 rm.corr=TRUE,
+                                 CV.nb.rep = 10,
+                                 CV.perc = 0.8,
+                                 # metric.select.thresh = 0.8,
+                                 CustomModelOptions = NULL,
+                                 save.output = FALSE,
+                                 rm.biomod.folder = TRUE)
+
+summary(nsdm_covariate)
+nsdm_covariate$myEMeval.Ensemble
+
+Covariate.model <- terra::rast(nsdm_covariate$current.projections$Pred) 
+terra::plot(Covariate.model)
+```
+
+*NSDM.Multiply()* function generates a NSDM with the multiply strategy. The covariate averages the output of the global and the regional models. 
+
+```{r eval = FALSE}
+# nsdm_multiply <- NSDM.Multiply(nsdm_global,
+#                 nsdm_regional,
+#                 method = "Arithmetic", # Method for averate model outputs: "Arithmetic" or "Geometric" mean
+#                 rescale = FALSE,
+#                 save.output=FALSE)
+```
+
+
+<!-- Multiple studies have shown that NSDMs outperform their non- hierarchical counterparts in various applications (*Journal of Vegetation Science*, <https://doi.org/10.1111/jvs.12726>,Mateo et al. 2019; *Frontiers in Ecology and Evolution*, <https://doi.org/10.3389/fevo.2022.944116>,Chevalier et al. 2022; *Ecography*, <https://doi.org/10.1016/j.ecoinf.2023.102080>; Goicolea et al. in press)--> 
