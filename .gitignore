@@ -12,6 +12,7 @@
 *.png
 notebook.md
 data
+meetings
 output/
 ms/submission/1_coauthors
 ms/submission/2_reviewers
