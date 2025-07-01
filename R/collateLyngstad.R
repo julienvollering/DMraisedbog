@@ -3,7 +3,7 @@ library(foreign)
 library(sf)
 library(rnaturalearth)
 
-getwd()
+# Read in raw data #### 
 shpfiles <- list.files("data/Lyngstad/rawdata20240212", pattern = '.shp', full.names = TRUE)
 polygons <- shpfiles |> 
   map(st_read)
@@ -30,23 +30,13 @@ norway <- ne_countries(scale = 10, country = "Norway", returnclass = 'sf')
 norway <- norway |> 
   st_crop(xmin=4, xmax = 32, ymin = 57, ymax = 72) |> 
   st_transform(crs = 25833)
-norway |> 
-  st_geometry() |> 
-  plot()
 
 norway |> 
   st_geometry() |> 
   plot(border = 'grey', axes = TRUE)
 plot(st_geometry(st_centroid(polygons)), pch = 3, col = 'red', add = TRUE)
 
-# Check for spatial overlap
-all(st_geometry_type(polygons) == "POLYGON")
-all(st_is_valid(polygons))
-validpolygons <- st_make_valid(polygons)
-overlap <- st_intersection(validpolygons)
-plot(overlap$n.overlaps)
-
-# Check if parallel spatial formats contain the same attributes
+# Check if different spatial formats contain the same attributes ####
 dbffiles <- list.files("data/Lyngstad/rawdata20240212", pattern = '.dbf', full.names = TRUE)
 dbfs <- dbffiles |> 
   map(read.dbf) |> 
@@ -59,18 +49,64 @@ all(colnames(dbfs) %in% colnames(validpolygons))
 # Hedmark20120613 <- st_as_sf(dbf, coords =c('X', 'Y'), crs = 25832)
 # plot(Hedmark20120613)
 
-# Check for duplicates
+# Check for spatial overlap ####
+all(st_geometry_type(polygons) == "POLYGON")
+all(st_is_valid(polygons))
+validpolygons <- st_make_valid(polygons)
+overlap <- st_intersection(validpolygons)
+plot(overlap$n.overlaps)
+
+# Check for duplicates ####
 nrow(validpolygons)
 distinct(validpolygons, fileindex, POLY_ID, MYRID) |> 
   nrow()
 distinct(validpolygons, fileindex, POLY_ID) |> 
   nrow()
 
-# Write to file
-str(validpolygons)
+# Filter raised bogs ####
+rb <- validpolygons |> 
+  filter(grepl("A", M_TYPE))
+
+norway |> 
+  st_geometry() |> 
+  plot(border = 'grey', axes = TRUE)
+rb |> 
+  group_by(MYRID) |> 
+  summarize() |> 
+  st_centroid() |> 
+  plot(pch = 3, col = 'red', add = TRUE)
+
+nrow(rb)
+rb |> 
+  distinct(POLY_ID, MYRID) |> 
+  nrow()
+
+rb <- rb |> 
+  st_geometry() |> 
+  st_union() |> 
+  st_cast("POLYGON") |> 
+  st_as_sf()
+nrow(rb)
+
+rb |>
+  st_area() |> 
+  units::set_units("ha") |> 
+  hist(xlab = "Area", main = "Area of raised bogs (contiguous polygons)")
+rb |> 
+  st_area() |>
+  units::set_units("ha") |> 
+  median() |> 
+  units::set_units("m^2") |> 
+  sqrt() # median side length of raised bogs (assuming square shape)
+
+# Write to file ####
 
 validpolygons |> 
   select(-AREA, -PERIMETER, -X, -Y, -KOORDH) |> 
   st_write("data/DMraisedbog.gpkg", 
            layer = "lyngstad-polygons",
            append = FALSE)
+rb |> 
+  st_write("data/DMraisedbog.gpkg", 
+           layer = "lyngstad-MTYPE_A",
+           append = TRUE)
