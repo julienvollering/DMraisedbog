@@ -285,7 +285,7 @@ writeRaster(predictors_future,
             overwrite = TRUE,
             names = names(predictors_future))
 
-Quick visualization check
+# Quick visualization check
 if(interactive()) {
   plot(predictors_current[[c(1, 20, 22)]])
 }
