@@ -3,6 +3,17 @@ library(sf)
 library(rnaturalearth)
 library(tidyverse)
 
+# Function to get memory usage of all objects
+memory_usage <- function() {
+  obj_names <- ls(envir = .GlobalEnv)
+  obj_sizes <- sapply(obj_names, function(x) {
+    object.size(get(x, envir = .GlobalEnv))
+  })
+  # Convert to MB and sort
+  obj_sizes_mb <- round(obj_sizes / 1024^2, 2)
+  sort(obj_sizes_mb, decreasing = TRUE)
+}
+
 # Global model ####
 
 # Plan for Predictor Stack Preparation for Global (EU) Model
@@ -81,7 +92,7 @@ chelsa_masked <- mask(chelsa_cropped, mask_polygon)
 
 ## Step 5: Write output ####
 writeRaster(chelsa_masked, 
-            filename = "output/CHELSA_global_predictors_5km_EU_Norway.tif",
+            filename = "output/predictors_global_5km_EUNorway.tif",
             overwrite = TRUE,
             names = names(chelsa_masked))
 
@@ -95,21 +106,28 @@ if(interactive()) {
 
 # Plan for Predictor Stack Preparation for Regional (Norway) Model
 # 
-# Objective: Prepare 29 predictors for nested SDM regional model at 250m resolution
+# Objective: Prepare 28 predictors for nested SDM regional model at 250m resolution
 # - 19 CHELSA bioclimatic variables (current + future scenarios)
 # - 2 terrain variables (elevation, slope) from DTM50
 # - 7 AR50 land cover classes (artype: 10,20,30,50,60,70,81)
 # - Output: EPSG:25833, 250m resolution, mainland Norway extent
 # 
 # Steps:
-# 1. Create Norway mainland mask
-# 2. Process CHELSA variables (transform to UTM33, resample to 250m)
-# 3. Process terrain variables (mosaic DTM tiles, calculate slope)
-# 4. Process AR50 land cover (rasterize vector to 250m binary layers)
+# 1. Process AR50 land cover (rasterize vector to 50m, create binary layers, aggregate to 250m)
+# 2. Create Norway mainland mask (derived from AR50)
+# 3. Process CHELSA variables (transform to UTM33, resample to 250m)
+# 4. Process terrain variables (mosaic DTM tiles, calculate slope)
 # 5. Combine into final multi-band outputs (current + future)
 
-## Step 1: Create Norway mainland mask from DTM50 ####
+## Step 1: Process AR50 land cover ####
 
+### Rasterize to 50m ####
+# Load AR50 land cover data
+ar50 <- st_read("data/0000_25833_ar50_gdb.gdb")
+ar50_land <- filter(ar50, artype != 82 & artype != 99) # Exclude sea (82) and not mapped (99)
+rm(ar50) # Free memory
+
+# Create DTM-based template grid for rasterization
 # List all DTM tiles
 dtm_files <- list.files("data/DTM50_UTM33_20250613", 
                        pattern = "\\.tif$", 
@@ -119,49 +137,67 @@ dtm_files <- list.files("data/DTM50_UTM33_20250613",
 dtm_tiles <- map(dtm_files, rast)
 dtm_mosaic <- do.call(mosaic, dtm_tiles)
 
-# Define target grid parameters
-target_crs <- st_crs(25833)
-target_res <- 250 # meters
+# Create 50m template grid for AR50 fasterization
+grid_template_50m <- raster::raster(dtm_mosaic)
 
-# Aggregate DTM from 50m to 250m to create template grid
-dtm_250m <- aggregate(dtm_mosaic, fact = 5, fun = "mean", na.rm = TRUE)
-elevation_250m <- dtm_250m
-names(elevation_250m) <- "elevation"
+# Rasterize classes: 10 - Bebygd og samferdsel; 20 - Jordbruksareal; 30 - Skog; 50 - Snaumark; 60 - Myr; 70 - SnøIsbre; 81 - Ferskvann
+ar50_50m <- fasterize::fasterize(
+  sf = ar50_land,
+  raster = grid_template_50m,
+  field = "artype"
+) # 120 sec
+rm(ar50_land)
+gc()
 
-# Create 250m template grid for QGIS rasterization
-grid_template <- dtm_250m
-values(grid_template) <- NA
-names(grid_template) <- "template_250m"
+# Write the RasterLayer to GeoTIFF first
+raster::writeRaster(ar50_50m, "output/ar50_50m.tif", overwrite = TRUE)
+rm(ar50_50m)
+gc()
 
-# Write template grid to file for QGIS
-writeRaster(grid_template, 
-            filename = "output/rasterized_ar50_250m_UTM33.tif",
-            overwrite = FALSE)
+### Multi-layer from single layer ####
+ar50_50m <- rast("output/ar50_50m.tif")
+crs(ar50_50m) <- "EPSG:25833" # Set CRS to UTM33, to match grid_template_50m/dtm_mosaic
 
-# Skip R rasterization - will be done in QGIS
-# After QGIS rasterization, read the result back:
-ar50_rasterized_250m <- rast("output/rasterized_ar50_250m_UTM33.tif")  # TODO: Create this file in QGIS
-names(ar50_rasterized_250m) <- "ar50_artype"
+# Create SpatRaster with 0 for all non-NA cells
+ar50_land_50m <- ifel(is.na(ar50_50m), NA, 0)
+writeRaster(ar50_land_50m, 
+            filename = "output/ar50_50m_land.tif",
+            overwrite = TRUE)
 
-# Create land mask by reclassifying ar50_rasterized_250m
-# Combine all land cells (exclude sea/ocean - artype 82, and NA values)
-# Create binary mask: 1 = land, 0 = sea/water, NA = no data
-land_mask <- classify(ar50_rasterized_250m, 
-                      matrix(c(82, NA,     # sea/ocean -> 0 (water)
-                               81, 1,     # ferskvann -> 1 ("land")
-                               10, 1,      # bebygd_samferdsel -> 1 (land)
-                               20, 1,      # jordbruk -> 1 (land)
-                               30, 1,      # skog -> 1 (land)
-                               50, 1,      # snaumark -> 1 (land)
-                               60, 1,      # myr -> 1 (land)
-                               70, 1),     # sno_isbre -> 1 (land)
-                             ncol = 2, byrow = TRUE),
-                      others = NA)
+# Create individual SpatRasters for each class in one multi-layer SpatRaster
+class_values <- c(10, 20, 30, 50, 60, 70, 81)
+ar50_50m_stack <- c()
+for (val in class_values) {
+  ar50_50m_stack <- c(ar50_50m_stack, (ar50_50m == val) * 1)
+}
+ar50_50m_stack <- do.call(c, ar50_50m_stack)
+names(ar50_50m_stack) <- paste0("class_", class_values)
+plot(ar50_50m_stack)
+
+rm(ar50_50m)
+gc()
+
+writeRaster(ar50_50m_stack, 
+            filename = "output/ar50_50m_layers.tif",
+            overwrite = TRUE)
+
+### Aggregate to 250m ####
+# Use mean aggregation to get proportional coverage within each 250m cell
+ar50_250m_stack <- aggregate(ar50_50m_stack, fact = 5, fun = "mean", na.rm = TRUE)
+plot(ar50_250m_stack)
+
+rm(ar50_50m_stack)
+gc()
+
+## Step 2: Create Norway mainland mask ####
+
+# Create land mask by aggregating ar50_land_50m: 0 = land, NA = all else
+land_mask <- aggregate(ar50_land_50m, fact = 5, fun = "max", na.rm = TRUE)
 names(land_mask) <- "land_mask"
 
-## Step 2: Process CHELSA variables ####
+## Step 3: Process CHELSA variables ####
 
-# Load CHELSA past data (current climate)
+### Current climate ####
 chelsa_past_files <- list.files("data/CHELSA/past", 
                                 pattern = "CHELSA_bio.*\\.tif$", 
                                 full.names = TRUE) %>%
@@ -173,19 +209,6 @@ bio_numbers_past <- str_extract(chelsa_past_files, "bio\\d+") %>%
   as.numeric()
 chelsa_past_files <- chelsa_past_files[order(bio_numbers_past)]
 
-# Load CHELSA future data
-chelsa_future_files <- list.files("data/CHELSA/future", 
-                                  pattern = "CHELSA_bio.*\\.tif$", 
-                                  full.names = TRUE) %>%
-  sort()
-
-# Reorder future files
-bio_numbers_future <- str_extract(chelsa_future_files, "bio\\d+") %>%
-  str_extract("\\d+") %>%
-  as.numeric()
-chelsa_future_files <- chelsa_future_files[order(bio_numbers_future)]
-
-# Process past climate data
 chelsa_past_stack <- rast(chelsa_past_files)
 names(chelsa_past_stack) <- paste0("bio", 1:19)
 
@@ -207,7 +230,18 @@ chelsa_past_utm33 <- project(x = chelsa_past_cropped_wgs84,
 # Final mask to Norway boundaries using raster mask
 chelsa_past_masked <- mask(chelsa_past_utm33, land_mask)
 
-# Process future climate data
+### Future climate ####
+chelsa_future_files <- list.files("data/CHELSA/future", 
+                                  pattern = "CHELSA_bio.*\\.tif$", 
+                                  full.names = TRUE) %>%
+  sort()
+
+# Reorder future files
+bio_numbers_future <- str_extract(chelsa_future_files, "bio\\d+") %>%
+  str_extract("\\d+") %>%
+  as.numeric()
+chelsa_future_files <- chelsa_future_files[order(bio_numbers_future)]
+
 chelsa_future_stack <- rast(chelsa_future_files)
 names(chelsa_future_stack) <- paste0("bio", 1:19)
 
@@ -222,9 +256,12 @@ chelsa_future_utm33 <- project(x = chelsa_future_cropped_wgs84,
 # Final mask to Norway boundaries using raster mask
 chelsa_future_masked <- mask(chelsa_future_utm33, land_mask)
 
-## Step 3: Process terrain variables ####
+## Step 4: Process terrain variables ####
 
-# DTM processing already done in Step 1 for elevation
+# Calculate elevation as mean of 50m resolution
+elevation_250m <- aggregate(dtm_mosaic, fact = 5, fun = "mean", na.rm = TRUE)
+names(elevation_250m) <- "elevation"
+
 # Calculate slope at 50m resolution first, then aggregate
 slope_50m <- terrain(dtm_mosaic, v = "slope", unit = "degrees")
 
@@ -239,30 +276,10 @@ slope <- mask(slope_250m, land_mask)
 terrain_stack <- c(elevation, slope)
 names(terrain_stack) <- c("elevation", "slope")
 
-## Step 4: Process AR50 land cover ####
-
-# ar50_rasterized_250m already contains all artype data at correct CRS and resolution
-# Simply create binary layers for each artype class using raster operations
-
-# Define artype classes (excluding 99 - Ikke kartlagt)
-artype_classes <- c(10, 20, 30, 50, 60, 70, 81)
-artype_names <- c("bebygd_samferdsel", "jordbruk", "skog", "snaumark", 
-                  "myr", "sno_isbre", "ferskvann")
-
-# Create binary rasters for each artype class
-artype_rasters <- map2(artype_classes, artype_names, function(class_code, class_name) {
-  
-  # Create binary layer: 1 where artype matches class_code, 0 elsewhere, NA where original is NA
-  class_raster <- ifel(ar50_rasterized_250m == class_code, 1, 0)
-  names(class_raster) <- class_name
-  return(class_raster)
-})
-
-# Combine into single stack
-landcover_stack <- rast(artype_rasters)
-landcover_stack <- mask(landcover_stack, land_mask)
-
 ## Step 5: Combine all predictors ####
+
+# Apply land mask to landcover stack
+landcover_stack <- mask(ar50_250m_stack, land_mask)
 
 # Combine all predictors for current conditions
 predictors_current <- c(chelsa_past_masked, terrain_stack, landcover_stack)
@@ -270,7 +287,7 @@ predictors_current <- c(chelsa_past_masked, terrain_stack, landcover_stack)
 # Combine predictors for future conditions (terrain and landcover remain same)
 predictors_future <- c(chelsa_future_masked, terrain_stack, landcover_stack)
 
-# Verify we have 29 predictors
+# Verify we have 28 predictors
 stopifnot(nlyr(predictors_current) == 28)
 stopifnot(nlyr(predictors_future) == 28)
 
@@ -289,3 +306,17 @@ writeRaster(predictors_future,
 if(interactive()) {
   plot(predictors_current[[c(1, 20, 22)]])
 }
+
+## Spatial coverage validation ####
+
+# Check that all 28 predictors have identical spatial coverage
+check_coverage <- function(raster_stack) {
+  # Count non-NA cells for each layer using terra's efficient global() function
+  cell_counts <- global(raster_stack, "notNA")
+  # Check if all layers have the same number of non-NA cells
+  all(cell_counts$notNA == cell_counts$notNA[1])
+}
+
+# Validate both stacks
+stopifnot("Current predictors have inconsistent spatial coverage" = check_coverage(predictors_current))
+stopifnot("Future predictors have inconsistent spatial coverage" = check_coverage(predictors_future))

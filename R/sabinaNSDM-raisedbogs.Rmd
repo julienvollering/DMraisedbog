@@ -1,0 +1,153 @@
+---
+title: sabinaNSDM README
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, eval=FALSE}
+knitr::opts_knit$set(root.dir = "../output/sabinaNSDM/READMEexample/")
+```
+
+## Summary of main sabinaNSDM functions
+
+
+| Overall Step            | Function          | Objective                                       |
+|-----------------|-------------------|:-----------------:|
+| Data preparation| NSDM.InputData    | Provides the package with the species occurrences and environmental covariates at both global and regional scales|
+|                 | NSDM.FormattingData| Background data generation and species occurrences (and absences if available) thinning|
+|                 | NSDM.SelectCovariates| Selects uncorrelated and the most relevant environmental covariates|
+|Single scale modelling | NSDM.Global| Calibrates, evaluates, and projects ensemble models at the global scale|
+|     | NSDM.Regional    | Calibrates, evaluates, and projects ensemble models at the regional scale    |
+|Nested modelling  | NSDM.Covariate    | Generate spatially-nested hierarchical species distribution models with the covariate approach. The covariate approach uses the output of the global model as an additional covariate for the regional scale model   |
+|     | NSDM.Multiply   | Generate spatially-nested hierarchical species distribution models with the multiply approach. The multiply approach averages the global and regional models    |
+
+### Data preparation
+
+```{r eval = TRUE}
+setwd("output/sabinaNSDM/README-raisedbogs/")
+
+library(terra)
+library(covsel)
+library(biomod2)
+library(ecospat)
+library(fs)
+library(sgsR)
+
+# Load the sabinaNSDM package
+library(sabinaNSDM)
+```
+
+```{r eval = TRUE}
+SpeciesName <- "Raised.bog"
+```
+
+```{r eval = TRUE}
+# Species occurrences
+spp.data.global <- readr::read_csv("../../presence_coords_eu_global.csv")
+spp.data.regional.presence <- readr::read_csv("../../presence_coords_regional.csv")
+spp.data.regional.absence <- readr::read_csv("../../absence_coords_regional.csv")
+```
+
+```{r eval = TRUE}
+expl.var.global <- rast("../../predictors_global_5km_EUNorway.tif")
+expl.var.regional <- rast("../../predictors_regional_250m_Norway_current.tif")
+```
+
+```{r eval = TRUE}
+# new scenarios
+new.env <- rast("../../predictors_regional_250m_Norway_future.tif")
+```
+
+Load the required data for the package with the *NSDM.InputData()* function
+```{r eval = TRUE}
+nsdm_input <- NSDM.InputData(SpeciesName = SpeciesName,
+                             spp.data.global = spp.data.global, 
+                             spp.data.regional = spp.data.regional.presence, 
+                             expl.var.global = expl.var.global, 
+                             expl.var.regional = expl.var.regional,
+                             new.env = new.env,
+                             new.env.names = "scenario1",
+                             Background.Global = NULL, 
+                             Background.Regional = NULL,
+                             Absences.Global = NULL,
+                             Absences.Regional = NULL) #spp.data.regional.absence
+```
+
+```{r eval = TRUE}
+nsdm_finput <- NSDM.FormattingData(nsdm_input,
+                                   nPoints = 100, # number of background points
+                                   Min.Dist.Global = "resolution",
+                                   Min.Dist.Regional = "resolution",
+                                   Background.method = "random", # method “random" or "stratified” to generate background points 
+                                   save.output = TRUE) #save outputs locally
+```
+
+`Global species data (Raised.bog): from 182 to 134 species occurrences after cleaning and thinning.`
+`Regional species data (Raised.bog): from 1120 to 1118 species occurrences after cleaning and thinning.`
+
+The above thinning happens despite the coordinates already being cell centers. Suggest further thinning which is not described in the docs. Examining the points in QGIS confirms that there is additional spatial thinning to reduce point clusters, but it is not done strictly by a minimum distance criterion.
+
+```{r eval = TRUE}
+nsdm_selvars <- NSDM.SelectCovariates(nsdm_finput,
+                                      maxncov.Global = 5,   # Max number of covariates to be selected at the global scale
+                                      maxncov.Regional = 7, # Max number of covariates to be selected at the regional scale
+                                      corcut = 0.7, #  correlation threshold
+                                      algorithms = c("glm","gam","rf"),
+                                      ClimaticVariablesBands = NULL, # covariate bands to be excluded in the covariate selection at the regional scale
+                                      save.output = TRUE)
+
+```
+
+[1] "Covariate 'bebygd_samferdsel' has less than 10 unique points and will be discarded"
+[2] "Covariate 'jordbruk' has less than 10 unique points and will be discarded"         
+[3] "Covariate 'skog' has less than 10 unique points and will be discarded"             
+[4] "Covariate 'snaumark' has less than 10 unique points and will be discarded"         
+[5] "Covariate 'myr' has less than 10 unique points and will be discarded"              
+[6] "Covariate 'sno_isbre' has less than 10 unique points and will be discarded"        
+[7] "Covariate 'ferskvann' has less than 10 unique points and will be discarded"  
+
+Above comes from <https://github.com/antadde/covsel/blob/d4e3d58e8b74046b31513ecf58234dc39170d599/R/covsel.filteralgo.R#L31>. "Results/Regional/Values/Raised.bog.variables.csv" confirms than none of the AR5 predictors are retained (among top 7). 
+TODO: Look into how categorical predictors are supposed to be handled in sabinaNSDM/covsel/biomod2.
+
+`covsel` paper (@addeTooManyCandidates2023) has no mentions of categorical or factor variables. Table S2 in S1 confirms that the covariates are all continuous. Land cover variables are represented as: "cover in 100 m radius". 
+
+biomod2 says: "Factorial variables are allowed, but might lead to some pseudo-absence strategy or models omissions (e.g. sre)" (<https://biomodhub.github.io/biomod2/reference/BIOMOD_FormatingData.html>)
+
+
+### Single scale modelling
+
+```{r eval = TRUE}
+nsdm_global <- NSDM.Global(nsdm_selvars,
+                           algorithms = c("GAM","GBM", "RF", "MAXNET","GLM"),# Statistical algorithms used for modelling
+                           CV.nb.rep = 10, # number of cross-validation repetitions
+                           CV.perc = 0.8, # percentage of the data will be used for training in each cross-validation fold
+                           metric.select.thresh = 0.8, #  AUC threshold to include replicates in the final ensemble model
+                           CustomModelOptions = NULL, # Allows users to apply custom modelling options. 
+                           save.output = FALSE, 
+                           rm.biomod.folder = TRUE) # Remove the temporary folders created by `biomod2` 
+
+```
+
+### Nested modelling 
+
+```{r eval = TRUE}
+nsdm_covariate <- NSDM.Covariate(nsdm_global,
+                                 algorithms = c("GAM","GBM", "RF", "MAXNET","GLM"),
+                                 rm.corr=TRUE,
+                                 CV.nb.rep = 10,
+                                 CV.perc = 0.8,
+                                 # metric.select.thresh = 0.8,
+                                 CustomModelOptions = NULL,
+                                 save.output = FALSE,
+                                 rm.biomod.folder = TRUE)
+
+summary(nsdm_covariate)
+nsdm_covariate$myEMeval.Ensemble
+
+Covariate.model <- terra::rast(nsdm_covariate$current.projections$Pred) 
+terra::plot(Covariate.model)
+```
+
+
+<!-- Multiple studies have shown that NSDMs outperform their non- hierarchical counterparts in various applications (*Journal of Vegetation Science*, <https://doi.org/10.1111/jvs.12726>,Mateo et al. 2019; *Frontiers in Ecology and Evolution*, <https://doi.org/10.3389/fevo.2022.944116>,Chevalier et al. 2022; *Ecography*, <https://doi.org/10.1016/j.ecoinf.2023.102080>; Goicolea et al. in press)--> 
