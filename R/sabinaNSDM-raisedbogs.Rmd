@@ -99,6 +99,8 @@ nsdm_selvars <- NSDM.SelectCovariates(nsdm_finput,
 
 ```
 
+#### With binary AR50 predictors (categorical variables), variable selection caused problems
+
 [1] "Covariate 'bebygd_samferdsel' has less than 10 unique points and will be discarded"
 [2] "Covariate 'jordbruk' has less than 10 unique points and will be discarded"         
 [3] "Covariate 'skog' has less than 10 unique points and will be discarded"             
@@ -119,7 +121,7 @@ biomod2 says: "Factorial variables are allowed, but might lead to some pseudo-ab
 
 ```{r eval = TRUE}
 nsdm_global <- NSDM.Global(nsdm_selvars,
-                           algorithms = c("GAM","GBM", "RF", "MAXNET","GLM"),# Statistical algorithms used for modelling
+                           algorithms = c("RF"),# Statistical algorithms used for modelling
                            CV.nb.rep = 10, # number of cross-validation repetitions
                            CV.perc = 0.8, # percentage of the data will be used for training in each cross-validation fold
                            metric.select.thresh = 0.8, #  AUC threshold to include replicates in the final ensemble model
@@ -128,6 +130,39 @@ nsdm_global <- NSDM.Global(nsdm_selvars,
                            rm.biomod.folder = TRUE) # Remove the temporary folders created by `biomod2` 
 
 ```
+
+#### `NSDM.Global` returns error
+
+```
+Error in { : 
+  task 1 failed - "task 1 failed - "task 1 failed - "cannot open the connection"""
+7.
+stop(simpleError(msg, call = expr))
+6.
+e$fun(obj, substitute(ex), parent.frame(), e$data)
+5.
+foreach(assemb = names(em.mod.assemb)) %do% {
+cat("\n\n >", assemb, "ensemble modeling")
+models.kept <- em.mod.assemb[[assemb]]
+if (bm.mod@has.evaluation.data) { ...
+4.
+biomod2::BIOMOD_EnsembleModeling(bm.mod = myBiomodModelOut, models.chosen = "all",
+em.by = "all", em.algo = c("EMmean", "EMcv"), metric.select = c("ROC"),
+metric.select.thresh = metric.select.thresh, var.import = 0,
+metric.eval = c("ROC", "TSS", "KAPPA"), seed.val = 42)
+3.
+(function (nsdm.obj, model.type, algorithms = c("GLM", "GAM",
+"RF"), CV.nb.rep = 10, CV.perc = 0.8, CustomModelOptions = NULL,
+metric.select.thresh = 0.8, rm.corr = TRUE, save.output = TRUE,
+rm.biomod.folder = TRUE) ...
+2.
+do.call(general_nsdm_model, mod_call)
+1.
+NSDM.Global(nsdm_selvars, algorithms = c("GAM", "RF", "GLM"),
+CV.nb.rep = 10, CV.perc = 0.8, metric.select.thresh = 0.8,
+CustomModelOptions = NULL, save.output = FALSE, rm.biomod.folder = TRUE)
+```
+
 
 ### Nested modelling 
 
