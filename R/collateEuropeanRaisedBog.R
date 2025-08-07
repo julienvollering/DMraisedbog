@@ -106,3 +106,6 @@ bind_rows(presences1, presences2) |>
   st_write("data/DMraisedbog.gpkg", 
             layer = "Presences_EU", append = FALSE)
   
+# sessionInfo ####
+
+sessioninfo::session_info()

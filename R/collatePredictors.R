@@ -356,3 +356,7 @@ check_coverage <- function(raster_stack) {
 # Validate both stacks
 stopifnot("Current predictors have inconsistent spatial coverage" = check_coverage(predictors_current))
 stopifnot("Future predictors have inconsistent spatial coverage" = check_coverage(predictors_future))
+
+# sessionInfo ####
+
+sessioninfo::session_info()

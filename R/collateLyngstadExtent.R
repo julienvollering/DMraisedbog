@@ -189,3 +189,6 @@ st_write(footprint_total,
          layer = "nib-lyngstad-footprint",
          append = FALSE)
 
+# sessionInfo ####
+
+sessioninfo::session_info()

@@ -110,3 +110,7 @@ rb |>
   st_write("data/DMraisedbog.gpkg", 
            layer = "lyngstad-MTYPE_A",
            append = TRUE)
+
+# sessionInfo ####
+
+sessioninfo::session_info()
