@@ -41,7 +41,8 @@ raisedbogs |>
   count()
 
 naturaRB <- semi_join(natura, raisedbogs, by = "SITECODE") |> 
-  left_join(raisedbogs, by = "SITECODE")
+  left_join(raisedbogs, by = "SITECODE") |> 
+  st_cast("POLYGON") # Convert multipolygons to individual polygons
 
 naturaRB |> 
   st_write("data/DMraisedbog.gpkg", 
@@ -88,7 +89,7 @@ plot(st_geometry(presences1), add=TRUE)
 
 largepolygons <- naturaRBGIV |> 
   mutate(area = st_area(geom)) |>
-  filter(area >= units::set_units(1, "km^2")) # Polygons finer than the modeling resolution may be included without intersecting EUNIS
+  filter(area >= units::set_units(1, "km^2")) 
 
 presences2 <- eunisQ11[largepolygons, ] |> 
   select(PLOTOBSID, HabitatCod, Shape) |> 
