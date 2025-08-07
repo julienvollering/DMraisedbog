@@ -12,7 +12,9 @@ scripts <- c(
   "R/collateLyngstadExtent.R", 
   "R/collateEuropeanRaisedBog.R",
   "R/collatePredictors.R",
+  # "R/spatiallyThinGeometries.R",
   "R/rasterizePresenceAbsence.R",
+  "R/spatiallyThinCells.R",
   "R/pilotStructuredCV.R"
 )
 
