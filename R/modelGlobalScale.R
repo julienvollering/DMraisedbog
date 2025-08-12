@@ -79,5 +79,68 @@ writeRaster(pred_current, "output/rf_global_pred_regional_current.tif", overwrit
 writeRaster(pred_future, "output/rf_global_pred_regional_future.tif", overwrite = TRUE)
 saveRDS(rf_model, "output/rf_global_model.rds")
 
+# Model evaluation using Norwegian regional data ####
+
+# Load Norwegian presence-absence data
+presence_coords_regional <- read_csv("output/presence_coords_regional.csv")
+absence_coords_regional <- read_csv("output/absence_coords_regional.csv")
+
+# Load the regional prediction raster
+pred_regional <- rast("output/rf_global_pred_regional_current.tif")
+
+# Extract predictions for evaluation points
+presence_predictions <- terra::extract(pred_regional, presence_coords_regional[c("x", "y")])
+absence_predictions <- terra::extract(pred_regional, absence_coords_regional[c("x", "y")])
+
+# Create evaluation dataframe
+eval_data <- bind_rows(
+  # Presence data (observed = 1)
+  bind_cols(presence_coords_regional, presence_predictions[, -1]) |>
+    rename(predicted_prob = 3) |>  # Rename the prediction column
+    mutate(observed = 1),
+  # Absence data (observed = 0)  
+  bind_cols(absence_coords_regional, absence_predictions[, -1]) |>
+    rename(predicted_prob = 3) |>  # Rename the prediction column
+    mutate(observed = 0)
+) |>
+drop_na()  # Remove any points with NA prediction values
+
+# Calculate evaluation metrics
+# AUC using pROC package
+library(pROC)
+auc_result <- roc(eval_data$observed, eval_data$predicted_prob)
+auc_value <- auc(auc_result)
+
+# TSS (True Skill Statistic) - find optimal threshold using Youden's index
+optimal_threshold <- coords(auc_result, "best", ret = "threshold") |> 
+  as.numeric()
+eval_data <- eval_data |> 
+  mutate(predicted_binary = predicted_prob >= optimal_threshold)
+
+# Calculate confusion matrix components
+tp <- sum(eval_data$observed == 1 & eval_data$predicted_binary == TRUE)  # True positives
+tn <- sum(eval_data$observed == 0 & eval_data$predicted_binary == FALSE)  # True negatives
+fp <- sum(eval_data$observed == 0 & eval_data$predicted_binary == TRUE)  # False positives
+fn <- sum(eval_data$observed == 1 & eval_data$predicted_binary == FALSE)  # False negatives
+
+# Calculate sensitivity and specificity
+sensitivity <- tp / (tp + fn)  # True positive rate
+specificity <- tn / (tn + fp)  # True negative rate
+
+# TSS = Sensitivity + Specificity - 1
+tss_value <- sensitivity + specificity - 1
+
+# Create results summary
+evaluation_results <- data.frame(
+  Metric = c("AUC", "TSS"),
+  Value = c(auc_value, tss_value)
+)
+
+print("Model Evaluation Results:")
+print(evaluation_results)
+
+# Save evaluation results
+write_csv(evaluation_results, "output/model_global_evaluation_metrics.csv")
+
 ## Session Information ####
 sessionInfo()
