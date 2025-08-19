@@ -191,35 +191,39 @@ gc()
 ar50_250m_terra <- rast(ar50_250m)
 crs(ar50_250m_terra) <- "EPSG:3035"
 writeRaster(ar50_250m_terra, "output/ar50_250m_EPSG3035.tif", overwrite = TRUE)
-rm(ar50_250m, ar50_250m_terra)
-gc()
-
-### Create multi-layer from single layer ####
-ar50_250m <- rast("output/ar50_250m_EPSG3035.tif")
-
-# Create SpatRaster with 0 for all non-NA cells (land mask)
-ar50_land_250m <- ifel(is.na(ar50_250m), NA, 0)
-writeRaster(ar50_land_250m, 
-            filename = "output/ar50_250m_land_EPSG3035.tif",
-            overwrite = TRUE)
-
-# Create individual SpatRasters for each class in one multi-layer SpatRaster
-class_values <- c(10, 20, 30, 50, 60, 70, 81)
-ar50_250m_stack <- c()
-for (val in class_values) {
-  ar50_250m_stack <- c(ar50_250m_stack, (ar50_250m == val) * 1)
-}
-ar50_250m_stack <- do.call(c, ar50_250m_stack)
-names(ar50_250m_stack) <- paste0("class_", class_values)
-
 rm(ar50_250m)
 gc()
 
-writeRaster(ar50_250m_stack, 
-            filename = "output/ar50_250m_layers_EPSG3035.tif",
-            overwrite = TRUE)
+### Create multi-layer from single layer ####
+# ar50_250m <- rast("output/ar50_250m_EPSG3035.tif")
+# 
+# # Create SpatRaster with 0 for all non-NA cells (land mask)
+# ar50_land_250m <- ifel(is.na(ar50_250m), NA, 0)
+# writeRaster(ar50_land_250m, 
+#             filename = "output/ar50_250m_land_EPSG3035.tif",
+#             overwrite = TRUE)
+# 
+# # Create individual SpatRasters for each class in one multi-layer SpatRaster
+# class_values <- c(10, 20, 30, 50, 60, 70, 81)
+# ar50_250m_stack <- c()
+# for (val in class_values) {
+#   ar50_250m_stack <- c(ar50_250m_stack, (ar50_250m == val) * 1)
+# }
+# ar50_250m_stack <- do.call(c, ar50_250m_stack)
+# names(ar50_250m_stack) <- paste0("class_", class_values)
+# 
+# rm(ar50_250m)
+# gc()
+# 
+# writeRaster(ar50_250m_stack, 
+#             filename = "output/ar50_250m_layers_EPSG3035.tif",
+#             overwrite = TRUE)
 
 ## Step 3: Create Norway mainland mask ####
+
+# Load AR50 raster and create land mask: any non-NA value = land
+ar50_250m <- rast("output/ar50_250m_EPSG3035.tif")
+ar50_land_250m <- ifel(is.na(ar50_250m), NA, 0)
 
 # Use ar50_land_250m as land mask: 0 = land, NA = all else
 land_mask <- ar50_land_250m
@@ -314,18 +318,18 @@ chelsa_future_masked <- mask(chelsa_future_3035, land_mask)
 
 ## Step 6: Combine all predictors ####
 
-# Apply land mask to landcover stack
-landcover_stack <- mask(ar50_250m_stack, land_mask)
+# Add proper name to AR50 layer
+names(ar50_250m) <- "artype"
 
 # Combine all predictors for current conditions
-predictors_current <- c(chelsa_past_masked, terrain_stack, landcover_stack)
+predictors_current <- c(chelsa_past_masked, terrain_stack, ar50_250m)
 
 # Combine predictors for future conditions (terrain and landcover remain same)
-predictors_future <- c(chelsa_future_masked, terrain_stack, landcover_stack)
+predictors_future <- c(chelsa_future_masked, terrain_stack, ar50_250m)
 
-# Verify we have 28 predictors
-stopifnot(nlyr(predictors_current) == 28)
-stopifnot(nlyr(predictors_future) == 28)
+# Verify we have 22 predictors
+stopifnot(nlyr(predictors_current) == 22)
+stopifnot(nlyr(predictors_future) == 22)
 
 # Write outputs
 writeRaster(predictors_current, 
@@ -340,12 +344,13 @@ writeRaster(predictors_future,
 
 # Quick visualization check
 if(interactive()) {
-  plot(predictors_current[[c(1, 20, 22)]])
+  plot(predictors_current[[c(1, 20, 22)]], 
+       main = c("Bio1: Annual Mean Temperature", "Elevation", "AR50 Land Cover"))
 }
 
 ## Spatial coverage validation ####
 
-# Check that all 28 predictors have identical spatial coverage
+# Check that all 22 predictors have identical spatial coverage
 check_coverage <- function(raster_stack) {
   # Count non-NA cells for each layer using terra's efficient global() function
   cell_counts <- global(raster_stack, "notNA")
