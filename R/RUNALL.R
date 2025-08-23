@@ -15,7 +15,8 @@ scripts <- c(
   # "R/spatiallyThinGeometries.R",
   "R/rasterizePresenceAbsence.R",
   "R/spatiallyThinCells.R",
-  "R/pilotStructuredCV.R"
+  "R/modelGlobalScale.R",
+  "R/assignCVFolds.R"
 )
 
 # Execute scripts with error handling
