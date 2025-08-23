@@ -16,7 +16,8 @@ scripts <- c(
   "R/rasterizePresenceAbsence.R",
   "R/spatiallyThinCells.R",
   "R/modelGlobalScale.R",
-  "R/assignCVFolds.R"
+  # "R/assignCVFolds.R"
+  "R/partitionData.R"
 )
 
 # Execute scripts with error handling
