@@ -17,6 +17,9 @@ scripts <- c(
   "R/spatiallyThinCells.R",
   "R/modelGlobalScale.R",
   # "R/assignCVFolds.R"
+  # "R/exploreHDBSCANResults.R",
+  # "R/explorePAMResults.R",
+  # "R/simplePAMResults.R",
   "R/partitionData.R"
 )
 

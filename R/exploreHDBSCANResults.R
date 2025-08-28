@@ -1,11 +1,9 @@
 # HDBSCAN Results Exploration ####
 
-library(readr)
-library(dplyr)
+library(tidyverse)
 library(terra)
 library(cluster)
 library(dbscan)
-library(ggplot2)
 library(sf)
 
 ## Load and prepare data ####
@@ -53,11 +51,15 @@ weights_gini <- read_csv("output/feature_weights_gini.csv")
 weights <- pull(weights_gini, weights_gini)
 names(weights) <- pull(weights_gini, feature)
 
-## Run HDBSCAN clustering ####
+## Create clustering sample ####
 
-sample_size <- 1e4
+absence_size <- 1e4 # 1e5 produces error in call to cluster::daisy()
+set.seed(42)
 training_sample_with_coords <- training_data_with_coords |> 
-  sample_n(sample_size)
+  filter(response == "0") |>
+  sample_n(absence_size) |>
+  bind_rows(training_data_with_coords |> filter(response == "1")) |>
+  arrange(response)
 
 sum(training_sample_with_coords$response == "1") / 
   (sum(training_sample_with_coords$response == "1") + 
@@ -73,20 +75,41 @@ training_sample_with_coords |>
 training_sample <- training_sample_with_coords |>
   select(-x, -y)
 
+## Run HDBSCAN clustering ####
+
 feature_cols <- setdiff(names(training_sample), "response")
 
-gower_dist <- cluster::daisy(
+# gower_dist_weighted <- cluster::daisy(
+#   x = training_sample[, feature_cols],
+#   metric = "gower",
+#   weights = weights # alt: 1
+# )
+
+gower_dist_unweighted <- cluster::daisy(
   x = training_sample[, feature_cols],
   metric = "gower",
-  weights = weights # alt: 1
+  weights = 1 # alt: weights
 )
 
-hdb_result <- hdbscan(gower_dist, minPts = 20)
+hdb_result <- hdbscan(gower_dist_unweighted, minPts = 100)
 hdb_result
-plot(hdb_result)
+plot(hdb_result, show_flat=TRUE)
 
 training_sample_with_clusters <- training_sample_with_coords |>
   mutate(cluster = factor(hdb_result$cluster))
+
+## Cluster statistics ####
+
+training_sample_with_clusters |>
+  group_by(cluster) |>
+  summarise(
+    n_points = n(),
+    n_presence = sum(as.numeric(as.character(response))),
+    prevalence = n_presence / n_points,
+    .groups = 'drop'
+  ) |>
+  arrange(cluster) |> 
+  print(n=50)
 
 ## Basic visualizations ####
 
@@ -116,14 +139,3 @@ training_sample_with_clusters |>
   geom_sf(aes(color = cluster), size = 0.5) +
   labs(title = "HDBSCAN Clusters")
 
-## Cluster statistics ####
-
-training_sample_with_clusters |>
-  group_by(cluster) |>
-  summarise(
-    n_points = n(),
-    n_presence = sum(as.numeric(as.character(response))),
-    prevalence = n_presence / n_points,
-    .groups = 'drop'
-  ) |>
-  arrange(desc(prevalence))

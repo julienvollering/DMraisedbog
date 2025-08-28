@@ -1,22 +1,19 @@
-# Custom Feature Space Blocking with Stratification for Large Datasets ####
+# PAM-based Feature Space Clustering for Data Partitioning ####
 
-# This function creates training, calibration, and test splits based on
-# clustering in feature space. It is designed to handle large datasets
-# efficiently by sampling for clustering and then assigning all data points to
-# the nearest cluster. It uses the HDBSCAN algorithm for clustering and Gower
-# distance for mixed data types.
-
-# The specific use case motivating this function is a dataset of approximately N
-# = 800e3, p = 20, with a binary target variable that is highly imbalanced
-# (~0.5% positive cases). The intended downstream learner is Random Forest
-# Quantile Classifiers (RFQ), potentially with a post-hoc calibration step.
+# This script implements PAM clustering methodology for data partitioning
+# based on the approach from simplePAMResults.R:
+# 1) Sample 1e4 rows of training data
+# 2) PAM clustering into K clusters with standardized euclidean distances of top X features  
+# 3) Assignment of remaining data to nearest cluster medoids
 
 library(readr)
 library(dplyr)
 library(terra)
 library(cluster)
-library(dbscan)
-library(gower)  # For Gower distance calculations
+library(RANN)
+library(tidyr)
+library(ggplot2)
+library(sf)
 
 ## Create training dataset ####
 rf_global_current <- rast("output/rf_global_pred_regional_current.tif") 
@@ -42,10 +39,12 @@ absence_df <- terra::extract(preds_train, absence[c("x", "y")], xy=TRUE, ID=FALS
   drop_na() |> 
   tibble()
 
-# Combine into training dataset
-training_data <- bind_rows(presence_df, absence_df) |>
-  mutate(response = factor(response), ar50 = factor(ar50)) |> 
-  select(-x, -y) # Remove x and y coordinates
+# Combine into training dataset (keep x,y coordinates for later use)
+training_data_with_coords <- bind_rows(presence_df, absence_df) |>
+  mutate(response = factor(response), ar50 = factor(ar50))
+
+training_data <- training_data_with_coords |> 
+  select(-x, -y) # Remove x and y coordinates for modeling
 
 # Get final counts
 n_final_presence <- sum(training_data$response == "1")
@@ -55,152 +54,94 @@ n_final_prevalence <- n_final_presence / (n_final_presence + n_final_background)
 cat("Final training data - Presences:", n_final_presence, "Background:", n_final_background, "\n")
 cat("Prevalence in training data:", round(n_final_prevalence * 100, 3), "%\n")
 
-# Feature weights for feature distances
+# Load feature weights
 weights_gini <- read_csv("output/feature_weights_gini.csv")
 weights <- pull(weights_gini, weights_gini)
 names(weights) <- pull(weights_gini, feature)
 
-## Partition training data into train/calib/test splits ####
+## PAM-based data partitioning function ####
 
-create_feature_space_splits_large <- function(data, 
-                                              feature_cols,
-                                              target_col = "response",
-                                              sample_size = 20000,  # Size for clustering
-                                              sample_ratio_minority = 0.3,  # Oversample minority in clustering
-                                              train_prop = 0.6,
-                                              calib_prop = 0.2,
-                                              test_prop = 0.2,
-                                              min_cluster_size = 10,
-                                              cluster_selection_epsilon = 0.0,  # HDBSCAN parameter
-                                              minimum_clusters = 10,  # Minimum number of clusters to force if HDBSCAN produces too few
-                                              weights = NULL,  # Weights for Gower distance
-                                              seed = 42) {
+create_pam_splits <- function(data, 
+                              feature_cols,
+                              target_col = "response",
+                              sample_size = 10000,
+                              k_clusters = 10,
+                              top_n_features = 5,
+                              train_prop = 0.6,
+                              calib_prop = 0.2,
+                              test_prop = 0.2,
+                              feature_weights = NULL,
+                              seed = 42) {
   
   set.seed(seed)
   
-  # Step 1: Create stratified sample for clustering
-  cat("Creating stratified sample for clustering...\n")
+  # Step 1: Create sample for clustering
+  cat("Creating sample for clustering...\n")
+  sample_data <- data |> 
+    sample_n(sample_size)
   
-  minority_idx <- which(data[[target_col]] == 1)
-  majority_idx <- which(data[[target_col]] == 0)
+  sampled_idx <- as.numeric(rownames(sample_data))
   
-  n_minority <- length(minority_idx)
-  n_majority <- length(majority_idx)
+  cat("Sample prevalence:", 
+      round(sum(sample_data[[target_col]] == "1") / nrow(sample_data) * 100, 2), "%\n")
   
-  # Calculate sample sizes
-  sample_minority <- min(n_minority, round(sample_size * sample_ratio_minority))
-  sample_majority <- min(n_majority, sample_size - sample_minority)
+  # Step 2: Select top features by weight
+  if(!is.null(feature_weights)) {
+    top_features <- feature_weights |> 
+      sort(decreasing = TRUE) |> 
+      head(top_n_features) |>
+      names()
+    
+    cat("Using top", top_n_features, "features:", paste(top_features, collapse = ", "), "\n")
+  } else {
+    top_features <- feature_cols[1:min(top_n_features, length(feature_cols))]
+    cat("No feature weights provided. Using first", length(top_features), "features\n")
+  }
   
-  # Sample indices
-  sampled_minority_idx <- sample(minority_idx, sample_minority)
-  sampled_majority_idx <- sample(majority_idx, sample_majority)
-  sampled_idx <- c(sampled_minority_idx, sampled_majority_idx)
+  # Step 3: Extract feature data for clustering (numeric only)
+  clustering_data <- sample_data |>
+    select(all_of(top_features)) |>
+    select(where(is.numeric))
   
-  # Create sample dataset
-  sample_data <- data[sampled_idx, ]
+  cat("Clustering data dimensions:", nrow(clustering_data), "x", ncol(clustering_data), "\n")
   
-  cat(sprintf("Sampled %d observations (%d positive, %d negative) from %d total\n",
-              length(sampled_idx), sample_minority, sample_majority, nrow(data)))
-  
-  # Step 2: Calculate Gower distances on sample
-  cat("Calculating Gower distances on sample...\n")
-  
-  gower_dist_sample <- cluster::daisy(
-    x = sample_data[, feature_cols],
-    metric = "gower",
-    weights = weights
+  # Step 4: Run PAM clustering with standardized Euclidean distance
+  set.seed(seed)
+  pam_result <- pam(
+    x = clustering_data,
+    k = k_clusters,
+    metric = "euclidean", 
+    stand = TRUE,  # Standardize features
+    pamonce = 5
   )
   
-  # Step 3: Cluster the sample with HDBSCAN
-  cat("Clustering sample with HDBSCAN...\n")
-  hdb_result <- hdbscan(gower_dist_sample, 
-                        minPts = min_cluster_size,
-                        cluster_selection_epsilon = cluster_selection_epsilon)
+  # Add cluster assignments to training sample
+  sample_data$cluster <- factor(pam_result$clustering)
   
-  # Check initial clustering results
-  initial_clusters <- length(unique(hdb_result$cluster[hdb_result$cluster > 0]))
-  cat(sprintf("HDBSCAN found %d initial clusters\n", initial_clusters))
-  
-  # If we have too few clusters, use cutree to force more clusters
-  if(initial_clusters < minimum_clusters) {
-    cat(sprintf("Forcing %d clusters using cutree on HDBSCAN hierarchy...\n", minimum_clusters))
-    
-    # Use cutree on the hierarchical clustering component
-    forced_clusters <- cutree(hdb_result$hc, k = minimum_clusters)
-    
-    # Create new hdbscan-like result object
-    hdb_clusters <- list(
-      cluster = forced_clusters,
-      minPts = hdb_result$minPts,
-      coredist = hdb_result$coredist,
-      cluster_scores = hdb_result$cluster_scores,
-      membership_prob = hdb_result$membership_prob,
-      outlier_scores = hdb_result$outlier_scores,
-      hc = hdb_result$hc,
-      forced_clustering = TRUE
+  # Show cluster summary
+  cluster_summary <- sample_data |>
+    group_by(cluster) |>
+    summarise(
+      n_points = n(),
+      n_presence = sum(as.numeric(as.character(.data[[target_col]]))),
+      prevalence = n_presence / n_points,
+      .groups = 'drop'
     )
-    
-    cat(sprintf("Successfully created %d clusters using cutree\n", length(unique(forced_clusters))))
-  } else {
-    hdb_clusters <- hdb_result
-    hdb_clusters$forced_clustering <- FALSE
-  }
   
-  # Handle noise points in sample
-  if(any(hdb_clusters$cluster == 0)) {
-    noise_idx <- which(hdb_clusters$cluster == 0)
-    cat(sprintf("Handling %d noise points in sample...\n", length(noise_idx)))
-    
-    # Extract only needed rows to avoid converting entire matrix
-    dist_matrix <- as.matrix(gower_dist_sample)[noise_idx, , drop = FALSE]
-    non_noise_idx <- which(hdb_clusters$cluster != 0)
-    
-    for(j in seq_along(noise_idx)) {
-      i <- noise_idx[j]
-      if(length(non_noise_idx) > 0) {
-        nearest_idx <- non_noise_idx[which.min(dist_matrix[j, non_noise_idx])]
-        hdb_clusters$cluster[i] <- hdb_clusters$cluster[nearest_idx]
-      }
-    }
-  }
+  cat("\nCluster summary:\n")
+  print(cluster_summary)
   
-  n_clusters <- length(unique(hdb_clusters$cluster[hdb_clusters$cluster > 0]))
-  cat(sprintf("Found %d clusters\n", n_clusters))
+  # Get medoids from PAM result
+  medoid_features <- pam_result$medoids |> 
+    as_tibble()
   
-  # Step 4: Calculate cluster representatives (medoids) for assignment
-  cat("Calculating cluster medoids...\n")
-  
-  cluster_medoids <- list()
-  cluster_features <- list()
-  
-  for(clust in unique(hdb_clusters$cluster)) {
-    if(clust == 0) next  # Skip if any noise remains
-    
-    cluster_mask <- hdb_clusters$cluster == clust
-    cluster_indices <- which(cluster_mask)
-    
-    if(length(cluster_indices) > 1) {
-      # Find medoid (most central point) of cluster
-      cluster_dist_subset <- as.matrix(gower_dist_sample)[cluster_indices, cluster_indices]
-      medoid_idx <- cluster_indices[which.min(rowSums(cluster_dist_subset))]
-      cluster_medoids[[as.character(clust)]] <- medoid_idx
-      cluster_features[[as.character(clust)]] <- sample_data[medoid_idx, feature_cols]
-    } else {
-      cluster_medoids[[as.character(clust)]] <- cluster_indices[1]
-      cluster_features[[as.character(clust)]] <- sample_data[cluster_indices[1], feature_cols]
-    }
-  }
-  
-  # Create reference data for cluster assignment
-  medoid_features <- do.call(rbind, cluster_features)
-  
-  # Step 5: Assign ALL observations to clusters FIRST
+  # Step 5: Assign ALL observations to clusters using PAM assignment logic
   cat("Assigning all observations to clusters...\n")
   
   all_clusters <- integer(nrow(data))
   
   # First, assign the sampled observations
-  all_clusters[sampled_idx] <- hdb_clusters$cluster
+  all_clusters[sampled_idx] <- pam_result$clustering
   
   # Now assign the remaining observations
   unsampled_idx <- setdiff(1:nrow(data), sampled_idx)
@@ -223,17 +164,14 @@ create_feature_space_splits_large <- function(data,
       batch_end <- min(batch * batch_size, length(unsampled_idx))
       batch_idx <- unsampled_idx[batch_start:batch_end]
       
-      # Calculate distances to medoids
-      batch_data <- data[batch_idx, feature_cols]
+      # Extract the same features for batch data
+      batch_data_features <- data[batch_idx, ] |>
+        select(all_of(top_features)) |>
+        select(where(is.numeric))
       
-      # Calculate distances using Gower distance
-      cluster_assignments_batch <- assign_to_nearest_cluster(
-        new_data = batch_data,
-        reference_data = medoid_features,
-        weights = weights
-      )
-      
-      all_clusters[batch_idx] <- as.integer(names(cluster_features))[cluster_assignments_batch]
+      # Use PAM-style assignment function
+      cluster_assignments_batch <- assign_to_pam_clusters(batch_data_features, medoid_features)
+      all_clusters[batch_idx] <- cluster_assignments_batch
     }
     
     # Close progress bar
@@ -334,67 +272,69 @@ create_feature_space_splits_large <- function(data,
   return(results)
 }
 
-# Helper function for mixed-type distance calculation using gower distance
-assign_to_nearest_cluster <- function(new_data, reference_data, weights = NULL) {
+# Fast PAM-based assignment function using RANN for nearest neighbor search
+assign_to_pam_clusters <- function(new_data, medoids) {
   
-  # Calculate Gower distances between new_data and reference_data
-  # Using daisy requires combining datasets and extracting relevant distances
-  combined_data <- rbind(new_data, reference_data)
-  
-  distance_obj <- cluster::daisy(
-    x = combined_data,
-    metric = "gower", 
-    weights = weights
+  # Use RANN's nn2() for fast nearest neighbor search
+  # Find the 1 nearest neighbor (closest medoid) for each point
+  nearest_neighbors <- nn2(
+    data = medoids,      # Reference points (medoids)
+    query = new_data,    # Query points (new data)
+    k = 1,               # Find 1 nearest neighbor
+    searchtype = "standard"  # Standard ANN search
   )
   
-  # Extract the relevant submatrix
-  dist_mat <- as.matrix(distance_obj)
-  n_new <- nrow(new_data)
-  n_ref <- nrow(reference_data)
-  
-  # Extract distances from new_data (rows 1:n_new) to reference_data (rows (n_new+1):(n_new+n_ref))
-  relevant_distances <- dist_mat[1:n_new, (n_new + 1):(n_new + n_ref), drop = FALSE]
-  
-  # Find nearest cluster for each observation
-  assignments <- apply(relevant_distances, 1, which.min)
+  # Extract the indices of the nearest medoids
+  assignments <- nearest_neighbors$nn.idx[, 1]
   
   return(assignments)
 }
 
-## Apply function to create splits ####
+## Apply PAM clustering to create splits ####
 
 # Get feature column names (exclude response variable)
 feature_cols <- setdiff(names(training_data), "response")
 
 cat("Feature columns:", paste(feature_cols, collapse = ", "), "\n")
 
-cat("Using feature weights for Gower distance:\n")
+cat("Using feature weights for feature selection:\n")
 print(weights)
 
-set.seed(42)
-training_data_N1e5 <- training_data |> 
-  sample_n(100000)
-
-# Create feature space splits
-splits <- create_feature_space_splits_large(
-  data = training_data_N1e5,
+# Create PAM-based feature space splits
+splits <- create_pam_splits(
+  data = training_data,
   feature_cols = feature_cols,
   target_col = "response",
-  sample_size = 10000,  # Cluster on X observations
-  sample_ratio_minority = 0.01,  # Aim for X of sample to be positive cases
-  min_cluster_size = 20,
-  cluster_selection_epsilon = 0,
-  minimum_clusters = 15,
+  sample_size = 10000,  # Sample for clustering
+  k_clusters = 10,      # Number of PAM clusters
+  top_n_features = 5,   # Top features by weight
   train_prop = 0.6,
   calib_prop = 0.2,
   test_prop = 0.2,
-  weights = weights
+  feature_weights = weights
 )
 
 # Display results
 print(splits$split_summary)
 cat("\nCluster statistics:\n")
 print(head(splits$cluster_stats))
+
+## Map visualization ####
+presence_idx <- which(training_data_with_coords$response == "1")
+background_idx <- sample(which(training_data_with_coords$response == "0"), 100000 - length(presence_idx))
+viz_idx <- c(presence_idx, background_idx)
+
+viz_data <- training_data_with_coords[viz_idx, ] |>
+  mutate(cluster = factor(splits$clusters[viz_idx]),
+         partition = factor(splits$splits[viz_idx])) |>
+  arrange(response) |>
+  st_as_sf(coords = c("x", "y"), crs = st_crs(preds_train))
+
+ggplot(viz_data) +
+  geom_sf(aes(color = cluster), size = 0.5, alpha = 0.7)
+
+ggplot(viz_data) +
+  geom_sf(aes(color = partition), size = 0.5, alpha = 0.7)
 
 ## Save splits for downstream modeling ####
 
