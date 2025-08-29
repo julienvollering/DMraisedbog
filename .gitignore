@@ -2,6 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
+.claude
+CLAUDE.md
 *.lnk
 * alias
 *.qgs
