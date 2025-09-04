@@ -34,87 +34,6 @@ cat("Prevalence:", round(mean(train_data$response == 1) * 100, 2), "%\n")
 
 ## Custom hyperparameter tuning with imbalanced() ####
 
-cat("\nStarting hyperparameter tuning using custom imbalanced() wrapper...\n")
-cat("Tuning mtry and nodesize with G-mean performance metric\n")
-
-# Define hyperparameter grid for tuning
-n_predictors <- ncol(train_data) - 2  # Exclude response and inner columns
-mtry_values <- c(floor(sqrt(n_predictors)), floor(n_predictors/3), floor(n_predictors/2))
-nodesize_values <- c(1, 5, 10, 20)
-
-cat("Number of predictors:", n_predictors, "\n")
-cat("mtry values to test:", paste(mtry_values, collapse = ", "), "\n")
-cat("nodesize values to test:", paste(nodesize_values, collapse = ", "), "\n")
-
-## Runtime estimation ####
-
-cat("\nEstimating runtime with a single RFQ model (500 trees)...\n")
-
-# Prepare small test dataset (first fold) for timing
-test_data <- train_data |> 
-  filter(inner != 1) |> 
-  select(-inner) |>
-  mutate(response = as.factor(as.character(response))) |>
-  as.data.frame()
-
-# Ensure ar50 is properly handled as factor if it exists
-if("ar50" %in% names(test_data)) {
-  test_data$ar50 <- as.factor(as.character(test_data$ar50))
-}
-
-cat("Test data size:", nrow(test_data), "observations\n")
-
-# Time a single model run
-start_time <- Sys.time()
-
-test_model <- imbalanced(
-  formula = response ~ .,
-  data = test_data,
-  ntree = 500,  # Reduced trees for timing
-  mtry = mtry_values[1],  # Use first mtry value
-  nodesize = nodesize_values[1],  # Use first nodesize value
-  importance = FALSE,
-  do.trace = FALSE
-)
-
-end_time <- Sys.time()
-runtime_500_trees <- as.numeric(difftime(end_time, start_time, units = "mins"))
-
-cat("Runtime for 500 trees:", round(runtime_500_trees, 2), "minutes\n")
-
-# Estimate total tuning time
-# 3 CV folds × (mtry_values × nodesize_values) × (3000/500 scaling factor)
-n_param_combinations <- length(mtry_values) * length(nodesize_values)
-scaling_factor <- 3000 / 500
-estimated_total_time <- 3 * n_param_combinations * runtime_500_trees * scaling_factor
-
-cat("Parameter combinations per fold:", n_param_combinations, "\n")
-cat("Trees scaling factor (3000/500):", scaling_factor, "\n")
-cat("Estimated total tuning time:", round(estimated_total_time, 1), "minutes\n")
-cat("Estimated total tuning time:", round(estimated_total_time / 60, 1), "hours\n")
-
-cat("\nProceeding with hyperparameter tuning...\n")
-
-# Initialize progress tracking CSV file
-progress_file <- "output/hyperparameter_tuning_progress.csv"
-if(file.exists(progress_file)) {
-  cat("Found existing progress file. Continuing from where we left off...\n")
-} else {
-  cat("Creating progress tracking file:", progress_file, "\n")
-  # Create empty file with headers
-  empty_result <- data.frame(
-    timestamp = character(0),
-    cv_fold = numeric(0),
-    mtry = numeric(0),
-    nodesize = numeric(0),
-    gmean = numeric(0),
-    tpr = numeric(0),
-    tnr = numeric(0),
-    stringsAsFactors = FALSE
-  )
-  write_csv(empty_result, progress_file)
-}
-
 # Function to train a single model with given parameters
 train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
   
@@ -160,7 +79,7 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
   true_class <- val_fold$response
   
   # Create confusion matrix
-  cm <- table(Predicted = pred_class, Actual = true_class)
+  cm <- table(Actual = true_class, Predicted = pred_class)
   if(nrow(cm) == 2 && ncol(cm) == 2) {
     tn <- cm[1,1]  # True negatives
     fp <- cm[1,2]  # False positives  
@@ -200,6 +119,15 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
 
 ## Create parameter grid ####
 
+# Define hyperparameter grid for tuning
+n_predictors <- ncol(train_data) - 2  # Exclude response and inner columns
+mtry_values <- c(floor(sqrt(n_predictors)), floor(n_predictors/3), floor(n_predictors/2))
+nodesize_values <- c(1, 5, 10, 20)
+
+cat("Number of predictors:", n_predictors, "\n")
+cat("mtry values to test:", paste(mtry_values, collapse = ", "), "\n")
+cat("nodesize values to test:", paste(nodesize_values, collapse = ", "), "\n")
+
 cat("\nCreating parameter grid for hyperparameter tuning...\n")
 
 # Create complete parameter combination grid
@@ -215,9 +143,55 @@ param_grid <- expand_grid(
 cat("Total parameter combinations:", nrow(param_grid), "\n")
 cat("Jobs per CV fold:", nrow(param_grid) / 3, "\n")
 
-# Check for existing progress and filter out completed jobs
+### Runtime estimation ####
+
+cat("\nEstimating runtime with a single RFQ model (500 trees)...\n")
+
+# Prepare small test dataset (first fold) for timing
+test_data <- train_data |>
+  filter(inner != 1) |>
+  select(-inner) |>
+  mutate(response = as.factor(as.character(response))) |>
+  as.data.frame()
+
+# Ensure ar50 is properly handled as factor if it exists
+if("ar50" %in% names(test_data)) {
+  test_data$ar50 <- as.factor(as.character(test_data$ar50))
+}
+
+cat("Test data size:", nrow(test_data), "observations\n")
+
+# Time a single model run
+start_time <- Sys.time()
+
+test_model <- imbalanced(
+  formula = response ~ .,
+  data = test_data,
+  ntree = 500,  # Reduced trees for timing
+  mtry = mtry_values[1],  # Use first mtry value
+  nodesize = nodesize_values[1],  # Use first nodesize value
+  importance = FALSE,
+  do.trace = FALSE
+)
+
+end_time <- Sys.time()
+runtime_500_trees <- as.numeric(difftime(end_time, start_time, units = "mins"))
+
+cat("Runtime for 500 trees:", round(runtime_500_trees, 2), "minutes\n")
+
+# Estimate total tuning time
+n_calls_to_imbalanced <- nrow(param_grid)
+scaling_factor <- 3000 / 500
+estimated_total_time <- n_calls_to_imbalanced * runtime_500_trees * scaling_factor
+
+cat("Estimated total tuning time:", round(estimated_total_time / 60, 1), "hours\n")
+
+## Check paramater grid progress ####
+
+# Initialize progress tracking CSV file
+
 if(file.exists(progress_file)) {
-  cat("Found existing progress file. Checking for completed jobs...\n")
+  cat("Found existing progress file.\nChecking for completed jobs...\n")
   
   # Read existing results
   completed_runs <- read_csv(progress_file, show_col_types = FALSE)
@@ -241,9 +215,21 @@ if(file.exists(progress_file)) {
   }
 } else {
   cat("No existing progress file. Starting fresh...\n")
+  # Create empty file with headers
+  empty_result <- data.frame(
+    timestamp = character(0),
+    cv_fold = numeric(0),
+    mtry = numeric(0),
+    nodesize = numeric(0),
+    gmean = numeric(0),
+    tpr = numeric(0),
+    tnr = numeric(0),
+    stringsAsFactors = FALSE
+  )
+  write_csv(empty_result, progress_file)
 }
 
-# Proceed with tuning if there are jobs remaining
+## Tune remaining paramter grid ####
 if(nrow(param_grid) > 0) {
   
   cat("\nStarting hyperparameter tuning...\n")
@@ -280,7 +266,7 @@ if(nrow(param_grid) > 0) {
   all_results <- completed_runs
 }
 
-## Aggregate results across CV folds ####
+## Aggregate across CV folds ####
 
 cat("\n", paste(rep("=", 50), collapse = ""), "\n")
 cat("Cross-validation tuning results:\n")
@@ -312,7 +298,7 @@ cat("Mean optimal nodesize:", round(avg_results$mean_nodesize, 1), "\n")
 cat("Mean G-mean:", round(avg_results$mean_gmean, 4), "\n")
 cat("G-mean std dev:", round(avg_results$sd_gmean, 4), "\n")
 
-# Select most common parameter values
+# Average the best parameters in each fold
 final_mtry <- round(avg_results$mean_mtry)
 final_nodesize <- round(avg_results$mean_nodesize)
 
