@@ -20,7 +20,11 @@ scripts <- c(
   # "R/exploreHDBSCANResults.R",
   # "R/explorePAMResults.R",
   # "R/simplePAMResults.R",
-  "R/partitionData.R"
+  "R/weightFeaturesDataPartitioning.R",
+  "R/partitionData.R",
+  "R/exploreQRF.R",
+  "R/tuneHyperparametersLocal.R",
+  "R/modelLocalScale.R"
 )
 
 # Execute scripts with error handling

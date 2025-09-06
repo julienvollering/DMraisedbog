@@ -17,32 +17,47 @@ presences_eu <- st_read("data/DMraisedbog.gpkg", layer = "Presences_EU") |>
   st_transform(crs_common)
 
 # Table 1: Regional presence coordinates (lyngstad-MTYPE_A × regional raster) ####
-presence_raster <- rasterize(lyngstad, regional_raster, 
-                             background = 0, touches = TRUE)
+presence_raster <- rasterize(
+  lyngstad, 
+  regional_raster, 
+  background = 0, 
+  touches = FALSE) # only cells with covered center, sensitivity down specificity up
 presence_cells <- which(values(presence_raster) == 1, arr.ind = FALSE)
 table1 <- xyFromCell(presence_raster, presence_cells) |> 
   as_tibble()
 
 # Table 2: Regional absence coordinates (footprint - presence) ####
-footprint_raster <- rasterize(nib_footprint, regional_raster, 
-                              background = 0, touches = TRUE)
-absence_raster <- footprint_raster - presence_raster
+footprint_raster <- rasterize(
+  nib_footprint, 
+  regional_raster, 
+  background = 0, 
+  touches = FALSE) # only cells with covered center
+absence_raster <- footprint_raster - presence_raster # including some cells with partial lyngstad coverage
 absence_cells <- which(values(absence_raster) == 1, arr.ind = FALSE)
 table2 <- xyFromCell(absence_raster, absence_cells) |> 
   as_tibble()
 
 # Table 3: Global presence coordinates, Norway (lyngstad-MTYPE_A × global raster) ####
-presence_raster <- rasterize(lyngstad, global_raster, 
-                             background = 0, touches = TRUE)
+presence_raster <- rasterize(
+  lyngstad, 
+  global_raster, 
+  background = 0, 
+  touches = TRUE) # any touched cell, sensitivity up specificity down
 presence_cells <- which(values(presence_raster) == 1, arr.ind = FALSE)
 table3 <- xyFromCell(presence_raster, presence_cells) |> 
   as_tibble()
 
 # Table 4: Global presence coordinates, EU (Presences_EU × global raster) ####
-presence_raster_1 <- rasterize(svc(presences_eu)[[1]], global_raster, 
-                               background = 0, touches = TRUE)
-presence_raster_2 <- rasterize(svc(presences_eu)[[2]], global_raster, 
-                               background = 0, touches = TRUE)
+presence_raster_1 <- rasterize(
+  svc(presences_eu)[[1]], 
+  global_raster, 
+  background = 0, 
+  touches = TRUE) # any touched cell, sensitivity up specificity down
+presence_raster_2 <- rasterize(
+  svc(presences_eu)[[2]], 
+  global_raster, 
+  background = 0, 
+  touches = TRUE) # any touched cell, sensitivity up specificity down
 presence_raster <- max(presence_raster_1, presence_raster_2)
 presence_cells <- which(values(presence_raster) == 1, arr.ind = FALSE)
 table4 <- xyFromCell(presence_raster, presence_cells) |> 
