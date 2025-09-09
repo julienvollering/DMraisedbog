@@ -18,11 +18,8 @@ library(sf)
 ## Create training dataset ####
 rf_global_current <- rast("output/rf_global_pred_regional_current.tif") 
 names(rf_global_current) <- "rf_global"
-chelsa_nor_250m_cur <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")[[1:19]]
-ar50_nor_250m <- rast("output/ar50_250m_EPSG3035.tif")
-names(ar50_nor_250m) <- "ar50"
-ar50_nor_250m <- as.factor(ar50_nor_250m) # Convert to factor
-preds_train <- c(rf_global_current, chelsa_nor_250m_cur, ar50_nor_250m)
+preds_nor_250m_cur <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")
+preds_train <- c(rf_global_current, preds_nor_250m_cur)
 
 presence <- read_csv("output/presence_coords_regional.csv")
 absence <- read_csv("output/absence_coords_regional.csv")
@@ -41,23 +38,42 @@ absence_df <- terra::extract(preds_train, absence[c("x", "y")], xy=TRUE, ID=FALS
 
 # Combine into training dataset (keep x,y coordinates for later use)
 training_data_with_coords <- bind_rows(presence_df, absence_df) |>
-  mutate(response = factor(response), ar50 = factor(ar50))
+  mutate(response = factor(response))
 
 training_data <- training_data_with_coords |> 
   select(-x, -y) # Remove x and y coordinates for modeling
 
 # Get final counts
 n_final_presence <- sum(training_data$response == "1")
-n_final_background <- sum(training_data$response == "0")
-n_final_prevalence <- n_final_presence / (n_final_presence + n_final_background)
+n_final_absence <- sum(training_data$response == "0")
+n_final_prevalence <- n_final_presence / (n_final_presence + n_final_absence)
 
-cat("Final training data - Presences:", n_final_presence, "Background:", n_final_background, "\n")
+cat("Final training data - Presences:", n_final_presence, "Absence:", n_final_absence, "\n")
 cat("Prevalence in training data:", round(n_final_prevalence * 100, 3), "%\n")
 
 # Load feature weights
-weights_gini <- read_csv("output/feature_weights_gini.csv")
-weights <- pull(weights_gini, weights_gini)
-names(weights) <- pull(weights_gini, feature)
+weights_features <- read_csv("output/weights_feature_data_partitioning.csv")
+weights_features <- weights_features |> 
+  mutate(feature = forcats::fct_reorder(feature, median_normalized, .fun = first))
+
+# Create plot with error bars
+ggplot(weights_features, aes(x = feature, y = median_normalized, fill = method)) +
+  geom_bar(stat = "identity", position = position_dodge(), alpha = 0.7) +
+  geom_errorbar(aes(ymin = pmax(0, median_normalized - sd_normalized), 
+                    ymax = median_normalized + sd_normalized),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  coord_flip() +
+  labs(title = "Feature Importance from Different Random Forest Methods",
+       x = "Feature",
+       y = "Normalized Importance",
+       fill = "Method") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+weights <- weights_features |> 
+  filter(grepl("Balanced", method)) |> 
+  select(feature, median_normalized) |> 
+  tibble::deframe()
 
 ## PAM-based data partitioning function ####
 
@@ -512,7 +528,7 @@ splits <- create_pam_splits(
   target_col = "response",
   sample_size = 10000,  # Sample for clustering
   k_clusters = 10,      # Number of PAM clusters
-  top_n_features = 5,   # Top features by weight
+  top_n_features = 6,   # Top features by weight
   train_prop = 0.6,
   calib_prop = 0.2,
   test_prop = 0.2,
@@ -557,7 +573,7 @@ inner_cv <- create_inner_cv_folds(
   sample_size = 10000,  # Same as outer partitioning
   k_clusters = 6,       # Proportional to 3 CV folds
   n_folds = 3,         # Number of CV folds
-  top_n_features = 5,  # Same as outer partitioning
+  top_n_features = 6,  # Same as outer partitioning
   feature_weights = weights,
   seed = 42
 )
@@ -596,7 +612,7 @@ ggplot(train_cv_viz_data) +
 inner_folds_full <- rep(NA_integer_, nrow(training_data))
 inner_folds_full[train_idx] <- inner_cv$cv_folds
 
-training_data_partitioned <- training_data |>
+training_data_partitioned <- training_data_with_coords |>
   mutate(
     outer = splits$splits,
     inner = inner_folds_full

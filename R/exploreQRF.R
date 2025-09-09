@@ -63,11 +63,8 @@ cat("G-mean:", round(gmean, 3), "\n")
 ### Create spatial dataset ####
 rf_global_current <- rast("output/rf_global_pred_regional_current.tif") 
 names(rf_global_current) <- "rf_global"
-chelsa_nor_250m_cur <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")[[1:19]]
-ar50_nor_250m <- rast("output/ar50_250m_EPSG3035.tif")
-names(ar50_nor_250m) <- "ar50"
-ar50_nor_250m <- as.factor(ar50_nor_250m) # Convert to factor
-predictors <- c(rf_global_current, chelsa_nor_250m_cur, ar50_nor_250m)
+preds_nor_250m_cur <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")
+predictors <- c(rf_global_current, preds_nor_250m_cur)
 names(predictors) %in% names(sample_data)  # Check names match
 names(sample_data) %in% names(predictors)  # Check names match
 
@@ -76,7 +73,6 @@ predictors_se <- crop(predictors, ext(435e4, 447e4, 410e4, 420e4))
 plot(predictors_se$bio1)
   
 # Make spatial predictions
-?predict.rfsrc()
 predfun <- function(model, data) {
   v <- predict.rfsrc(model, data, importance = FALSE)
   cbind(p = v$predicted[,1], class = v$class) # Taking the first of two classes to be the positive class
@@ -135,7 +131,6 @@ cat("Model Performance:\n")
 cat("Sensitivity (TPR):", round(sensitivity, 3), "\n")
 cat("Specificity (TNR):", round(specificity, 3), "\n")
 cat("G-mean:", round(gmean, 3), "\n")
-
 
 # sessionInfo
 cat("\n## sessionInfo\n")

@@ -121,8 +121,8 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
 
 # Define hyperparameter grid for tuning
 n_predictors <- ncol(train_data) - 2  # Exclude response and inner columns
-mtry_values <- c(floor(sqrt(n_predictors)), floor(n_predictors/3), floor(n_predictors/2))
-nodesize_values <- c(1, 5, 10, 20)
+mtry_values <- seq(floor(sqrt(n_predictors)), ceiling(n_predictors/3), by = 1)
+nodesize_values <- c(1, 5, 20)
 
 cat("Number of predictors:", n_predictors, "\n")
 cat("mtry values to test:", paste(mtry_values, collapse = ", "), "\n")
@@ -189,6 +189,8 @@ cat("Estimated total tuning time:", round(estimated_total_time / 60, 1), "hours\
 ## Check paramater grid progress ####
 
 # Initialize progress tracking CSV file
+
+progress_file <- "output/hyperparameter_tuning_progress.csv"
 
 if(file.exists(progress_file)) {
   cat("Found existing progress file.\nChecking for completed jobs...\n")
@@ -311,7 +313,7 @@ cat("nodesize:", final_nodesize, "\n")
 
 # Save all tuning results and CV results by fold
 write_csv(all_results, "output/hyperparameter_tuning_all_results.csv")
-write_csv(best_params_by_fold, "output/cv_hyperparameter_tuning_by_fold.csv")
+write_csv(best_params_by_fold, "output/hyperparameter_tuning_by_fold.csv")
 
 # Save final hyperparameters
 final_params <- data.frame(
@@ -324,7 +326,7 @@ write_csv(final_params, "output/final_hyperparameters.csv")
 cat("\nSaved hyperparameter tuning results:\n")
 cat("- Progress tracking: output/hyperparameter_tuning_progress.csv\n")
 cat("- All tuning results: output/hyperparameter_tuning_all_results.csv\n")
-cat("- CV tuning by fold: output/cv_hyperparameter_tuning_by_fold.csv\n")
+cat("- CV tuning by fold: output/hyperparameter_tuning_by_fold.csv\n")
 cat("- Final hyperparameters: output/final_hyperparameters.csv\n")
 
 cat("\nHyperparameter tuning completed successfully!\n")
