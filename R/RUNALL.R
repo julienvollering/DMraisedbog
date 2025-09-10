@@ -24,7 +24,8 @@ scripts <- c(
   "R/partitionData.R",
   "R/exploreQRF.R",
   "R/tuneHyperparametersLocal.R",
-  "R/modelLocalScale.R"
+  "R/modelLocalScale.R",
+  "R/evaluateLocalScale.R"
 )
 
 # Execute scripts with error handling
