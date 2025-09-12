@@ -25,7 +25,9 @@ scripts <- c(
   "R/exploreQRF.R",
   "R/tuneHyperparametersLocal.R",
   "R/modelLocalScale.R",
-  "R/evaluateLocalScale.R"
+  "R/evaluateLocalScale.R",
+  "R/modelLocalScaleFuture.R", # Avoid open GIS locking TIFF-files
+  "R/mapExtrapolation.R"
 )
 
 # Execute scripts with error handling

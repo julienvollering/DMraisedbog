@@ -129,7 +129,7 @@ final_model$importance[,1] |>
 
 ## Save results ####
 
-model_path <- "output/final_model_local.rds"
+model_path <- "output/final_model_local_60split.rds"
 cat("\nSaving final model to", model_path,"\n")
 
 # Save the trained model object (RDS format for R objects)
