@@ -5,8 +5,12 @@
 # between beta calibration and no calibration. Uses 5-fold CV within the
 # calibration partition to compare methods based on Brier score.
 
+# Custom thresholds (95% specificity and 95% sensitivity) are calculated from
+# the combined training and calibration partitions to ensure robust estimates
+# based on the full development dataset.
+
 # After calibrating, the model is evaluated on the test partition, with both
-# probability-based and class-based metrics
+# probability-based and class-based metrics using multiple threshold strategies
 
 library(readr)
 library(dplyr)
@@ -19,6 +23,7 @@ library(rsample)
 library(purrr)
 library(stringr)
 library(patchwork)
+library(ROCR)
 
 ## Load data and trained model ####
 
@@ -34,6 +39,10 @@ cat("Model loaded successfully.\n")
 cat("Training data dimensions:", nrow(training_data_partitioned), "x", ncol(training_data_partitioned), "\n")
 
 # Extract partitions
+train_data <- training_data_partitioned |>
+  filter(outer == "train") |>
+  select(-outer, -inner, -x, -y)  # Remove partition columns and coordinates
+
 calib_data <- training_data_partitioned |>
   filter(outer == "calib") |>
   select(-outer, -inner, -x, -y)  # Remove partition columns and coordinates
@@ -42,12 +51,41 @@ test_data <- training_data_partitioned |>
   filter(outer == "test") |>
   select(-outer, -inner, -x, -y)  # Remove partition columns and coordinates
 
+cat("Training set:", nrow(train_data), "observations\n")
 cat("Calibration set:", nrow(calib_data), "observations\n")
 cat("Test set:", nrow(test_data), "observations\n")
+cat("Training prevalence:", round(mean(train_data$response == 1) * 100, 2), "%\n")
 cat("Calibration prevalence:", round(mean(calib_data$response == 1) * 100, 2), "%\n")
 cat("Test prevalence:", round(mean(test_data$response == 1) * 100, 2), "%\n")
 
-## Step 1: Get predictions on calibration and test partitions ####
+## Step 1: Get predictions on all partitions (training, calibration, test) ####
+
+cat("\nGenerating predictions on training partition...\n")
+
+# Prepare training data as data.frame for randomForestSRC
+train_df <- train_data |>
+  mutate(response = factor(response, levels = c("1", "0"))) |>
+  as.data.frame()
+
+# Ensure ar50 is properly handled as factor if it exists
+if("ar50" %in% names(train_df)) {
+  train_df$ar50 <- as.factor(as.character(train_df$ar50))
+}
+
+# Get training predictions (probability for positive class)
+train_preds <- predict.rfsrc(final_model, train_df, importance = FALSE)
+
+# Create training data frame for probably package
+train_results <- tibble(
+  truth = factor(train_data$response, levels = c("1", "0")),
+  .pred_1 = train_preds$predicted[,1],  # Probability for positive class ("1")
+  .pred_0 = train_preds$predicted[,2],  # Probability for negative class ("0")
+  class = train_preds$class
+)
+
+cat("Predictions generated on training partition.\n")
+cat("Raw prediction range:", round(min(train_preds$predicted[,1]), 4),
+    "to", round(max(train_preds$predicted[,1]), 4), "\n")
 
 cat("\nGenerating predictions on calibration partition...\n")
 
@@ -178,6 +216,51 @@ calculate_ece <- function(data, truth_col, prob_col, n_bins = 10) {
   return(sum(ece_data$bin_ece, na.rm = TRUE))
 }
 
+# Helper function to find custom thresholds using ROCR
+find_custom_thresholds <- function(data, truth_col, prob_col) {
+  # Convert truth to numeric (1 for positive class, 0 for negative)
+  truth_numeric <- as.numeric(data[[truth_col]] == levels(data[[truth_col]])[1])
+  
+  # Create ROCR prediction object
+  pred <- prediction(data[[prob_col]], truth_numeric)
+  
+  # Calculate sensitivity and specificity at all thresholds
+  sens <- performance(pred, "sens")
+  spec <- performance(pred, "spec")
+  
+  # Get cutoffs and performance values
+  cutoffs <- sens@x.values[[1]]  # These are the thresholds
+  sens_values <- sens@y.values[[1]]  # Sensitivity values
+  spec_values <- spec@y.values[[1]]  # Specificity values
+  
+  # Create a data frame for easier manipulation
+  perf_data <- tibble(
+    threshold = cutoffs,
+    sensitivity = sens_values,
+    specificity = spec_values
+  ) |>
+    # Remove any NA values and sort by threshold
+    filter(!is.na(threshold), !is.na(sensitivity), !is.na(specificity)) |>
+    arrange(threshold)
+  
+  # Find thresholds for 95% specificity and 95% sensitivity
+  # For 95% specificity: find the lowest threshold where specificity >= 0.95
+  spec_95_candidates <- perf_data |> filter(specificity >= 0.95)
+  threshold_95spec <- if(nrow(spec_95_candidates) > 0) min(spec_95_candidates$threshold) else NA
+  
+  # For 95% sensitivity: find the highest threshold where sensitivity >= 0.95
+  sens_95_candidates <- perf_data |> filter(sensitivity >= 0.95)
+  threshold_95sens <- if(nrow(sens_95_candidates) > 0) max(sens_95_candidates$threshold) else NA
+  
+  return(list(
+    threshold_95spec = threshold_95spec,
+    threshold_95sens = threshold_95sens,
+    n_thresholds = nrow(perf_data),
+    max_spec = max(perf_data$specificity, na.rm = TRUE),
+    max_sens = max(perf_data$sensitivity, na.rm = TRUE)
+  ))
+}
+
 # Function to evaluate beta calibration vs no calibration
 compare_methods <- function(split) {
   analysis_data <- analysis(split)
@@ -288,7 +371,41 @@ cal_plot_windowed(
   include_rug = FALSE
 )
 
-## Step 4: Apply method to test set predictions ####
+## Step 4: Calculate custom thresholds from combined training and calibration partitions ####
+
+cat("\nCalculating custom thresholds from combined training and calibration partitions...\n")
+
+# First, apply the selected calibration method to training data if needed
+if (best_method == "none") {
+  train_results_calibrated <- train_results
+} else {
+  train_results_calibrated <- cal_apply(train_results, final_cal)
+}
+
+# Combine training and calibration predictions for threshold calculation
+combined_results <- bind_rows(
+  train_results_calibrated |> mutate(partition = "train"),
+  calib_results_calibrated |> mutate(partition = "calib")
+)
+
+cat(sprintf("Combined dataset for threshold calculation: %d observations (%d train + %d calib)\n",
+            nrow(combined_results), nrow(train_results_calibrated), nrow(calib_results_calibrated)))
+cat(sprintf("Combined prevalence: %.2f%%\n", mean(combined_results$truth == "1") * 100))
+
+# Find thresholds for 95% specificity and 95% sensitivity using calibrated probabilities from combined data
+custom_thresholds <- find_custom_thresholds(combined_results, "truth", ".pred_1")
+
+cat(sprintf("Number of thresholds evaluated: %d\n", custom_thresholds$n_thresholds))
+cat(sprintf("Maximum achievable specificity: %.3f\n", custom_thresholds$max_spec))
+cat(sprintf("Maximum achievable sensitivity: %.3f\n", custom_thresholds$max_sens))
+cat(sprintf("Threshold for 95%% specificity: %s\n", 
+            ifelse(is.na(custom_thresholds$threshold_95spec), "Not achievable", 
+                   sprintf("%.4f", custom_thresholds$threshold_95spec))))
+cat(sprintf("Threshold for 95%% sensitivity: %s\n", 
+            ifelse(is.na(custom_thresholds$threshold_95sens), "Not achievable", 
+                   sprintf("%.4f", custom_thresholds$threshold_95sens))))
+
+## Step 5: Apply method to test set predictions ####
 
 if (best_method == "none") {
   cat("\nUsing raw predictions on test set (no calibration)...\n")
@@ -327,7 +444,7 @@ if (best_method == "none") {
       uncalibrated_positives, "->", processed_positives, "\n")
 }
 
-## Step 5: Evaluate performance on test set ####
+## Step 6: Evaluate performance on test set ####
 
 cat("\nEvaluating model performance on test set...\n")
 
@@ -338,25 +455,77 @@ class_metrics <- metric_set(accuracy, sens, spec, ppv, npv)
 
 # Raw predictions: probability-based metrics
 raw_prob_performance <- test_results_raw |>
-  prob_metrics(truth = truth, .pred_1, event_level = "first")
+  prob_metrics(truth = truth, .pred_1, event_level = "first") |>
+  mutate(threshold = NA_real_, threshold_type = "prob_metrics")
 
-# Raw predictions: class-based metrics  
+# Raw predictions: class-based metrics (prevalence-based threshold)
 raw_class_performance <- test_results_raw |>
-  class_metrics(truth = truth, estimate = class, event_level = "first")
-
-# Combine raw performance
-raw_performance <- bind_rows(raw_prob_performance, raw_class_performance)
+  class_metrics(truth = truth, estimate = class, event_level = "first") |>
+  mutate(threshold = mean(test_results_raw$truth == "1"), threshold_type = "prevalence")
 
 # Calibrated predictions: probability-based metrics
 calibrated_prob_performance <- test_results_calibrated |>
-  prob_metrics(truth = truth, .pred_1, event_level = "first")
+  prob_metrics(truth = truth, .pred_1, event_level = "first") |>
+  mutate(threshold = NA_real_, threshold_type = "prob_metrics")
 
-# Calibrated predictions: class-based metrics
-calibrated_class_performance <- test_results_calibrated |>
-  class_metrics(truth = truth, estimate = estimate, event_level = "first")
+# Calibrated predictions: class-based metrics (0.5 threshold or prevalence for raw)
+if (best_method == "none") {
+  calibrated_class_performance <- test_results_calibrated |>
+    class_metrics(truth = truth, estimate = estimate, event_level = "first") |>
+    mutate(threshold = mean(test_results_calibrated$truth == "1"), threshold_type = "prevalence")
+} else {
+  calibrated_class_performance <- test_results_calibrated |>
+    class_metrics(truth = truth, estimate = estimate, event_level = "first") |>
+    mutate(threshold = 0.5, threshold_type = "fixed_0.5")
+}
 
-# Combine calibrated performance
-calibrated_performance <- bind_rows(calibrated_prob_performance, calibrated_class_performance)
+# Custom threshold evaluations using calibrated probabilities
+custom_threshold_performance <- tibble()
+
+if (!is.na(custom_thresholds$threshold_95spec)) {
+  cat(sprintf("Evaluating at 95%% specificity threshold (%.4f)...\n", custom_thresholds$threshold_95spec))
+  
+  test_results_95spec <- test_results_calibrated |>
+    mutate(
+      estimate_95spec = if_else(.pred_1 >= custom_thresholds$threshold_95spec, "1", "0"),
+      estimate_95spec = factor(estimate_95spec, levels = c("1", "0"))
+    )
+  
+  custom_95spec_performance <- test_results_95spec |>
+    class_metrics(truth = truth, estimate = estimate_95spec, event_level = "first") |>
+    mutate(threshold = custom_thresholds$threshold_95spec, threshold_type = "95_specificity")
+  
+  custom_threshold_performance <- bind_rows(custom_threshold_performance, custom_95spec_performance)
+}
+
+if (!is.na(custom_thresholds$threshold_95sens)) {
+  cat(sprintf("Evaluating at 95%% sensitivity threshold (%.4f)...\n", custom_thresholds$threshold_95sens))
+  
+  test_results_95sens <- test_results_calibrated |>
+    mutate(
+      estimate_95sens = if_else(.pred_1 >= custom_thresholds$threshold_95sens, "1", "0"),
+      estimate_95sens = factor(estimate_95sens, levels = c("1", "0"))
+    )
+  
+  custom_95sens_performance <- test_results_95sens |>
+    class_metrics(truth = truth, estimate = estimate_95sens, event_level = "first") |>
+    mutate(threshold = custom_thresholds$threshold_95sens, threshold_type = "95_sensitivity")
+  
+  custom_threshold_performance <- bind_rows(custom_threshold_performance, custom_95sens_performance)
+}
+
+# Combine all raw performance
+raw_performance <- bind_rows(
+  prob = raw_prob_performance, 
+  class = raw_class_performance,
+  .id = "metric_type")
+
+# Combine all calibrated performance
+calibrated_performance <- bind_rows(
+  prob = calibrated_prob_performance, 
+  class = calibrated_class_performance,
+  class = custom_threshold_performance,
+  .id = "metric_type")
 
 cat("\n=== RAW PREDICTIONS PERFORMANCE ===\n")
 print(raw_performance, n = Inf)
@@ -368,7 +537,7 @@ if (best_method == "none") {
 }
 print(calibrated_performance, n = Inf)
 
-## Step 6: Calibration diagnostic plots ####
+## Step 7: Calibration diagnostic plots ####
 
 cat("\nGenerating calibration diagnostic plots...\n")
 
@@ -400,7 +569,7 @@ patchwork::wrap_plots(raw_cal_plot_partitiontest, cal_plot, ncol = 2) +
     subtitle = plot_subtitle
   )
 
-## Save outputs ####
+## Step 8: Save outputs ####
 
 cat("\nSaving results...\n")
 
@@ -408,7 +577,9 @@ cat("\nSaving results...\n")
 performance_comparison <- bind_rows(
   raw_performance |> mutate(prediction_type = "raw"),
   calibrated_performance |> mutate(prediction_type = if_else(best_method == "none", "processed_no_calibration", "calibrated"))
-)
+) |>
+  select(prediction_type, metric_type, .metric, .estimator, .estimate, threshold, threshold_type)
+
 write_csv(performance_comparison, "output/test_performance_comparison.csv")
 cat("Performance metrics saved to: output/test_performance_comparison.csv\n")
 
