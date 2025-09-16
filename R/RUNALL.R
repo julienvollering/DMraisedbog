@@ -27,7 +27,8 @@ scripts <- c(
   "R/modelLocalScale.R",
   "R/evaluateLocalScale.R",
   "R/modelLocalScaleFuture.R", # Avoid open GIS locking TIFF-files
-  "R/mapExtrapolation.R"
+  "R/mapExtrapolation.R",
+  "R/interpretLocalScale.R"
 )
 
 # Execute scripts with error handling
