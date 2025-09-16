@@ -541,21 +541,17 @@ cat("\nCluster statistics:\n")
 print(head(splits$cluster_stats))
 
 ## Map visualization ####
-presence_idx <- which(training_data_with_coords$response == "1")
-background_idx <- sample(which(training_data_with_coords$response == "0"), 100000 - length(presence_idx))
-viz_idx <- c(presence_idx, background_idx)
-
-viz_data <- training_data_with_coords[viz_idx, ] |>
-  mutate(cluster = factor(splits$clusters[viz_idx]),
-         partition = factor(splits$splits[viz_idx])) |>
-  arrange(response) |>
-  st_as_sf(coords = c("x", "y"), crs = st_crs(preds_train))
-
-ggplot(viz_data) +
-  geom_sf(aes(color = cluster), size = 0.5, alpha = 0.7)
-
-ggplot(viz_data) +
-  geom_sf(aes(color = partition), size = 0.5, alpha = 0.7)
+training_data_with_coords_outer <- training_data_with_coords |>
+  select(response, x, y) |> 
+  mutate(cluster = factor(splits$clusters),
+         partition = factor(splits$splits)) |> 
+  st_as_sf(coords = c("x", "y"), crs = st_crs(preds_train)) |> 
+  vect()
+raster_outer <- rasterize(
+  training_data_with_coords_outer,
+  preds_train, 
+  field = c("cluster", "partition"))
+plot(raster_outer)
 
 ## Apply PAM clustering to create inner CV folds ####
 
@@ -584,25 +580,17 @@ cat("\nInner CV cluster statistics:\n")
 print(head(inner_cv$cv_cluster_stats))
 
 ## Map visualization ####
-train_presence_idx <- which(training_data_with_coords$response == "1" & splits$splits == "train")
-train_background_idx <- sample(which(training_data_with_coords$response == "0" & splits$splits == "train"), 
-                              min(50000, sum(splits$splits == "train" & training_data_with_coords$response == "0")))
-train_viz_idx <- c(train_presence_idx, train_background_idx)
-
-train_viz_mapping <- match(train_viz_idx, train_idx)
-train_viz_mapping <- train_viz_mapping[!is.na(train_viz_mapping)]
-
-train_cv_viz_data <- training_data_with_coords[train_idx[train_viz_mapping], ] |>
-  mutate(cv_cluster = factor(inner_cv$cv_clusters[train_viz_mapping]),
-         cv_fold = factor(inner_cv$cv_folds[train_viz_mapping])) |>
-  arrange(response) |>
-  st_as_sf(coords = c("x", "y"), crs = st_crs(preds_train))
-
-ggplot(train_cv_viz_data) +
-  geom_sf(aes(color = cv_cluster), size = 0.5, alpha = 0.7)
-
-ggplot(train_cv_viz_data) +
-  geom_sf(aes(color = cv_fold), size = 0.5, alpha = 0.7)
+train_data_with_coords_inner <- training_data_with_coords[train_idx, ] |>
+  select(response, x, y) |> 
+  mutate(cluster = factor(inner_cv$cv_clusters),
+         fold = factor(inner_cv$cv_folds)) |> 
+  st_as_sf(coords = c("x", "y"), crs = st_crs(preds_train)) |> 
+  vect()
+raster_inner <- rasterize(
+  train_data_with_coords_inner,
+  preds_train, 
+  field = c("cluster", "fold"))
+plot(raster_inner)
 
 ## Save partitioned datasets ####
 
@@ -620,26 +608,9 @@ training_data_partitioned <- training_data_with_coords |>
 
 write_csv(training_data_partitioned, "output/training_data_partitioned.csv")
 
-### Auxiliary partition information ####
-# Outer partition details
-outer_split_info <- data.frame(
-  row_id = 1:nrow(training_data),
-  outer_split = splits$splits,
-  outer_cluster = splits$clusters
-)
-write_csv(outer_split_info, "output/outer_partition_info.csv")
-
-# Inner CV details (only for training data)
-inner_cv_info <- data.frame(
-  train_row_id = 1:nrow(train_data),
-  original_row_id = train_idx,
-  inner_fold = inner_cv$cv_folds,
-  inner_cluster = inner_cv$cv_clusters
-)
-write_csv(inner_cv_info, "output/inner_cv_info.csv")
-
-cat("\nSaved main partitioned dataset: output/training_data_partitioned.csv\n")
-cat("Saved auxiliary partition info: output/outer_partition_info.csv, output/inner_cv_info.csv\n")
+### Partition information in space ####
+writeRaster(raster_outer, "output/partition_outer.tif", overwrite=TRUE)
+writeRaster(raster_inner, "output/partition_inner.tif", overwrite=TRUE)
 
 # sessionInfo ####
 
