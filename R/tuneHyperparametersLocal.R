@@ -13,7 +13,7 @@ library(randomForestSRC)
 ## Load partitioned data ####
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/training_data_partitioned.csv")
+training_data_partitioned <- read_csv("output/data_partitioned.csv")
 
 cat("Loaded partitioned data:\n")
 cat("Total observations:", nrow(training_data_partitioned), "\n")

@@ -30,7 +30,7 @@ library(ROCR)
 cat("Loading partitioned data and trained model...\n")
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/training_data_partitioned.csv")
+training_data_partitioned <- read_csv("output/data_partitioned.csv")
 
 # Load the trained model
 final_model <- readRDS("output/final_model_local_60split.rds")

@@ -15,7 +15,7 @@ library(terra)
 cat("Loading partitioned data and CV-optimized hyperparameters...\n")
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/training_data_partitioned.csv")
+training_data_partitioned <- read_csv("output/data_partitioned.csv")
 
 # Extract training partition for final model
 train_data <- training_data_partitioned |>

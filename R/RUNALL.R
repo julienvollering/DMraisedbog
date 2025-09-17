@@ -21,7 +21,8 @@ scripts <- c(
   # "R/explorePAMResults.R",
   # "R/simplePAMResults.R",
   "R/weightFeaturesDataPartitioning.R",
-  "R/partitionData.R",
+  # "R/partitionData-PAM.R",
+  "R/partitionData.R", # Avoid open GIS locking TIFF-files
   "R/exploreQRF.R",
   "R/tuneHyperparametersLocal.R",
   "R/modelLocalScale.R",

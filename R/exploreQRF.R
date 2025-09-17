@@ -7,7 +7,7 @@ library(terra)
 library(randomForestSRC)
 
 # Load partitioned data
-data <- read_csv("output/training_data_partitioned.csv",
+data <- read_csv("output/data_partitioned.csv",
                           col_types = cols(
                             response = col_factor(),
                             ar50 = col_factor(),
@@ -133,5 +133,5 @@ cat("Specificity (TNR):", round(specificity, 3), "\n")
 cat("G-mean:", round(gmean, 3), "\n")
 
 # sessionInfo
-cat("\n## sessionInfo\n")
-sessionInfo()
+
+sessioninfo::session_info()

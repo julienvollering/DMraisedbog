@@ -11,7 +11,7 @@ library(randomForestSRC)
 # Load the trained local-scale model and training data
 final_model <- readRDS("output/final_model_local_80split.rds")
 var_importance <- final_model$importance[, 1]
-training_data <- read_csv("output/training_data_partitioned.csv")
+training_data <- read_csv("output/data_partitioned.csv")
 
 # Remove spatial coordinates and partition columns for environmental space
 predictor_cols <- c("rf_global", paste0("bio", 1:19), "elevation", "slope", 
