@@ -26,7 +26,8 @@ cat("Training data loaded:\n")
 cat("Observations:", nrow(train_data), "\n")
 cat("Response variable class:", class(train_data$response), "\n")
 cat("Response variable values:", paste(unique(train_data$response), collapse = ", "), "\n")
-cat("Prevalence:", round(mean(train_data$response == 1) * 100, 2), "%\n")
+prevalence_training <- mean(train_data$response == 1)
+cat("Prevalence:", round(prevalence_training * 100, 2), "%\n")
 
 # Load CV-optimized hyperparameters
 if(!file.exists("output/final_hyperparameters.csv")) {
@@ -68,13 +69,20 @@ if("ar50" %in% names(full_train_data)) {
   full_train_data$ar50 <- as.factor(as.character(full_train_data$ar50))
 }
 
-n_train <- 10e3
+n_train <- 20e3
 cat("Training final model on", n_train, "observations from training partition...\n")
+npresences95CI <- qbinom(
+  p = c(0.025, 0.975), 
+  size = n_train, 
+  prob = prevalence_training)
+cat("Data likely contains", npresences95CI[1], "to", npresences95CI[2], 
+    "presences (95% CI, prevalence =", round(prevalence_training, 4), ")\n")
 
 # Randomly subsample training data for runtime efficiency
 set.seed(42)
 small_train_data <- full_train_data |> 
   slice_sample(n = min(n_train, nrow(full_train_data)))
+cat("Actual number of presences in subsample:", sum(small_train_data$response == 1), "\n")
 
 # Train final model with selected hyperparameters
 start_time <- Sys.time()
