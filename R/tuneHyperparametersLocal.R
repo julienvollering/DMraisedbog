@@ -195,8 +195,9 @@ progress_file <- "output/hyperparameter_tuning_progress.csv"
 if(file.exists(progress_file)) {
   cat("Found existing progress file.\nChecking for completed jobs...\n")
   
-  # Read existing results
-  completed_runs <- read_csv(progress_file, show_col_types = FALSE)
+  # Read existing results with explicit column types to ensure timestamp is character
+  completed_runs <- read_csv(progress_file, show_col_types = FALSE,
+                           col_types = cols(timestamp = col_character()))
   
   if(nrow(completed_runs) > 0) {
     cat("Found", nrow(completed_runs), "completed jobs\n")
