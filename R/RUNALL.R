@@ -22,7 +22,6 @@ scripts_shared <- c(
 scripts_pipeline1 <- c(
   "R/pl1_weightFeaturesDataPartitioning.R",
   "R/pl1_partitionData.R", # Avoid open GIS locking TIFF-files
-  "R/pl1_exploreQRF.R",
   "R/pl1_tuneHyperparametersLocal.R",
   "R/pl1_modelLocalScale.R",
   "R/pl1_evaluateLocalScale.R",
