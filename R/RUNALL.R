@@ -7,30 +7,28 @@ if (!dir.exists("output")) {
 }
 
 # Define script execution order (maintains dependencies)
-scripts <- c(
-  "R/collateLyngstad.R",
-  "R/collateLyngstadExtent.R", 
-  "R/collateEuropeanRaisedBog.R",
-  "R/collatePredictors.R",
-  # "R/spatiallyThinGeometries.R",
-  "R/rasterizePresenceAbsence.R",
-  "R/spatiallyThinCells.R",
-  "R/modelGlobalScale.R",
-  # "R/assignCVFolds.R"
-  # "R/exploreHDBSCANResults.R",
-  # "R/explorePAMResults.R",
-  # "R/simplePAMResults.R",
-  "R/weightFeaturesDataPartitioning.R",
-  # "R/partitionData-PAM.R",
-  "R/partitionData.R", # Avoid open GIS locking TIFF-files
-  "R/exploreQRF.R",
-  "R/tuneHyperparametersLocal.R",
-  "R/modelLocalScale.R",
-  "R/evaluateLocalScale.R",
-  "R/modelLocalScaleFuture.R", # Avoid open GIS locking TIFF-files
-  "R/mapExtrapolation.R",
-  "R/interpretLocalScale.R"
+scripts_shared <- c(
+  "R/pl0_collateLyngstad.R",
+  "R/pl0_collateLyngstadExtent.R", 
+  "R/pl0_collateEuropeanRaisedBog.R",
+  "R/pl0_collatePredictors.R",
+  "R/pl0_rasterizePresenceAbsence.R",
+  "R/pl0_spatiallyThinCells.R",
+  "R/pl0_modelGlobalScale.R")
+scripts_pipeline1 <- c(
+  "R/pl1_weightFeaturesDataPartitioning.R",
+  "R/pl1_partitionData.R", # Avoid open GIS locking TIFF-files
+  "R/pl1_exploreQRF.R",
+  "R/pl1_tuneHyperparametersLocal.R",
+  "R/pl1_modelLocalScale.R",
+  "R/pl1_evaluateLocalScale.R",
+  "R/pl1_modelLocalScaleFuture.R", # Avoid open GIS locking TIFF-files
+  "R/pl1_mapExtrapolation.R",
+  "R/pl1_interpretLocalScale.R"
 )
+
+# Combine all scripts
+scripts <- c(scripts_shared, scripts_pipeline1)
 
 # Execute scripts with error handling
 for (script in scripts) {
@@ -43,3 +41,16 @@ for (script in scripts) {
     stop("Script execution failed at: ", script)
   })
 }
+
+# Detect scripts that are not used in any pipeline
+all_r_scripts <- list.files("R", pattern = "\\.R$", full.names = TRUE)
+used_scripts <- scripts
+unused_scripts <- setdiff(all_r_scripts, used_scripts)
+
+if (length(unused_scripts) > 0) {
+  cat("Scripts found in R/ directory that are not included in any pipeline:\n")
+  for (script in unused_scripts) {
+    cat("- ", script, "\n")
+  }
+}
+
