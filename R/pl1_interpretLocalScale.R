@@ -23,8 +23,8 @@ library(terra)
 ## Step 1: Load data and models ####
 
 # Load existing local model predictions
-current_predictions <- rast("output/rf_local_pred_current_all_layers.tif")
-future_predictions <- rast("output/rf_local_pred_future_all_layers.tif")
+current_predictions <- rast("output/pl1/rf_local_pred_current_all_layers.tif")
+future_predictions <- rast("output/pl1/rf_local_pred_future_all_layers.tif")
 
 crs_common <- st_crs(future_predictions)
 
@@ -48,7 +48,7 @@ cat("Future predictions:", nlyr(future_predictions), "layers\n")
 cat("\nExtracting 95% sensitivity threshold from evaluation results...\n")
 
 # Read performance comparison to get the threshold
-performance_data <- read_csv("output/test_performance_comparison.csv")
+performance_data <- read_csv("output/pl1/test_performance_comparison.csv")
 
 # Extract 95% sensitivity threshold
 threshold_95sens <- performance_data |>
@@ -192,7 +192,7 @@ print(polygon_summary)
 cat("\n=== PARALLEL ANALYSIS: AOA-MASKED SUITABILITY CHANGES ===\n")
 
 # Load Area of Applicability (AOA) mask
-aoa_mask <- rast("output/aoa_future_local_scale.tif")
+aoa_mask <- rast("output/pl1/aoa_future_local_scale.tif")
 
 cat("AOA mask loaded successfully.\n")
 cat("AOA mask dimensions:", dim(aoa_mask), "\n")

@@ -7,7 +7,7 @@ library(terra)
 library(randomForestSRC)
 
 # Load partitioned data
-data <- read_csv("output/data_partitioned.csv",
+data <- read_csv("output/pl1/data_partitioned.csv",
                           col_types = cols(
                             response = col_factor(),
                             ar50 = col_factor(),

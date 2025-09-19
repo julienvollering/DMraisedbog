@@ -15,7 +15,7 @@ library(terra)
 cat("Loading partitioned data and CV-optimized hyperparameters...\n")
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/data_partitioned.csv")
+training_data_partitioned <- read_csv("output/pl1/data_partitioned.csv")
 
 # Extract training partition for final model
 train_data <- training_data_partitioned |>
@@ -30,7 +30,7 @@ prevalence_training <- mean(train_data$response == 1)
 cat("Prevalence:", round(prevalence_training * 100, 2), "%\n")
 
 # Load CV-optimized hyperparameters
-if(!file.exists("output/final_hyperparameters.csv")) {
+if(!file.exists("output/pl1/final_hyperparameters.csv")) {
   ntree <- 3000  # Default value if not tuned
   final_mtry <- 10  # Default value if not tuned
   final_nodesize <- 5  # Default value if not tuned
@@ -42,7 +42,7 @@ if(!file.exists("output/final_hyperparameters.csv")) {
 
 } else {
   cat("final_hyperparameters.csv found. Loading hyperparameters...\n")
-  final_params <- read_csv("output/final_hyperparameters.csv", col_types = "cd")
+  final_params <- read_csv("output/pl1/final_hyperparameters.csv", col_types = "cd")
   
   # Extract hyperparameter values
   ntree <- as.numeric(final_params$value[final_params$parameter == "ntree"])
@@ -137,7 +137,7 @@ final_model$importance[,1] |>
 
 ## Save results ####
 
-model_path <- "output/final_model_local_60split.rds"
+model_path <- "output/pl1/final_model_local_60split.rds"
 cat("\nSaving final model to", model_path,"\n")
 
 # Save the trained model object (RDS format for R objects)

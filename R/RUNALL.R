@@ -1,9 +1,13 @@
 library(rmarkdown)
 
-# Create output directory if it doesn't exist
+# Create output directories if they don't exist
 if (!dir.exists("output")) {
   dir.create("output", recursive = TRUE)
   cat("Created output/ directory\n")
+}
+if (!dir.exists("output/pl1")) {
+  dir.create("output/pl1", recursive = TRUE)
+  cat("Created output/pl1/ directory\n")
 }
 
 # Define script execution order (maintains dependencies)

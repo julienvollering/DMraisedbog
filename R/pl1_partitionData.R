@@ -55,7 +55,7 @@ cat("Final training data - Presences:", n_final_presence, "Absence:", n_final_ab
 cat("Prevalence in training data:", round(n_final_prevalence * 100, 3), "%\n")
 
 # Load feature weights
-weights_features <- read_csv("output/weights_feature_data_partitioning.csv")
+weights_features <- read_csv("output/pl1/weights_feature_data_partitioning.csv")
 weights_features <- weights_features |>
   mutate(feature = forcats::fct_reorder(
     feature, median_normalized,
@@ -460,11 +460,11 @@ data_partitioned <- data_with_coords |>
     inner = inner_folds_full
   )
 
-write_csv(data_partitioned, "output/data_partitioned.csv")
+write_csv(data_partitioned, "output/pl1/data_partitioned.csv")
 
 ### Partition information in space ####
-writeRaster(raster_outer, "output/partition_outer.tif", overwrite = TRUE)
-writeRaster(raster_inner, "output/partition_inner.tif", overwrite = TRUE)
+writeRaster(raster_outer, "output/pl1/partition_outer.tif", overwrite = TRUE)
+writeRaster(raster_inner, "output/pl1/partition_inner.tif", overwrite = TRUE)
 
 # sessionInfo ####
 

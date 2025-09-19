@@ -13,7 +13,7 @@ library(randomForestSRC)
 ## Load partitioned data ####
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/data_partitioned.csv")
+training_data_partitioned <- read_csv("output/pl1/data_partitioned.csv")
 
 cat("Loaded partitioned data:\n")
 cat("Total observations:", nrow(training_data_partitioned), "\n")
@@ -190,7 +190,7 @@ cat("Estimated total tuning time:", round(estimated_total_time / 60, 1), "hours\
 
 # Initialize progress tracking CSV file
 
-progress_file <- "output/hyperparameter_tuning_progress.csv"
+progress_file <- "output/pl1/hyperparameter_tuning_progress.csv"
 
 if(file.exists(progress_file)) {
   cat("Found existing progress file.\nChecking for completed jobs...\n")
@@ -313,8 +313,8 @@ cat("nodesize:", final_nodesize, "\n")
 ## Save hyperparameter tuning results ####
 
 # Save all tuning results and CV results by fold
-write_csv(all_results, "output/hyperparameter_tuning_all_results.csv")
-write_csv(best_params_by_fold, "output/hyperparameter_tuning_by_fold.csv")
+write_csv(all_results, "output/pl1/hyperparameter_tuning_all_results.csv")
+write_csv(best_params_by_fold, "output/pl1/hyperparameter_tuning_by_fold.csv")
 
 # Save final hyperparameters
 final_params <- data.frame(
@@ -322,16 +322,7 @@ final_params <- data.frame(
   value = c(3000, final_mtry, final_nodesize, 
             round(avg_results$mean_gmean, 4), round(avg_results$sd_gmean, 4))
 )
-write_csv(final_params, "output/final_hyperparameters.csv")
-
-cat("\nSaved hyperparameter tuning results:\n")
-cat("- Progress tracking: output/hyperparameter_tuning_progress.csv\n")
-cat("- All tuning results: output/hyperparameter_tuning_all_results.csv\n")
-cat("- CV tuning by fold: output/hyperparameter_tuning_by_fold.csv\n")
-cat("- Final hyperparameters: output/final_hyperparameters.csv\n")
-
-cat("\nHyperparameter tuning completed successfully!\n")
-cat("Next step: Run 'R/modelLocalScale.R' to train the final model with these optimized parameters.\n")
+write_csv(final_params, "output/pl1/final_hyperparameters.csv")
 
 # sessionInfo ####
 

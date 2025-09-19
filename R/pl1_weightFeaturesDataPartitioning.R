@@ -212,7 +212,7 @@ ggplot(weights_df, aes(x = feature, y = median_normalized, fill = method)) +
 # Save the combined data with median and SD
 weights_df |> 
   select(feature = name, method, median, sd, median_normalized, sd_normalized) |>
-  write_csv("output/weights_feature_data_partitioning.csv", append = FALSE)
+  write_csv("output/pl1/weights_feature_data_partitioning.csv", append = FALSE)
 
 # sessionInfo ####
 

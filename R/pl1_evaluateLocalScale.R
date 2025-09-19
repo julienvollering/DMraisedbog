@@ -30,10 +30,10 @@ library(ROCR)
 cat("Loading partitioned data and trained model...\n")
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/data_partitioned.csv")
+training_data_partitioned <- read_csv("output/pl1/data_partitioned.csv")
 
 # Load the trained model
-final_model <- readRDS("output/final_model_local_60split.rds")
+final_model <- readRDS("output/pl1/final_model_local_60split.rds")
 
 cat("Model loaded successfully.\n")
 cat("Training data dimensions:", nrow(training_data_partitioned), "x", ncol(training_data_partitioned), "\n")
@@ -580,13 +580,11 @@ performance_comparison <- bind_rows(
 ) |>
   select(prediction_type, metric_type, .metric, .estimator, .estimate, threshold, threshold_type)
 
-write_csv(performance_comparison, "output/test_performance_comparison.csv")
-cat("Performance metrics saved to: output/test_performance_comparison.csv\n")
+write_csv(performance_comparison, "output/pl1/test_performance_comparison.csv")
 
 # Save calibration object if applicable
 if (best_method != "none") {
-  saveRDS(final_cal, "output/calibration60split.rds")
-  cat("Calibration object saved to: output/calibration60split.rds\n")
+  saveRDS(final_cal, "output/pl1/calibration60split.rds")
 } else {
   cat("No calibration object to save (raw predictions were optimal).\n")
 }

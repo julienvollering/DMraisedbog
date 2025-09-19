@@ -19,7 +19,7 @@ library(yardstick)
 cat("Loading partitioned data and CV-optimized hyperparameters...\n")
 
 # Read main partitioned dataset
-training_data_partitioned <- read_csv("output/data_partitioned.csv")
+training_data_partitioned <- read_csv("output/pl1/data_partitioned.csv")
 
 # Extract training + test partitions for final model (80% of data)
 train_test_data <- training_data_partitioned |>
@@ -42,7 +42,7 @@ cat("Observations:", nrow(calib_data), "\n")
 cat("Prevalence:", round(mean(calib_data$response == 1) * 100, 2), "%\n")
 
 # Load CV-optimized hyperparameters
-if(!file.exists("output/final_hyperparameters.csv")) {
+if(!file.exists("output/pl1/final_hyperparameters.csv")) {
   ntree <- 3000  # Default value if not tuned
   final_mtry <- 10  # Default value if not tuned
   final_nodesize <- 5  # Default value if not tuned
@@ -54,7 +54,7 @@ if(!file.exists("output/final_hyperparameters.csv")) {
 
 } else {
   cat("final_hyperparameters.csv found. Loading hyperparameters...\n")
-  final_params <- read_csv("output/final_hyperparameters.csv", col_types = "cd")
+  final_params <- read_csv("output/pl1/final_hyperparameters.csv", col_types = "cd")
   
   # Extract hyperparameter values
   ntree <- as.numeric(final_params$value[final_params$parameter == "ntree"])
@@ -164,16 +164,9 @@ rf_global_current <- rast("output/rf_global_pred_regional_current.tif")
 names(rf_global_current) <- "rf_global"
 cat("Global model current predictions loaded.\n")
 
-rf_global_future_files <- list.files("output", pattern = "rf_global.*future", full.names = TRUE)
-if(length(rf_global_future_files) > 0) {
-  rf_global_future <- rast(rf_global_future_files[1])
-  names(rf_global_future) <- "rf_global"
-  cat("Global model future predictions loaded:", rf_global_future_files[1], "\n")
-} else {
-  # If future global predictions don't exist, use current as placeholder
-  cat("Future global predictions not found, using current predictions as placeholder...\n")
-  rf_global_future <- rf_global_current
-}
+rf_global_future <- rast("output/rf_global_pred_regional_future.tif")
+names(rf_global_future) <- "rf_global"
+cat("Global model future predictions loaded:", rf_global_future_files[1], "\n")
 
 # Load regional predictors for both time periods
 preds_nor_250m_current <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")
@@ -237,7 +230,7 @@ spatial_preds_current <- terra::predict(
   final_model_80split, 
   fun = predfun, 
   na.rm = TRUE,
-  filename = "output/rf_local_pred_current_all_layers.tif",
+  filename = "output/pl1/rf_local_pred_current_all_layers.tif",
   overwrite = TRUE
 )
 
@@ -255,7 +248,7 @@ spatial_preds_future <- terra::predict(
   final_model_80split, 
   fun = predfun, 
   na.rm = TRUE,
-  filename = "output/rf_local_pred_future_all_layers.tif",
+  filename = "output/pl1/rf_local_pred_future_all_layers.tif",
   overwrite = TRUE
 )
 
@@ -300,22 +293,19 @@ final_model_80split$importance[,1] |>
 cat("\nSaving results...\n")
 
 # Save the trained model
-model_path <- "output/final_model_local_80split.rds"
+model_path <- "output/pl1/final_model_local_80split.rds"
 saveRDS(final_model_80split, model_path)
 cat("Final model saved to:", model_path, "\n")
 
 # Save calibration object if applicable
 if(!is.null(final_cal_80split)) {
-  cal_path <- "output/calibration80split.rds"
+  cal_path <- "output/pl1/calibration80split.rds"
   saveRDS(final_cal_80split, cal_path)
   cat("Calibration object saved to:", cal_path, "\n")
 } else {
   cat("No calibration object to save (using raw predictions).\n")
 }
 
-cat("\nOutput files created:\n")
-cat("- Current predictions: output/rf_local_pred_current_all_layers.tif\n")
-cat("- Future predictions: output/rf_local_pred_future_all_layers.tif\n")
 cat("- Total prediction time:", round(prediction_duration_current + prediction_duration_future, 1), "minutes\n")
 
 # sessionInfo ####

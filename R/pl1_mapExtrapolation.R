@@ -9,9 +9,9 @@ library(CAST)
 library(randomForestSRC)
 
 # Load the trained local-scale model and training data
-final_model <- readRDS("output/final_model_local_80split.rds")
+final_model <- readRDS("output/pl1/final_model_local_80split.rds")
 var_importance <- final_model$importance[, 1]
-training_data <- read_csv("output/data_partitioned.csv")
+training_data <- read_csv("output/pl1/data_partitioned.csv")
 
 # Remove spatial coordinates and partition columns for environmental space
 predictor_cols <- c("rf_global", paste0("bio", 1:19), "elevation", "slope", 
@@ -78,15 +78,15 @@ aoa_future <- aoa(newdata = predictors_future,
 plot(aoa_future)
 
 # Save AOA object
-saveRDS(aoa_future, "output/aoa_future_local_scale.rds")
+saveRDS(aoa_future, "output/pl1/aoa_future_local_scale.rds")
 
 # Save AOA results as rasters
 writeRaster(aoa_future$AOA,
-           "output/aoa_future_local_scale.tif", 
+           "output/pl1/aoa_future_local_scale.tif", 
            overwrite = TRUE)
 
 writeRaster(aoa_future$DI,
-           "output/dissimilarity_index_future_local_scale.tif",
+           "output/pl1/dissimilarity_index_future_local_scale.tif",
            overwrite = TRUE)
 
 # Calculate summary statistics for future scenario
@@ -114,7 +114,7 @@ aoa_summary <- data.frame(
 )
 
 # Save summary
-write_csv(aoa_summary, "output/aoa_summary_local_scale.csv")
+write_csv(aoa_summary, "output/pl1/aoa_summary_local_scale.csv")
 
 # Print summary
 print(aoa_summary)
