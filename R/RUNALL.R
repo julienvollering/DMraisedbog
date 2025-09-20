@@ -33,7 +33,8 @@ scripts_pipeline2 <- c(
   "R/pl2_createModelingFrame.R",
   "R/pl2_weightFeaturesDataPartitioning.R",
   "R/pl2_exploreFeatureSpaceDistances.R",
-  "R/pl2_partitionData.R" # Avoid open GIS locking TIFF-files
+  "R/pl2_partitionData.R", # Avoid open GIS locking TIFF-files
+  "R/pl2_tuneHyperparametersLocal.R"
 )
 
 # Combine all scripts
