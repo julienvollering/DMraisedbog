@@ -31,7 +31,8 @@ scripts_pipeline1 <- c(
 )
 scripts_pipeline2 <- c(
   "R/pl2_createModelingFrame.R",
-  "R/pl2_weightFeaturesDataPartitioning.R"
+  "R/pl2_weightFeaturesDataPartitioning.R",
+  "R/pl2_exploreFeatureSpaceDistances.R"
 )
 
 # Combine all scripts
