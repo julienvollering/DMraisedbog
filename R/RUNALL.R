@@ -29,9 +29,13 @@ scripts_pipeline1 <- c(
   "R/pl1_mapExtrapolation.R",
   "R/pl1_interpretLocalScale.R"
 )
+scripts_pipeline2 <- c(
+  "R/pl2_createModelingFrame.R",
+  "R/pl2_weightFeaturesDataPartitioning.R"
+)
 
 # Combine all scripts
-scripts <- c(scripts_shared, scripts_pipeline1)
+scripts <- c(scripts_shared, scripts_pipeline1, scripts_pipeline2)
 
 # Execute scripts with error handling
 for (script in scripts) {
