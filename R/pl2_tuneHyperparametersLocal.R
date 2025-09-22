@@ -1,9 +1,9 @@
-# BRF vs QRF Model Comparison and Hyperparameter Tuning ####
+# BRF vs RFQ Model Comparison and Hyperparameter Tuning ####
 
 # This script implements comprehensive hyperparameter tuning that compares
-# Balanced Random Forest (BRF) and Quantile Random Forest (QRF) approaches
+# Balanced Random Forest (BRF) and Quantile Random Forest (RFQ) approaches
 # as if model type were a hyperparameter. BRF uses balanced sampling with
-# optimal threshold selection, while QRF uses the imbalanced() approach.
+# optimal threshold selection, while RFQ uses the imbalanced() approach.
 # The best performing model type and hyperparameters are selected based on
 # cross-validated G-mean performance.
 
@@ -178,10 +178,10 @@ train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
   return(result)
 }
 
-# Function to train a QRF model (existing approach)
-train_qrf_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
+# Function to train a RFQ model (existing approach)
+train_rfq_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
 
-  cat("Job", job_id, "- QRF Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+  cat("Job", job_id, "- RFQ Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
 
   # Split data by inner CV fold and convert to data.frames
   train_fold <- train_data |>
@@ -231,7 +231,7 @@ train_qrf_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
   # Create result row
   result <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    model_type = "QRF",
+    model_type = "RFQ",
     cv_fold = cv_fold,
     mtry = mtry,
     nodesize = nodesize,
@@ -252,8 +252,8 @@ train_qrf_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
 train_single_model <- function(cv_fold, model_type, mtry, nodesize, job_id, train_data) {
   if(model_type == "BRF") {
     return(train_brf_model(cv_fold, mtry, nodesize, job_id, train_data))
-  } else if(model_type == "QRF") {
-    return(train_qrf_model(cv_fold, mtry, nodesize, job_id, train_data))
+  } else if(model_type == "RFQ") {
+    return(train_rfq_model(cv_fold, mtry, nodesize, job_id, train_data))
   } else {
     stop("Unknown model_type: ", model_type)
   }
@@ -265,7 +265,7 @@ train_single_model <- function(cv_fold, model_type, mtry, nodesize, job_id, trai
 n_predictors <- ncol(train_data) - 2  # Exclude response and inner columns
 mtry_values <- seq(floor(sqrt(n_predictors)), ceiling(n_predictors/2), by = 1)
 nodesize_values <- c(1, 5, 20)
-model_types <- c("BRF", "QRF")
+model_types <- c("BRF", "RFQ")
 
 cat("Number of predictors:", n_predictors, "\n")
 cat("Model types to test:", paste(model_types, collapse = ", "), "\n")
@@ -302,10 +302,10 @@ test_data <- train_data |>
 
 cat("Test data size:", nrow(test_data), "observations\n")
 
-# Time QRF model
-cat("Timing QRF model (3000 trees)...\n")
+# Time RFQ model
+cat("Timing RFQ model (3000 trees)...\n")
 start_time <- Sys.time()
-test_model_qrf <- imbalanced(
+test_model_rfq <- imbalanced(
   formula = response ~ .,
   data = test_data,
   ntree = 3000,
@@ -315,7 +315,7 @@ test_model_qrf <- imbalanced(
   do.trace = FALSE
 )
 end_time <- Sys.time()
-runtime_qrf <- as.numeric(difftime(end_time, start_time, units = "secs"))
+runtime_rfq <- as.numeric(difftime(end_time, start_time, units = "secs"))
 
 # Time BRF model
 cat("Timing BRF model (1000 trees)...\n")
@@ -338,13 +338,13 @@ test_model_brf <- randomForest(
 end_time <- Sys.time()
 runtime_brf <- as.numeric(difftime(end_time, start_time, units = "secs"))
 
-cat("Runtime for QRF (3000 trees):", round(runtime_qrf, 2), "seconds\n")
+cat("Runtime for RFQ (3000 trees):", round(runtime_rfq, 2), "seconds\n")
 cat("Runtime for BRF (1000 trees):", round(runtime_brf, 2), "seconds\n")
 
 # Estimate total tuning time
-n_qrf_jobs <- sum(param_grid$model_type == "QRF")
+n_rfq_jobs <- sum(param_grid$model_type == "RFQ")
 n_brf_jobs <- sum(param_grid$model_type == "BRF")
-estimated_total_time <- (n_qrf_jobs * runtime_qrf) + (n_brf_jobs * runtime_brf * 1.2)  # 20% overhead for threshold optimization
+estimated_total_time <- (n_rfq_jobs * runtime_rfq) + (n_brf_jobs * runtime_brf * 1.2)  # 20% overhead for threshold optimization
 
 cat("Estimated total tuning time:", round(estimated_total_time / 60, 1), "minutes\n")
 
@@ -436,7 +436,7 @@ if(nrow(param_grid) > 0) {
 ## Aggregate across CV folds and select best model ####
 
 cat("\n", paste(rep("=", 70), collapse = ""), "\n")
-cat("Cross-validation tuning results: BRF vs QRF comparison\n")
+cat("Cross-validation tuning results: BRF vs RFQ comparison\n")
 cat(paste(rep("=", 70), collapse = ""), "\n")
 
 # Calculate average performance across folds for each model type and hyperparameter combination
@@ -484,28 +484,28 @@ cat("Model type:", final_model_type, "\n")
 if(final_model_type == "BRF") {
   cat("ntree: 1000 (fixed for BRF)\n")
 } else {
-  cat("ntree: 3000 (fixed for QRF)\n")
+  cat("ntree: 3000 (fixed for RFQ)\n")
 }
 cat("mtry:", final_mtry, "\n")
 cat("nodesize:", final_nodesize, "\n")
 cat("CV G-mean (mean ± sd):", round(final_mean_gmean, 4), "±", round(final_sd_gmean, 4), "\n")
 
-# Show comparison between best BRF and QRF
+# Show comparison between best BRF and RFQ
 cat("\n", paste(rep("-", 50), collapse = ""), "\n")
 cat("Model type comparison (best of each):\n")
 cat(paste(rep("-", 50), collapse = ""), "\n")
 
 best_brf <- avg_results %>% filter(model_type == "BRF") %>% slice_max(mean_gmean, n = 1)
-best_qrf <- avg_results %>% filter(model_type == "QRF") %>% slice_max(mean_gmean, n = 1)
+best_rfq <- avg_results %>% filter(model_type == "RFQ") %>% slice_max(mean_gmean, n = 1)
 
 if(nrow(best_brf) > 0) {
   cat("Best BRF: G-mean =", round(best_brf$mean_gmean, 4),
       "mtry =", best_brf$mtry, "nodesize =", best_brf$nodesize, "\n")
 }
 
-if(nrow(best_qrf) > 0) {
-  cat("Best QRF: G-mean =", round(best_qrf$mean_gmean, 4),
-      "mtry =", best_qrf$mtry, "nodesize =", best_qrf$nodesize, "\n")
+if(nrow(best_rfq) > 0) {
+  cat("Best RFQ: G-mean =", round(best_rfq$mean_gmean, 4),
+      "mtry =", best_rfq$mtry, "nodesize =", best_rfq$nodesize, "\n")
 }
 
 ## Save hyperparameter tuning results ####
