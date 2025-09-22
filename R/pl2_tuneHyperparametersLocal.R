@@ -119,7 +119,7 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
 
 # Define hyperparameter grid for tuning
 n_predictors <- ncol(train_data) - 2  # Exclude response and inner columns
-mtry_values <- seq(floor(sqrt(n_predictors)), ceiling(n_predictors/3), by = 1)
+mtry_values <- seq(floor(sqrt(n_predictors)), ceiling(n_predictors/2), by = 1)
 nodesize_values <- c(1, 5, 20)
 
 cat("Number of predictors:", n_predictors, "\n")
@@ -268,35 +268,31 @@ cat("\n", paste(rep("=", 50), collapse = ""), "\n")
 cat("Cross-validation tuning results:\n")
 cat(paste(rep("=", 50), collapse = ""), "\n")
 
-# Find best parameters by CV fold
-best_params_by_fold <- all_results |>
-  group_by(cv_fold) |>
-  slice_max(gmean, n = 1, with_ties = FALSE) |>
-  select(cv_fold, mtry, nodesize, gmean) |>
-  rename(best_mtry = mtry, best_nodesize = nodesize, best_gmean = gmean) |>
-  ungroup()
-
-print(best_params_by_fold)
-
 # Calculate average performance across folds
-avg_results <- best_params_by_fold |>
-  summarise(
-    mean_mtry = mean(best_mtry),
-    mean_nodesize = mean(best_nodesize),
-    mean_gmean = mean(best_gmean),
-    sd_gmean = sd(best_gmean),
-    .groups = 'drop'
+avg_results <- all_results %>%
+  pivot_longer(cols = c(mtry, nodesize), names_to = "hyperparameter") %>%
+  group_by(hyperparameter, value) %>%
+  summarize(
+    hyperparameter = first(hyperparameter),
+    value = first(value),
+    mean_metric = mean(gmean),
+    sd_metric = sd(gmean),
+    .groups = "drop_last"
   )
 
-cat("\nAverage results across CV folds:\n")
-cat("Mean optimal mtry:", round(avg_results$mean_mtry, 1), "\n")
-cat("Mean optimal nodesize:", round(avg_results$mean_nodesize, 1), "\n")
-cat("Mean G-mean:", round(avg_results$mean_gmean, 4), "\n")
-cat("G-mean std dev:", round(avg_results$sd_gmean, 4), "\n")
+print(avg_results)
 
-# Average the best parameters in each fold
-final_mtry <- round(avg_results$mean_mtry)
-final_nodesize <- round(avg_results$mean_nodesize)
+# Select hyperparameter values with highest mean G-mean across folds
+selected_hyperparameters <- avg_results %>%
+  filter(mean_metric == max(mean_metric))
+
+final_mtry <- selected_hyperparameters %>%
+  filter(hyperparameter == "mtry") %>%
+  pull(value)
+  
+final_nodesize <- selected_hyperparameters %>%
+  filter(hyperparameter == "nodesize") %>%
+  pull(value)
 
 cat("\nFinal selected hyperparameters:\n")
 cat("ntree: 3000 (fixed)\n")
@@ -308,15 +304,13 @@ cat("nodesize:", final_nodesize, "\n")
 # Save all tuning results and CV results by fold
 write_csv(all_results, "output/pl2/hyperparameter_tuning_all_results.csv", 
           append = FALSE)
-write_csv(best_params_by_fold, "output/pl2/hyperparameter_tuning_by_fold.csv", 
-          append = FALSE)
 
 # Save final hyperparameters
-final_params <- data.frame(
-  parameter = c("ntree", "mtry", "nodesize", "cv_mean_gmean", "cv_sd_gmean"),
-  value = c(3000, final_mtry, final_nodesize, 
-            round(avg_results$mean_gmean, 4), round(avg_results$sd_gmean, 4))
-)
+
+final_params <- bind_rows(
+  data.frame(hyperparameter = "ntree", value = 3000, mean_metric = NA, sd_metric = NA),
+  selected_hyperparameters
+  )
 write_csv(final_params, "output/pl2/final_hyperparameters.csv", append = FALSE)
 
 # sessionInfo ####
