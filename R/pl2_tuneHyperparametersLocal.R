@@ -1,13 +1,19 @@
-# Random Forest Quantile Classification for Local Scale Modeling ####
+# BRF vs QRF Model Comparison and Hyperparameter Tuning ####
 
-# This script implements hyperparameter tuning for random forest quantile 
-# classification using randomForestSRC::tune.rfsrc() with imbalanced classification.
+# This script implements comprehensive hyperparameter tuning that compares
+# Balanced Random Forest (BRF) and Quantile Random Forest (QRF) approaches
+# as if model type were a hyperparameter. BRF uses balanced sampling with
+# optimal threshold selection, while QRF uses the imbalanced() approach.
+# The best performing model type and hyperparameters are selected based on
+# cross-validated G-mean performance.
 
 library(readr)
 library(dplyr)
 library(purrr)
 library(tidyr)
 library(randomForestSRC)
+library(randomForest)
+library(ROCR)
 
 ## Load partitioned data ####
 
@@ -30,34 +36,174 @@ cat("Response variable class:", class(train_data$response), "\n")
 cat("Response variable values:", paste(unique(train_data$response), collapse = ", "), "\n")
 cat("Prevalence:", round(mean(train_data$response == 1) * 100, 2), "%\n")
 
-## Custom hyperparameter tuning with imbalanced() ####
+## Helper functions ####
 
-# Function to train a single model with given parameters
-train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
-  
-  cat("Job", job_id, "- Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
-  
-  # Split data by inner CV fold and convert to data.frames
-  train_fold <- train_data |> 
-    filter(inner != cv_fold) |> 
+# Function to calculate G-mean from predictions and true values
+# Robust to factor level ordering by explicitly identifying positive/negative classes
+calculate_gmean <- function(predicted_class, true_class) {
+  # Convert to character to avoid factor level issues
+  predicted_class <- as.character(predicted_class)
+  true_class <- as.character(true_class)
+
+  # Create confusion matrix
+  cm <- table(Actual = true_class, Predicted = predicted_class)
+
+  if(nrow(cm) == 2 && ncol(cm) == 2) {
+    # Explicitly identify which row/column corresponds to positive class ("1")
+    pos_row <- which(rownames(cm) == "1")
+    pos_col <- which(colnames(cm) == "1")
+    neg_row <- which(rownames(cm) == "0")
+    neg_col <- which(colnames(cm) == "0")
+
+    # Handle case where positive or negative class is missing
+    if(length(pos_row) == 0 || length(pos_col) == 0 ||
+       length(neg_row) == 0 || length(neg_col) == 0) {
+      tpr <- 0
+      tnr <- 0
+      gmean <- 0
+    } else {
+      # Extract confusion matrix values using explicit indexing
+      tp <- cm[pos_row, pos_col]  # True positives
+      fn <- cm[pos_row, neg_col]  # False negatives
+      fp <- cm[neg_row, pos_col]  # False positives
+      tn <- cm[neg_row, neg_col]  # True negatives
+
+      # Calculate TPR and TNR
+      tpr <- tp / (tp + fn)  # Sensitivity
+      tnr <- tn / (tn + fp)  # Specificity
+
+      # Calculate G-mean
+      gmean <- sqrt(tpr * tnr)
+    }
+  } else {
+    # Handle edge cases (only one class present)
+    tpr <- 0
+    tnr <- 0
+    gmean <- 0
+  }
+
+  return(list(gmean = gmean, tpr = tpr, tnr = tnr))
+}
+
+## Model training functions ####
+
+# Function to train a BRF model with threshold optimization
+train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
+
+  cat("Job", job_id, "- BRF Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+
+  # Split data by inner CV fold
+  train_fold <- train_data |>
+    filter(inner != cv_fold) |>
     select(-inner) |>
-    as.data.frame()  # Convert tibble to data.frame for imbalanced()
-  
-  val_fold <- train_data |> 
-    filter(inner == cv_fold) |> 
+    as.data.frame()
+
+  val_fold <- train_data |>
+    filter(inner == cv_fold) |>
     select(-inner) |>
-    as.data.frame()  # Convert tibble to data.frame for imbalanced()
-  
-  # Convert response to factor explicitly
-  train_fold$response <- as.factor(as.character(train_fold$response))
-  val_fold$response <- as.factor(as.character(val_fold$response))
-  
+    as.data.frame()
+
+  # Convert response to factor with explicit levels (0, 1) for consistency
+  train_fold$response <- factor(as.character(train_fold$response), levels = c("0", "1"))
+  val_fold$response <- factor(as.character(val_fold$response), levels = c("0", "1"))
+
   # Ensure ar50 is properly handled as factor if it exists
   if("ar50" %in% names(train_fold)) {
     train_fold$ar50 <- as.factor(as.character(train_fold$ar50))
     val_fold$ar50 <- as.factor(as.character(val_fold$ar50))
   }
-  
+
+  # Calculate class sizes for balanced sampling
+  n_presence <- sum(train_fold$response == "1")
+  n_absence <- sum(train_fold$response == "0")
+  balanced_size <- min(n_presence, n_absence)
+
+  # Train BRF model with balanced sampling
+  model <- randomForest(
+    formula = response ~ .,
+    data = train_fold,
+    ntree = 1000,
+    mtry = mtry,
+    nodesize = nodesize,
+    sampsize = c(balanced_size, balanced_size),  # Balanced sampling
+    replace = TRUE,
+    importance = FALSE,
+    do.trace = FALSE
+  )
+
+  # Get predictions on training fold for threshold optimization
+  train_pred_prob <- predict(model, newdata = train_fold, type = "prob")[, "1"]
+  train_true <- as.numeric(as.character(train_fold$response))
+
+  # Optimize threshold using ROCR on training folds
+  pred_obj <- prediction(train_pred_prob, train_true)
+
+  # Calculate G-mean for all possible thresholds
+  tpr_values <- performance(pred_obj, "tpr")@y.values[[1]]
+  tnr_values <- performance(pred_obj, "tnr")@y.values[[1]]
+  gmean_values <- sqrt(tpr_values * tnr_values)
+
+  # Find optimal threshold
+  optimal_idx <- which.max(gmean_values)
+  optimal_threshold <- performance(pred_obj, "tpr")@x.values[[1]][optimal_idx]
+
+  # Get predictions on validation fold
+  val_pred_prob <- predict(model, newdata = val_fold, type = "prob")[, "1"]
+  val_pred_class <- ifelse(val_pred_prob >= optimal_threshold, "1", "0")
+  val_true <- as.character(val_fold$response)
+
+  # Calculate G-mean on validation set with optimal threshold
+  metrics <- calculate_gmean(val_pred_class, val_true)
+  gmean <- metrics$gmean
+  tpr <- metrics$tpr
+  tnr <- metrics$tnr
+
+  # Create result row
+  result <- data.frame(
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    model_type = "BRF",
+    cv_fold = cv_fold,
+    mtry = mtry,
+    nodesize = nodesize,
+    gmean = gmean,
+    tpr = tpr,
+    tnr = tnr,
+    stringsAsFactors = FALSE
+  )
+
+  # Append to CSV immediately
+  write_csv(result, progress_file, append = TRUE)
+  cat("  Job", job_id, "completed - G-mean:", round(gmean, 4), "\n")
+
+  return(result)
+}
+
+# Function to train a QRF model (existing approach)
+train_qrf_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
+
+  cat("Job", job_id, "- QRF Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+
+  # Split data by inner CV fold and convert to data.frames
+  train_fold <- train_data |>
+    filter(inner != cv_fold) |>
+    select(-inner) |>
+    as.data.frame()  # Convert tibble to data.frame for imbalanced()
+
+  val_fold <- train_data |>
+    filter(inner == cv_fold) |>
+    select(-inner) |>
+    as.data.frame()  # Convert tibble to data.frame for imbalanced()
+
+  # Convert response to factor with explicit levels (0, 1) for consistency
+  train_fold$response <- factor(as.character(train_fold$response), levels = c("0", "1"))
+  val_fold$response <- factor(as.character(val_fold$response), levels = c("0", "1"))
+
+  # Ensure ar50 is properly handled as factor if it exists
+  if("ar50" %in% names(train_fold)) {
+    train_fold$ar50 <- as.factor(as.character(train_fold$ar50))
+    val_fold$ar50 <- as.factor(as.character(val_fold$ar50))
+  }
+
   # Train model with current parameters
   model <- imbalanced(
     formula = response ~ .,
@@ -68,37 +214,24 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
     importance = FALSE,  # Skip importance for speed during tuning
     do.trace = FALSE
   )
-  
+
   # Predict on validation set
   pred <- predict(model, newdata = val_fold)
-  
+
   # Calculate G-mean on validation set
   pred_class <- pred$class
   true_class <- val_fold$response
-  
-  # Create confusion matrix
-  cm <- table(Actual = true_class, Predicted = pred_class)
-  if(nrow(cm) == 2 && ncol(cm) == 2) {
-    tn <- cm[1,1]  # True negatives
-    fp <- cm[1,2]  # False positives  
-    fn <- cm[2,1]  # False negatives
-    tp <- cm[2,2]  # True positives
-    
-    # Calculate TPR and TNR
-    tpr <- tp / (tp + fn)  # Sensitivity
-    tnr <- tn / (tn + fp)  # Specificity
-    
-    # Calculate G-mean
-    gmean <- sqrt(tpr * tnr)
-  } else {
-    tpr <- 0  # Handle edge cases
-    tnr <- 0
-    gmean <- 0
-  }
-  
+
+  # Calculate G-mean using common function
+  metrics <- calculate_gmean(pred_class, true_class)
+  gmean <- metrics$gmean
+  tpr <- metrics$tpr
+  tnr <- metrics$tnr
+
   # Create result row
   result <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    model_type = "QRF",
     cv_fold = cv_fold,
     mtry = mtry,
     nodesize = nodesize,
@@ -107,12 +240,23 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
     tnr = tnr,
     stringsAsFactors = FALSE
   )
-  
+
   # Append to CSV immediately
   write_csv(result, progress_file, append = TRUE)
   cat("  Job", job_id, "completed - G-mean:", round(gmean, 4), "\n")
-  
+
   return(result)
+}
+
+# Unified function to train either model type
+train_single_model <- function(cv_fold, model_type, mtry, nodesize, job_id, train_data) {
+  if(model_type == "BRF") {
+    return(train_brf_model(cv_fold, mtry, nodesize, job_id, train_data))
+  } else if(model_type == "QRF") {
+    return(train_qrf_model(cv_fold, mtry, nodesize, job_id, train_data))
+  } else {
+    stop("Unknown model_type: ", model_type)
+  }
 }
 
 ## Create parameter grid ####
@@ -121,8 +265,10 @@ train_single_model <- function(cv_fold, mtry, nodesize, job_id, train_data) {
 n_predictors <- ncol(train_data) - 2  # Exclude response and inner columns
 mtry_values <- seq(floor(sqrt(n_predictors)), ceiling(n_predictors/2), by = 1)
 nodesize_values <- c(1, 5, 20)
+model_types <- c("BRF", "QRF")
 
 cat("Number of predictors:", n_predictors, "\n")
+cat("Model types to test:", paste(model_types, collapse = ", "), "\n")
 cat("mtry values to test:", paste(mtry_values, collapse = ", "), "\n")
 cat("nodesize values to test:", paste(nodesize_values, collapse = ", "), "\n")
 
@@ -131,7 +277,8 @@ cat("\nCreating parameter grid for hyperparameter tuning...\n")
 # Create complete parameter combination grid
 param_grid <- expand_grid(
   cv_fold = 1:3,
-  mtry = mtry_values, 
+  model_type = model_types,
+  mtry = mtry_values,
   nodesize = nodesize_values
 ) |>
   mutate(
@@ -140,10 +287,11 @@ param_grid <- expand_grid(
 
 cat("Total parameter combinations:", nrow(param_grid), "\n")
 cat("Jobs per CV fold:", nrow(param_grid) / 3, "\n")
+cat("Jobs per model type:", nrow(param_grid) / (3 * length(model_types)), "\n")
 
 ### Runtime estimation ####
 
-cat("\nEstimating runtime with a single RFQ model (500 trees)...\n")
+cat("\nEstimating runtime with sample models...\n")
 
 # Prepare small test dataset (first fold) for timing
 test_data <- train_data |>
@@ -154,28 +302,49 @@ test_data <- train_data |>
 
 cat("Test data size:", nrow(test_data), "observations\n")
 
-# Time a single model run
+# Time QRF model
+cat("Timing QRF model (3000 trees)...\n")
 start_time <- Sys.time()
-
-test_model <- imbalanced(
+test_model_qrf <- imbalanced(
   formula = response ~ .,
   data = test_data,
-  ntree = 3000,  # Reduced trees for timing
-  mtry = mtry_values[1],  # Use first mtry value
-  nodesize = nodesize_values[1],  # Use first nodesize value
+  ntree = 3000,
+  mtry = mtry_values[1],
+  nodesize = nodesize_values[1],
   importance = FALSE,
   do.trace = FALSE
 )
-
 end_time <- Sys.time()
-runtime_3000_trees <- as.numeric(difftime(end_time, start_time, units = "secs"))
+runtime_qrf <- as.numeric(difftime(end_time, start_time, units = "secs"))
 
-cat("Runtime for 3000 trees:", round(runtime_3000_trees, 2), "seconds\n")
+# Time BRF model
+cat("Timing BRF model (1000 trees)...\n")
+n_presence <- sum(test_data$response == "1")
+n_absence <- sum(test_data$response == "0")
+balanced_size <- min(n_presence, n_absence)
+
+start_time <- Sys.time()
+test_model_brf <- randomForest(
+  formula = response ~ .,
+  data = test_data,
+  ntree = 1000,
+  mtry = mtry_values[1],
+  nodesize = nodesize_values[1],
+  sampsize = c(balanced_size, balanced_size),
+  replace = TRUE,
+  importance = FALSE,
+  do.trace = FALSE
+)
+end_time <- Sys.time()
+runtime_brf <- as.numeric(difftime(end_time, start_time, units = "secs"))
+
+cat("Runtime for QRF (3000 trees):", round(runtime_qrf, 2), "seconds\n")
+cat("Runtime for BRF (1000 trees):", round(runtime_brf, 2), "seconds\n")
 
 # Estimate total tuning time
-n_calls_to_imbalanced <- nrow(param_grid)
-scaling_factor <- 3000 / 3000
-estimated_total_time <- n_calls_to_imbalanced * runtime_3000_trees * scaling_factor
+n_qrf_jobs <- sum(param_grid$model_type == "QRF")
+n_brf_jobs <- sum(param_grid$model_type == "BRF")
+estimated_total_time <- (n_qrf_jobs * runtime_qrf) + (n_brf_jobs * runtime_brf * 1.2)  # 20% overhead for threshold optimization
 
 cat("Estimated total tuning time:", round(estimated_total_time / 60, 1), "minutes\n")
 
@@ -197,7 +366,7 @@ if(file.exists(progress_file)) {
     
     # Filter out completed parameter combinations
     param_grid <- param_grid |>
-      anti_join(completed_runs, by = c("cv_fold", "mtry", "nodesize"))
+      anti_join(completed_runs, by = c("cv_fold", "model_type", "mtry", "nodesize"))
     
     cat("Remaining jobs to complete:", nrow(param_grid), "\n")
     
@@ -214,6 +383,7 @@ if(file.exists(progress_file)) {
   # Create empty file with headers
   empty_result <- data.frame(
     timestamp = character(0),
+    model_type = character(0),
     cv_fold = numeric(0),
     mtry = numeric(0),
     nodesize = numeric(0),
@@ -235,12 +405,13 @@ if(nrow(param_grid) > 0) {
   tuning_results <- param_grid |>
     mutate(
       results = pmap(
-        list(cv_fold, mtry, nodesize, job_id),
+        list(cv_fold, model_type, mtry, nodesize, job_id),
         ~train_single_model(
-          cv_fold = ..1, 
-          mtry = ..2, 
-          nodesize = ..3, 
-          job_id = ..4,
+          cv_fold = ..1,
+          model_type = ..2,
+          mtry = ..3,
+          nodesize = ..4,
+          job_id = ..5,
           train_data = train_data
         )
       )
@@ -262,42 +433,80 @@ if(nrow(param_grid) > 0) {
   all_results <- completed_runs
 }
 
-## Aggregate across CV folds ####
+## Aggregate across CV folds and select best model ####
 
-cat("\n", paste(rep("=", 50), collapse = ""), "\n")
-cat("Cross-validation tuning results:\n")
-cat(paste(rep("=", 50), collapse = ""), "\n")
+cat("\n", paste(rep("=", 70), collapse = ""), "\n")
+cat("Cross-validation tuning results: BRF vs QRF comparison\n")
+cat(paste(rep("=", 70), collapse = ""), "\n")
 
-# Calculate average performance across folds
+# Calculate average performance across folds for each model type and hyperparameter combination
 avg_results <- all_results %>%
-  pivot_longer(cols = c(mtry, nodesize), names_to = "hyperparameter") %>%
-  group_by(hyperparameter, value) %>%
+  group_by(model_type, mtry, nodesize) %>%
   summarize(
-    hyperparameter = first(hyperparameter),
-    value = first(value),
-    mean_metric = mean(gmean),
-    sd_metric = sd(gmean),
-    .groups = "drop_last"
-  )
+    mean_gmean = mean(gmean),
+    sd_gmean = sd(gmean),
+    mean_tpr = mean(tpr),
+    mean_tnr = mean(tnr),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mean_gmean))
 
-print(avg_results)
+cat("\nTop 10 model configurations by mean G-mean:\n")
+print(head(avg_results, 10))
 
-# Select hyperparameter values with highest mean G-mean across folds
-selected_hyperparameters <- avg_results %>%
-  filter(mean_metric == max(mean_metric))
+# Find the best performing configuration overall
+best_config <- avg_results %>%
+  slice_max(mean_gmean, n = 1)
 
-final_mtry <- selected_hyperparameters %>%
-  filter(hyperparameter == "mtry") %>%
-  pull(value)
-  
-final_nodesize <- selected_hyperparameters %>%
-  filter(hyperparameter == "nodesize") %>%
-  pull(value)
+if(nrow(best_config) > 1) {
+  # If there's a tie, select the one with smallest standard deviation
+  best_config <- best_config %>%
+    slice_min(sd_gmean, n = 1)
 
-cat("\nFinal selected hyperparameters:\n")
-cat("ntree: 3000 (fixed)\n")
+  if(nrow(best_config) > 1) {
+    # If still tied, prefer BRF for interpretability
+    best_config <- best_config %>%
+      arrange(model_type) %>%
+      slice(1)
+  }
+}
+
+final_model_type <- best_config$model_type
+final_mtry <- best_config$mtry
+final_nodesize <- best_config$nodesize
+final_mean_gmean <- best_config$mean_gmean
+final_sd_gmean <- best_config$sd_gmean
+
+cat("\n", paste(rep("=", 70), collapse = ""), "\n")
+cat("FINAL SELECTED MODEL CONFIGURATION:\n")
+cat(paste(rep("=", 70), collapse = ""), "\n")
+cat("Model type:", final_model_type, "\n")
+if(final_model_type == "BRF") {
+  cat("ntree: 1000 (fixed for BRF)\n")
+} else {
+  cat("ntree: 3000 (fixed for QRF)\n")
+}
 cat("mtry:", final_mtry, "\n")
 cat("nodesize:", final_nodesize, "\n")
+cat("CV G-mean (mean ± sd):", round(final_mean_gmean, 4), "±", round(final_sd_gmean, 4), "\n")
+
+# Show comparison between best BRF and QRF
+cat("\n", paste(rep("-", 50), collapse = ""), "\n")
+cat("Model type comparison (best of each):\n")
+cat(paste(rep("-", 50), collapse = ""), "\n")
+
+best_brf <- avg_results %>% filter(model_type == "BRF") %>% slice_max(mean_gmean, n = 1)
+best_qrf <- avg_results %>% filter(model_type == "QRF") %>% slice_max(mean_gmean, n = 1)
+
+if(nrow(best_brf) > 0) {
+  cat("Best BRF: G-mean =", round(best_brf$mean_gmean, 4),
+      "mtry =", best_brf$mtry, "nodesize =", best_brf$nodesize, "\n")
+}
+
+if(nrow(best_qrf) > 0) {
+  cat("Best QRF: G-mean =", round(best_qrf$mean_gmean, 4),
+      "mtry =", best_qrf$mtry, "nodesize =", best_qrf$nodesize, "\n")
+}
 
 ## Save hyperparameter tuning results ####
 
@@ -305,13 +514,32 @@ cat("nodesize:", final_nodesize, "\n")
 write_csv(all_results, "output/pl2/hyperparameter_tuning_all_results.csv", 
           append = FALSE)
 
-# Save final hyperparameters
+# Save final hyperparameters and model selection results
 
-final_params <- bind_rows(
-  data.frame(hyperparameter = "ntree", value = 3000, mean_metric = NA, sd_metric = NA),
-  selected_hyperparameters
-  )
+# Create comprehensive final hyperparameters file
+final_params <- data.frame(
+  parameter = c("model_type", "ntree", "mtry", "nodesize", "cv_mean_gmean", "cv_sd_gmean"),
+  value = c(
+    final_model_type,
+    ifelse(final_model_type == "BRF", "1000", "3000"),
+    as.character(final_mtry),
+    as.character(final_nodesize),
+    as.character(round(final_mean_gmean, 6)),
+    as.character(round(final_sd_gmean, 6))
+  ),
+  stringsAsFactors = FALSE
+)
+
+
 write_csv(final_params, "output/pl2/final_hyperparameters.csv", append = FALSE)
+
+# Save aggregated results for analysis
+write_csv(avg_results, "output/pl2/hyperparameter_comparison_summary.csv", append = FALSE)
+
+cat("\nSaved results to:\n")
+cat("- output/pl2/hyperparameter_tuning_all_results.csv (detailed CV results)\n")
+cat("- output/pl2/final_hyperparameters.csv (winning configuration)\n")
+cat("- output/pl2/hyperparameter_comparison_summary.csv (model comparison summary)\n")
 
 # sessionInfo ####
 
