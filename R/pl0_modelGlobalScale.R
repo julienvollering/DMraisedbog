@@ -142,5 +142,6 @@ print(evaluation_results)
 # Save evaluation results
 write_csv(evaluation_results, "output/model_global_evaluation_metrics.csv")
 
-## Session Information ####
-sessionInfo()
+# sessionInfo ####
+
+sessioninfo::session_info()

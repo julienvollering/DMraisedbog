@@ -92,4 +92,4 @@ cat("Quality control:\nminimum separation in thinned dataset:", round(min_separa
 
 # sessionInfo ####
 
-sessionInfo()
+sessioninfo::session_info()

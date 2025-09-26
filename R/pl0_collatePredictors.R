@@ -23,21 +23,64 @@ memory_usage <- function() {
 # - Output: Single GeoTIFF with 19 bands at 5000m resolution in EPSG:3035, masked to EU+Norway
 
 ## Step 1: Load CHELSA data ####
-chelsa_files <- list.files("data/CHELSA/past",
-                          pattern = "CHELSA_bio.*\\.tif$",
-                          full.names = TRUE) %>%
-  sort() # Ensure bio1, bio10, bio11, ..., bio19, bio2, bio3, etc.
+
+### Past climate ####
+chelsa_past_files <- list.files("data/CHELSA/past", 
+                                pattern = "CHELSA_bio.*\\.tif$", 
+                                full.names = TRUE) %>%
+  sort()
 
 # Reorder to get bio1-bio19 in correct sequence
-bio_numbers <- str_extract(chelsa_files, "bio\\d+") %>%
+bio_numbers_past <- str_extract(chelsa_past_files, "bio\\d+") %>%
   str_extract("\\d+") %>%
   as.numeric()
-chelsa_files <- chelsa_files[order(bio_numbers)]
+chelsa_past_files <- chelsa_past_files[order(bio_numbers_past)]
 
-# Load as SpatRaster stack
-chelsa_stack <- rast(chelsa_files)
-names(chelsa_stack) <- paste0("bio", 1:19)
-chelsa_stack
+chelsa_past_stack <- rast(chelsa_past_files)
+names(chelsa_past_stack) <- paste0("bio", 1:19)
+chelsa_past_stack
+terra::summary(chelsa_past_stack)
+
+### Future climate ####
+chelsa_future_files <- list.files("data/CHELSA/future", 
+                                  pattern = "CHELSA_bio.*\\.tif$", 
+                                  full.names = TRUE) %>%
+  sort()
+
+# Reorder future files
+bio_numbers_future <- str_extract(chelsa_future_files, "bio\\d+") %>%
+  str_extract("\\d+") %>%
+  as.numeric()
+chelsa_future_files <- chelsa_future_files[order(bio_numbers_future)]
+
+chelsa_future_stack <- rast(chelsa_future_files)
+names(chelsa_future_stack) <- paste0("bio", 1:19)
+terra::summary(chelsa_future_stack)
+
+### Check scaling across variables ####
+
+# Compare scaling between past and future climate stacks
+past_stats <- chelsa_past_stack[1:1e6] |> 
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  group_by(variable) |>
+  summarise(median = median(value, na.rm = TRUE), .groups = "drop")
+future_stats <- chelsa_future_stack[1:1e6] |> 
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  group_by(variable) |>
+  summarise(median = median(value, na.rm = TRUE), .groups = "drop")
+checkvars <- left_join(past_stats, future_stats, by = "variable", suffix = c("_past", "_future")) |> 
+  mutate(median_ratio = abs(median_future / median_past)) |>
+  filter(median_ratio > 5 | median_ratio < 0.2) |>  # Identify variables with possible scaling differences (factor >5)
+  pull(variable)
+
+summary(chelsa_past_stack[[checkvars]])
+summary(chelsa_future_stack[[checkvars]])
+
+# Bio3 (Isothermality) appears to have different scaling
+# Bio3 = (bio2/bio7)*100
+# Rescale future bio3 to match past scaling
+
+chelsa_future_stack[["bio3"]] <- chelsa_future_stack[["bio3"]] * 100
 
 ## Step 2: Create EU + Norway mask ####
 
@@ -79,7 +122,7 @@ europe_ext_wgs84 <- ext(c(xmin = -10, xmax = 35,
                          ymin = 35, ymax = 72))
 
 # Crop to European extent first (in WGS84) to reduce memory requirements
-chelsa_cropped_wgs84 <- crop(chelsa_stack, europe_ext_wgs84)
+chelsa_cropped_wgs84 <- crop(chelsa_past_stack, europe_ext_wgs84)
 
 # Project CHELSA data from WGS84 to EPSG:3035 at 5000m resolution
 chelsa_3035 <- project(x = chelsa_cropped_wgs84,
@@ -243,21 +286,6 @@ gc()
 
 ## Step 4: Process CHELSA variables ####
 
-### Current climate ####
-chelsa_past_files <- list.files("data/CHELSA/past", 
-                                pattern = "CHELSA_bio.*\\.tif$", 
-                                full.names = TRUE) %>%
-  sort()
-
-# Reorder to get bio1-bio19 in correct sequence
-bio_numbers_past <- str_extract(chelsa_past_files, "bio\\d+") %>%
-  str_extract("\\d+") %>%
-  as.numeric()
-chelsa_past_files <- chelsa_past_files[order(bio_numbers_past)]
-
-chelsa_past_stack <- rast(chelsa_past_files)
-names(chelsa_past_stack) <- paste0("bio", 1:19)
-
 # Create Norway extent in WGS84 for cropping before reprojection
 # Use raster extent instead of vector union for efficiency
 norway_ext_wgs84 <- project(norway_ext_3035, 
@@ -274,21 +302,6 @@ chelsa_past_3035 <- project(x = chelsa_past_cropped_wgs84,
 
 # Final mask to Norway boundaries using raster mask
 chelsa_past_masked <- mask(chelsa_past_3035, land_mask_ar50)
-
-### Future climate ####
-chelsa_future_files <- list.files("data/CHELSA/future", 
-                                  pattern = "CHELSA_bio.*\\.tif$", 
-                                  full.names = TRUE) %>%
-  sort()
-
-# Reorder future files
-bio_numbers_future <- str_extract(chelsa_future_files, "bio\\d+") %>%
-  str_extract("\\d+") %>%
-  as.numeric()
-chelsa_future_files <- chelsa_future_files[order(bio_numbers_future)]
-
-chelsa_future_stack <- rast(chelsa_future_files)
-names(chelsa_future_stack) <- paste0("bio", 1:19)
 
 # Crop to Norway extent first (in WGS84) to reduce memory requirements
 chelsa_future_cropped_wgs84 <- crop(chelsa_future_stack, norway_ext_wgs84)

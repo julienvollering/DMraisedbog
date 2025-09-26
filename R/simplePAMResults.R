@@ -223,5 +223,6 @@ for (i in 1:5) {
   cat("Minimum distance:", round(min(distances), 4), "\n")
 }
 
-## sessionInfo ####
-sessionInfo()
+# sessionInfo ####
+
+sessioninfo::session_info()
