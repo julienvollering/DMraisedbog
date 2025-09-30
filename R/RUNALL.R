@@ -1,15 +1,5 @@
 library(rmarkdown)
 
-# Create output directories if they don't exist
-if (!dir.exists("output")) {
-  dir.create("output", recursive = TRUE)
-  cat("Created output/ directory\n")
-}
-if (!dir.exists("output/pl1")) {
-  dir.create("output/pl1", recursive = TRUE)
-  cat("Created output/pl1/ directory\n")
-}
-
 # Define script execution order (maintains dependencies)
 scripts_shared <- c(
   "R/pl0_collateLyngstad.R",
@@ -63,3 +53,13 @@ if (length(unused_scripts) > 0) {
   }
 }
 
+# for (script in unused_scripts) {
+#   cat("Executing:", script, "\n")
+#   tryCatch({
+#     render(script, output_format = "html_document", knit_root_dir = "../")
+#     cat("✓ Completed:", script, "\n\n")
+#   }, error = function(e) {
+#     cat("✗ ERROR in", script, ":\n", e$message, "\n\n")
+#     stop("Script execution failed at: ", script)
+#   })
+# }
