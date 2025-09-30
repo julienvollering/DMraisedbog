@@ -10,6 +10,36 @@ library(cluster)
 library(tidyr)
 library(ggplot2)
 library(sf)
+library(purrr)
+library(twosamples)
+
+## Configuration: Subsampling for Performance Control ####
+
+# Run tests?
+run_tests <- FALSE
+
+# CLARA clustering subsampling
+# Higher values = more accurate clustering but slower computation
+# Memory usage scales with sample size
+clara_max_sample_size <- 1e4      # Max samples for CLARA algorithm
+clara_sample_fraction <- 0.05     # Fraction of data to sample (if smaller than max)
+clara_samples <- 1                # Number of sample sets to draw and evaluate
+
+# Feature distance calculation subsampling
+# Higher values = more accurate W_CV estimates but slower computation
+# Runtime scales quadratically with sample size
+featuredist_sample_size <- 3e4     # Max samples for featuredist W_CV calculation
+
+# Evaluation range
+# More k values = more thorough search but longer runtime
+# Runtime scales linearly with number of k values
+k_range <- seq(5, 50, by = 20)     # Range of k_clusters to evaluate
+
+# Performance guidance:
+# - For exploration: use current defaults
+# - For production: consider increasing sample sizes
+# - For speed: reduce sample sizes or k_range
+# - Memory issues: reduce clara_max_sample_size
 
 ## Read modeling frame ####
 mf <- read_csv("output/pl2/modeling_frame_regional.csv")
@@ -21,6 +51,15 @@ mf_current_with_coords <- mf |>
   select(-scenario)
 mf_current <- mf_current_with_coords |>
   select(-x, -y) # Remove x and y coordinates for modeling
+
+toJoin <- mf |> 
+  filter(scenario == "future") |> 
+  select(-scenario)
+mf_future_presence <- mf |> 
+  filter(response == 1) |> 
+  select(x, y) |> 
+  left_join(toJoin, by = c("x", "y")) |> 
+  select(-x, -y)
 
 n_presence <- sum(mf_current$response == "1")
 n_absence <- sum(mf_current$response == "0")
@@ -44,148 +83,49 @@ weights <- weights_features |>
 
 ## Functions ####
 
-# Run CLARA clustering with standardization and return cluster object
-run_clara_clustering <- function(data, top_features, k_clusters, target_col,
-                                 seed = 42) {
-  # Extract feature data for clustering (numeric only)
-  clustering_data <- data |>
-    select(all_of(top_features)) |>
-    select(where(is.numeric))
+source("R/functions.R")
 
-  cat("Clustering data dimensions:", nrow(clustering_data), "x", ncol(clustering_data), "\n")
-
-  # Run CLARA clustering with standardized Euclidean distance
-  set.seed(seed)
-  clara_result <- clara(
-    x = clustering_data,
-    k = k_clusters,
-    metric = "euclidean",
-    stand = TRUE,
-    rngR = TRUE,
-    samples = 10,
-    sampsize = min(10e3, nrow(clustering_data) * 0.25),
-    trace = 1
+# Unit test: Verify prediction-to-sample distances are consistent
+if (run_tests) {
+  
+  cat("Running unit test: prediction-to-sample distance consistency...\n")
+  test_distances_1 <- calculate_prediction_distances(
+    training_data = mf_current,
+    prediction_data = mf_future_presence,
+    variable_name = top_feature,
+    sample_size = nrow(mf_current),  # Use full dataset
+    standardize = FALSE,
+    seed = 42
   )
-
-  return(clara_result)
-}
-
-# Single clustering approach: consolidate clusters into equal partitions
-create_single_clustering_partitions <- function(
-    data,
-    feature_cols,
-    target_col,
-    n_clusters,
-    n_partitions,
-    top_n_features,
-    feature_weights = NULL,
-    seed = 42) {
-
-  cat("Creating", n_clusters, "CLARA clusters for", n_partitions, "partitions...\n")
-
-  # Select features and run clustering
-  top_features <- select_clustering_features(
-    feature_cols, top_n_features, feature_weights
+  
+  test_distances_2 <- calculate_prediction_distances(
+    training_data = mf_current,
+    prediction_data = mf_future_presence,
+    variable_name = top_feature,
+    sample_size = nrow(mf_current),  # Use full dataset
+    standardize = FALSE,
+    seed = 42
   )
-  clara_result <- run_clara_clustering(
-    data, top_features, n_clusters, target_col, seed
-  )
-
-  # Calculate cluster statistics
-  cluster_stats <- data |>
-    mutate(cluster = factor(clara_result$clustering)) |>
-    group_by(cluster) |>
-    summarise(
-      n_total = n(),
-      n_presence = sum(.data[[target_col]] == 1),
-      prevalence = n_presence / n_total,
-      .groups = "drop"
-    )
-
-  cat("\nCluster summary:\n")
-  print(cluster_stats)
-
-  # Consolidate clusters into equal partitions
-  total_obs <- sum(cluster_stats$n_total)
-  target_size <- total_obs / n_partitions
-  overall_prevalence <- sum(cluster_stats$n_presence) / total_obs
-
-  # Greedy assignment to minimize size deviation
-  cluster_assignments <- rep(NA, nrow(cluster_stats))
-  partition_sizes <- rep(0, n_partitions)
-  partition_presence <- rep(0, n_partitions)
-
-  # Sort clusters by size (largest first) for better packing
-  cluster_order <- order(cluster_stats$n_total, decreasing = TRUE)
-
-  for (i in cluster_order) {
-    # Find partition with most remaining capacity
-    best_partition <- which.min(partition_sizes)
-    cluster_assignments[i] <- best_partition
-    partition_sizes[best_partition] <- partition_sizes[best_partition] + cluster_stats$n_total[i]
-    partition_presence[best_partition] <- partition_presence[best_partition] + cluster_stats$n_presence[i]
-  }
-
-  # Calculate partition prevalences and find best test partition
-  partition_prevalences <- partition_presence / partition_sizes
-  prevalence_diffs <- abs(partition_prevalences - overall_prevalence)
-  test_partition <- which.min(prevalence_diffs)
-
-  cat("\nPartition consolidation results:\n")
-  for (p in 1:n_partitions) {
-    cat(sprintf(
-      "Partition %d: %d obs (%.1f%%), %.3f prevalence%s\n",
-      p, partition_sizes[p], partition_sizes[p]/total_obs*100,
-      partition_prevalences[p],
-      ifelse(p == test_partition, " [TEST]", "")
-    ))
-  }
-
-  # Create final assignments
-  all_clusters <- clara_result$clustering
-  partition_assignments <- cluster_assignments[all_clusters]
-
-  # Create outer (test vs train) and inner (CV folds) partitions
-  outer_partitions <- ifelse(partition_assignments == test_partition, "test", "train")
-
-  # For inner partitions, renumber non-test partitions as CV folds
-  inner_partitions <- rep(NA, length(partition_assignments))
-  train_mask <- outer_partitions == "train"
-  if (sum(train_mask) > 0) {
-    train_partitions <- partition_assignments[train_mask]
-    unique_train_partitions <- sort(unique(train_partitions))
-    fold_mapping <- setNames(1:length(unique_train_partitions), unique_train_partitions)
-    inner_partitions[train_mask] <- fold_mapping[as.character(train_partitions)]
-  }
-
-  return(list(
-    outer_partitions = outer_partitions,
-    inner_partitions = inner_partitions,
-    clusters = all_clusters,
-    cluster_stats = cluster_stats,
-    test_partition_id = test_partition
-  ))
-}
-
-# Select features for clustering based on weights
-select_clustering_features <- function(
-    feature_cols, top_n_features, feature_weights = NULL) {
-  if (!is.null(feature_weights)) {
-    top_features <- feature_weights |>
-      sort(decreasing = TRUE) |>
-      head(top_n_features) |>
-      names()
-
-    cat("Using top", top_n_features, "features:", paste(top_features, collapse = ", "), "\n")
+  
+  # Check if prediction-to-sample distances are identical
+  pred_distances_match <- identical(test_distances_1$prediction_to_sample,
+                                    test_distances_2$prediction_to_sample)
+  sample_distances_match <- identical(test_distances_1$sample_to_sample,
+                                      test_distances_2$sample_to_sample)
+  
+  cat("Prediction-to-sample distances identical:", pred_distances_match, "\n")
+  cat("Sample-to-sample distances identical:", sample_distances_match, "\n")
+  
+  if (pred_distances_match && sample_distances_match) {
+    cat("✓ Unit test PASSED: Distance calculations are deterministic\n\n")
   } else {
-    top_features <- feature_cols[1:min(top_n_features, length(feature_cols))]
-    cat("No feature weights provided. Using first", length(top_features), "features\n")
+    cat("✗ Unit test FAILED: Distance calculations are not consistent\n")
+    cat("This suggests sampling or randomization issues in distance calculation\n\n")
   }
-
-  return(top_features)
+  
 }
 
-## Apply single CLARA clustering for partitioning ####
+## Systematic evaluation of k_clusters using W_CV minimization ####
 
 # Get feature column names (exclude response variable)
 feature_cols <- setdiff(names(mf_current), "response")
@@ -193,16 +133,111 @@ feature_cols <- setdiff(names(mf_current), "response")
 cat("Using feature weights for feature selection:\n")
 print(weights)
 
-# Create single CLARA clustering with consolidation
-partitioning_result <- create_single_clustering_partitions(
-  data = mf_current,
-  feature_cols = feature_cols,
-  target_col = "response",
-  n_clusters = 5,        # Number of CLARA clusters
-  n_partitions = 5,      # Number of partitions: 1 outer test, remaining inner CV
-  top_n_features = 1,    # Top features by weight
-  feature_weights = weights
+cat("Evaluating k_clusters range:", paste(k_range, collapse = ", "), "\n")
+
+# Pre-compute prediction distances (independent of k)
+cat("Pre-computing prediction distances...\n")
+top_features <- select_clustering_features(
+  feature_cols, 1, weights
 )
+
+precomputed_distances <- calculate_prediction_distances(
+  training_data = mf_current,
+  prediction_data = mf_future_presence,
+  variable_name = top_feature,
+  sample_size = featuredist_sample_size,
+  standardize = FALSE,
+  seed = 42
+)
+cat("Pre-computation complete.\n\n")
+
+# Systematic evaluation using tibble and purrr
+cat("Starting systematic evaluation of k_clusters...\n")
+clustering_evaluation <- tibble(k = k_range) |>
+  mutate(
+    results = map(k, ~evaluate_clustering_k(
+      k_clusters = .x,
+      data = mf_current,
+      precomputed_distances = precomputed_distances,
+      feature_weights = weights,
+      top_n_features = 1,
+      clara_max_sample_size = clara_max_sample_size,
+      clara_sample_fraction = clara_sample_fraction,
+      clara_samples = clara_samples,
+      featuredist_sample_size = featuredist_sample_size,
+      seed = 42
+    )),
+    W_CV = map_dbl(results, ~.x$W_CV),
+    silhouette = map_dbl(results, ~.x$silhouette),
+    top_feature = map_chr(results, ~.x$top_feature)
+  )
+
+# Display evaluation results
+cat("\nK-clusters evaluation results:\n")
+evaluation_summary <- clustering_evaluation |>
+  select(k, W_CV, silhouette, top_feature) |>
+  arrange(W_CV)
+print(evaluation_summary)
+
+# Visualization of evaluation results
+p1 <- ggplot(clustering_evaluation, aes(x = k, y = W_CV)) +
+  geom_line(color = "blue", linewidth = 1) +
+  geom_point(color = "blue", size = 2) +
+  geom_vline(xintercept = clustering_evaluation$k[which.min(clustering_evaluation$W_CV)],
+             linetype = "dashed", color = "red", alpha = 0.7) +
+  labs(
+    title = "W_CV vs Number of Clusters",
+    subtitle = paste("Optimal k =", clustering_evaluation$k[which.min(clustering_evaluation$W_CV)]),
+    x = "Number of clusters (k)",
+    y = "W_CV (scaled feature distance)"
+  ) +
+  theme_minimal()
+
+print(p1)
+
+plot(clustering_evaluation$results[[1]]$feature_dists, stat = "ecdf")
+clustering_evaluation$results[[1]]$feature_dists |> 
+  group_by(what) |> 
+  summarise(dist = median(dist))
+clustering_evaluation$results[[1]]$feature_dists |> 
+  ggplot(aes(x = dist, color = what)) +
+  stat_ecdf() +
+  coord_cartesian(xlim = c(0, 100))
+plot(clustering_evaluation$results[[2]]$feature_dists, stat = "ecdf")
+clustering_evaluation$results[[2]]$feature_dists |> 
+  group_by(what) |> 
+  summarise(dist = median(dist))
+clustering_evaluation$results[[2]]$feature_dists |> 
+  ggplot(aes(x = dist, color = what)) +
+  stat_ecdf() +
+  coord_cartesian(xlim = c(0, 100))
+plot(clustering_evaluation$results[[3]]$feature_dists, stat = "ecdf")
+clustering_evaluation$results[[3]]$feature_dists |> 
+  group_by(what) |> 
+  summarise(dist = median(dist))
+clustering_evaluation$results[[3]]$feature_dists |> 
+  ggplot(aes(x = dist, color = what)) +
+  stat_ecdf() +
+  coord_cartesian(xlim = c(0, 100))
+
+
+# Find optimal k (minimum W_CV)
+optimal_k <- clustering_evaluation$k[which.min(clustering_evaluation$W_CV)]
+cat("\nOptimal k_clusters (minimum W_CV):", optimal_k, "\n")
+
+# Save evaluation results
+write_csv(clustering_evaluation |> select(-results),
+          "output/pl2/k_clusters_evaluation.csv", append = FALSE)
+
+# Extract optimal partitioning result
+optimal_result <- clustering_evaluation |>
+  filter(k == optimal_k) |>
+  pull(results) |>
+  pluck(1)
+
+plot(optimal_result$feature_dists, stat = "ecdf")
+
+partitioning_result <- optimal_result$partition_result
 
 # Display results
 cat("\nOuter partition summary (test vs train):\n")
