@@ -14,7 +14,7 @@ library(CAST)
 # Streamlined feature distance function
 featuredist <- function(training_data, prediction_data, variable_name,
                         cvfold_column = NULL, sample_size = 1000,
-                        seed = NULL, normalize = FALSE) {
+                        seed = NULL, standardize = FALSE, scale_distances = FALSE) {
   
   # Set seed if provided
   if (!is.null(seed)) {
@@ -36,8 +36,8 @@ featuredist <- function(training_data, prediction_data, variable_name,
   train_clean <- train_var[!is.na(train_var)]
   pred_clean <- pred_var[!is.na(pred_var)]
   
-  # Normalize if requested
-  if (normalize) {
+  # Standardize if requested
+  if (standardize) {
     train_mean <- mean(train_clean)
     train_sd <- sd(train_clean)
     if (train_sd > 0) {
@@ -108,10 +108,18 @@ featuredist <- function(training_data, prediction_data, variable_name,
     result <- dplyr::bind_rows(result, cv_result)
   }
   
+  # Scale distances if requested
+  if (scale_distances) {
+    max_dist <- max(result$dist, na.rm = TRUE)
+    if (max_dist > 0) {
+      result$dist <- result$dist / max_dist
+    }
+  }
+
   # Set class and attributes similar to geodist
   class(result) <- c("geodist", class(result))
   attr(result, "type") <- "feature"
-  
+
   # Calculate W statistics
   W_sample <- twosamples::wass_stat(
     result[result$what == "sample-to-sample", "dist"][[1]],
@@ -405,13 +413,25 @@ dists <- featuredist(
   mf_current_presence[,"elevation"],
   mf_future_presence[,"elevation"],
   variable_name = "elevation",
-  normalize = FALSE,
+  standardize = FALSE,
   sample_size = 1e4)
+plot(dists, stat = "ecdf")
+attr(dists, "W_sample")
 plot(dists, type = "simple")
 dists |> 
   group_by(what) |>
   summarise(dist = median(dist))
 # Sample-to-sample do not include NN to self, while prediction-to-sample do
+
+dists <- featuredist(
+  mf_current_presence[,"elevation"],
+  mf_future_presence[,"elevation"],
+  variable_name = "elevation",
+  standardize = FALSE,
+  scale_distances = TRUE,
+  sample_size = 1e4)
+plot(dists, stat = "ecdf")
+attr(dists, "W_sample")
 
 ### With CV ####  
 
@@ -437,15 +457,25 @@ cv <- ggplot(mf_current_cut) +
   coord_cartesian(xlim = c(200, 600)) +
   theme_minimal()
 patchwork::wrap_plots(g1, cv, ncol = 1)
+
 dists <- featuredist(x, y, variable_name = names(weights)[1], 
-                     cvfold_column = "assignment")
+                     cvfold_column = "assignment", sample_size = 3e4,
+                     scale_distances = FALSE)
 dists |> 
   group_by(what) |>
   summarise(dist = median(dist))
-ggplot(dists) +
-  geom_density(aes(x = dist, color = what)) +
-  theme_minimal()
 plot(dists, stat = "ecdf")
+attr(dists, "W_sample")
+attr(dists, "W_CV")
+
+dists <- featuredist(x, y, variable_name = names(weights)[1],
+                     cvfold_column = "assignment", sample_size = 3e4,
+                     scale_distances = TRUE)
+dists |> 
+  group_by(what) |>
+  summarise(dist = median(dist))
+plot(dists, stat = "ecdf")
+attr(dists, "W_sample")
 attr(dists, "W_CV")
 
 ##### Unseparated CV folds ####
