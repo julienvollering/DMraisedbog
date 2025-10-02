@@ -12,6 +12,7 @@ library(ggplot2)
 library(sf)
 library(purrr)
 library(twosamples)
+library(CAST)
 
 ## Configuration: Subsampling for Performance Control ####
 
@@ -22,7 +23,7 @@ run_tests <- FALSE
 # Higher values = more accurate clustering but slower computation
 # Memory usage scales with sample size
 clara_max_sample_size <- 1e4      # Max samples for CLARA algorithm
-clara_sample_fraction <- 0.05     # Fraction of data to sample (if smaller than max)
+clara_sample_fraction <- 0.1     # Fraction of data to sample (if smaller than max)
 clara_samples <- 1                # Number of sample sets to draw and evaluate
 
 # Feature distance calculation subsampling
@@ -33,7 +34,7 @@ featuredist_sample_size <- 3e4     # Max samples for featuredist W_CV calculatio
 # Evaluation range
 # More k values = more thorough search but longer runtime
 # Runtime scales linearly with number of k values
-k_range <- seq(5, 50, by = 20)     # Range of k_clusters to evaluate
+k_range <- seq(5, 100, by = 20)     # Range of k_clusters to evaluate
 
 # Performance guidance:
 # - For exploration: use current defaults
@@ -137,8 +138,10 @@ cat("Evaluating k_clusters range:", paste(k_range, collapse = ", "), "\n")
 
 # Pre-compute prediction distances (independent of k)
 cat("Pre-computing prediction distances...\n")
-top_features <- select_clustering_features(
-  feature_cols, 1, weights
+top_feature <- select_clustering_features(
+  feature_cols,
+  1,
+  weights
 )
 
 precomputed_distances <- calculate_prediction_distances(
@@ -195,35 +198,19 @@ p1 <- ggplot(clustering_evaluation, aes(x = k, y = W_CV)) +
 
 print(p1)
 
-plot(clustering_evaluation$results[[1]]$feature_dists, stat = "ecdf")
-clustering_evaluation$results[[1]]$feature_dists |> 
-  group_by(what) |> 
-  summarise(dist = median(dist))
-clustering_evaluation$results[[1]]$feature_dists |> 
-  ggplot(aes(x = dist, color = what)) +
-  stat_ecdf() +
-  coord_cartesian(xlim = c(0, 100))
-plot(clustering_evaluation$results[[2]]$feature_dists, stat = "ecdf")
-clustering_evaluation$results[[2]]$feature_dists |> 
-  group_by(what) |> 
-  summarise(dist = median(dist))
-clustering_evaluation$results[[2]]$feature_dists |> 
-  ggplot(aes(x = dist, color = what)) +
-  stat_ecdf() +
-  coord_cartesian(xlim = c(0, 100))
-plot(clustering_evaluation$results[[3]]$feature_dists, stat = "ecdf")
-clustering_evaluation$results[[3]]$feature_dists |> 
-  group_by(what) |> 
-  summarise(dist = median(dist))
-clustering_evaluation$results[[3]]$feature_dists |> 
-  ggplot(aes(x = dist, color = what)) +
-  stat_ecdf() +
-  coord_cartesian(xlim = c(0, 100))
-
-
 # Find optimal k (minimum W_CV)
 optimal_k <- clustering_evaluation$k[which.min(clustering_evaluation$W_CV)]
 cat("\nOptimal k_clusters (minimum W_CV):", optimal_k, "\n")
+
+dists_optimal <- clustering_evaluation$results[[which.min(clustering_evaluation$W_CV)]]$feature_dists
+plot(dists_optimal, stat = "ecdf")
+dists_optimal |> 
+  group_by(what) |> 
+  summarise(dist = median(dist))
+dists_optimal |> 
+  ggplot(aes(x = dist, color = what)) +
+  stat_ecdf() + 
+  coord_cartesian(xlim = c(0, 10)) 
 
 # Save evaluation results
 write_csv(clustering_evaluation |> select(-results),
