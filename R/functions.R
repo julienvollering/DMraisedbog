@@ -11,6 +11,131 @@ library(twosamples)
 
 ## Functions ####
 
+# Quantile cut-based partitioning with probabilistic interleaving/segregation
+create_cut_based_partitions <- function(
+    data,
+    feature_cols,
+    target_col,
+    n_cuts,
+    n_partitions = 5,
+    segregation_prob = 0,
+    top_n_features = 1,
+    feature_weights = NULL,
+    seed = 42) {
+
+  cat("Creating", n_partitions, "partitions using", n_cuts, "quantile cuts",
+      "(segregation_prob =", segregation_prob, ")...\n")
+
+  # Select top feature(s)
+  top_features <- select_clustering_features(
+    feature_cols, top_n_features, feature_weights
+  )
+
+  # For now, use only the top feature (single variable)
+  if (length(top_features) > 1) {
+    cat("Note: Using only top feature:", top_features[1], "\n")
+  }
+  top_feature <- top_features[1]
+
+  # Extract feature values
+  feature_values <- data[[top_feature]]
+
+  # Create quantile-based cuts
+  quantile_breaks <- quantile(feature_values,
+                              probs = seq(0, 1, length.out = n_cuts + 1),
+                              na.rm = TRUE)
+
+  # Handle case where quantiles are not unique (can happen with discrete data)
+  quantile_breaks <- unique(quantile_breaks)
+  actual_cuts <- length(quantile_breaks) - 1
+
+  if (actual_cuts < n_cuts) {
+    cat("Warning: Only", actual_cuts, "unique quantile breaks found (requested", n_cuts, ")\n")
+  }
+
+  intervals <- cut(feature_values,
+                   breaks = quantile_breaks,
+                   labels = FALSE,
+                   include.lowest = TRUE)
+
+  # Probabilistic interleaving/segregation assignment
+  # segregation_prob = 0: Pure interleaving (all intervals distributed round-robin)
+  # segregation_prob = 1: Maximum segregation (intervals form contiguous blocks)
+
+  set.seed(seed)
+  unique_intervals_ordered <- sort(unique(intervals))
+  interval_to_partition <- integer(length(unique_intervals_ordered))
+
+  for (i in seq_along(unique_intervals_ordered)) {
+    if (runif(1) < segregation_prob) {
+      # SEGREGATE: Join contiguous block (inherit previous partition)
+      if (i == 1) {
+        interval_to_partition[i] <- sample(1:n_partitions, 1)
+      } else {
+        interval_to_partition[i] <- interval_to_partition[i - 1]
+      }
+    } else {
+      # INTERLEAVE: Round-robin assignment
+      interval_to_partition[i] <- ((i - 1) %% n_partitions) + 1
+    }
+  }
+
+  # Map intervals to their assigned partitions
+  partition_assignments <- interval_to_partition[intervals]
+
+  # Calculate partition statistics
+  partition_stats <- data |>
+    mutate(partition = factor(partition_assignments)) |>
+    group_by(partition) |>
+    summarise(
+      n_total = n(),
+      n_presence = sum(.data[[target_col]] == 1),
+      prevalence = n_presence / n_total,
+      .groups = "drop"
+    )
+
+  cat("\nPartition summary:\n")
+  print(partition_stats)
+
+  # Find test partition (closest to overall prevalence)
+  overall_prevalence <- sum(partition_stats$n_presence) / sum(partition_stats$n_total)
+  prevalence_diffs <- abs(partition_stats$prevalence - overall_prevalence)
+  test_partition <- which.min(prevalence_diffs)
+
+  cat("\nTest partition assignment:\n")
+  for (p in 1:n_partitions) {
+    cat(sprintf(
+      "Partition %d: %d obs (%.1f%%), %.3f prevalence%s\n",
+      p, partition_stats$n_total[p],
+      partition_stats$n_total[p]/sum(partition_stats$n_total)*100,
+      partition_stats$prevalence[p],
+      ifelse(p == test_partition, " [TEST]", "")
+    ))
+  }
+
+  # Create outer (test vs train) and inner (CV folds) partitions
+  outer_partitions <- ifelse(partition_assignments == test_partition, "test", "train")
+
+  # For inner partitions, renumber non-test partitions as CV folds
+  inner_partitions <- rep(NA, length(partition_assignments))
+  train_mask <- outer_partitions == "train"
+  if (sum(train_mask) > 0) {
+    train_partitions <- partition_assignments[train_mask]
+    unique_train_partitions <- sort(unique(train_partitions))
+    fold_mapping <- setNames(1:length(unique_train_partitions), unique_train_partitions)
+    inner_partitions[train_mask] <- fold_mapping[as.character(train_partitions)]
+  }
+
+  return(list(
+    outer_partitions = outer_partitions,
+    inner_partitions = inner_partitions,
+    clusters = intervals,  # Return interval assignments for compatibility
+    partition_stats = partition_stats,
+    test_partition_id = test_partition,
+    silhouette = NA  # No silhouette for cut-based approach
+  ))
+}
+
 # Run CLARA clustering with standardization and return cluster object
 run_clara_clustering <- function(data, top_features, k_clusters, target_col,
                                  max_sample_size = 10e3, sample_fraction = 0.25,
@@ -156,6 +281,105 @@ select_clustering_features <- function(
   }
 
   return(top_features)
+}
+
+# Evaluate cut-based partitioning for a given n_cuts and segregation_prob
+evaluate_cut_partitioning <- function(
+    n_cuts,
+    segregation_prob = 0,
+    data,
+    precomputed_distances,
+    feature_weights,
+    top_n_features = 1,
+    featuredist_sample_size = 1e4,
+    seed = 42) {
+
+  cat("Evaluating n_cuts =", n_cuts, ", segregation_prob =", segregation_prob, "...\n")
+
+  # Create partitions using cut-based approach
+  partition_result <- create_cut_based_partitions(
+    data = data,
+    feature_cols = setdiff(names(data), "response"),
+    target_col = "response",
+    n_cuts = n_cuts,
+    n_partitions = 5,  # Keep 5 partitions (1 test + 4 CV)
+    segregation_prob = segregation_prob,
+    top_n_features = top_n_features,
+    feature_weights = feature_weights,
+    seed = seed
+  )
+
+  # Get top feature name (should match precomputed distances)
+  top_features <- select_clustering_features(
+    setdiff(names(data), "response"),
+    top_n_features,
+    feature_weights
+  )
+  top_feature <- top_features[1]
+
+  # Prepare data for CV distance calculation
+  # Create combined partition assignments: test partition gets its own ID
+  all_partitions <- partition_result$outer_partitions
+  combined_folds <- ifelse(all_partitions == "test",
+                           0,  # Assign test partition to fold 0
+                           partition_result$inner_partitions)
+
+  # Calculate CV distances for this n_cuts across all outer partitions
+  cv_dists <- calculate_cv_distances(
+    training_data = data,
+    variable_name = top_feature,
+    cv_folds = combined_folds,
+    sample_size = featuredist_sample_size,
+    standardize = FALSE,
+    seed = seed
+  )
+
+  # Debug: Print CV distance statistics
+  cat("CV distances - n:", length(cv_dists),
+      ", mean:", round(mean(cv_dists, na.rm = TRUE), 4),
+      ", range:", round(range(cv_dists, na.rm = TRUE), 4), "\n")
+
+  # Combine all distances and create result structure (unscaled)
+  all_dists <- c(precomputed_distances$sample_to_sample,
+                 precomputed_distances$prediction_to_sample,
+                 cv_dists)
+
+  distance_types <- factor(c(
+    rep("sample-to-sample", length(precomputed_distances$sample_to_sample)),
+    rep("prediction-to-sample", length(precomputed_distances$prediction_to_sample)),
+    rep("CV-distances", length(cv_dists))
+  ), levels = c("sample-to-sample", "prediction-to-sample", "CV-distances"))
+
+  # Create feature_dists result structure for compatibility (no scaling)
+  feature_dists <- tibble::tibble(
+    dist = all_dists,
+    what = distance_types,
+    dist_type = "feature"
+  )
+
+  # Set class and attributes similar to featuredist output
+  class(feature_dists) <- c("geodist", class(feature_dists))
+  attr(feature_dists, "type") <- "feature"
+
+  # Calculate W_CV statistic
+  W_CV <- twosamples::wass_stat(
+    feature_dists[feature_dists$what == "CV-distances", "dist"][[1]],
+    feature_dists[feature_dists$what == "prediction-to-sample", "dist"][[1]]
+  )
+
+  # Print results
+  cat("n_cuts =", n_cuts, ", segregation_prob =", segregation_prob,
+      "-> W_CV =", round(W_CV, 4), "\n\n")
+
+  return(list(
+    n_cuts = n_cuts,
+    segregation_prob = segregation_prob,
+    partition_result = partition_result,
+    W_CV = W_CV,
+    silhouette = NA,  # Not applicable for cut-based approach
+    top_feature = top_feature,
+    feature_dists = feature_dists
+  ))
 }
 
 # Evaluate clustering for a given k and return W_CV statistic
