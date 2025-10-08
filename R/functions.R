@@ -62,20 +62,35 @@ create_cut_based_partitions <- function(
   # segregation_prob = 0: Pure interleaving (all intervals distributed round-robin)
   # segregation_prob = 1: Maximum segregation (intervals form contiguous blocks)
 
+  # REVISED: Guarantee all n_partitions are non-empty by assigning first n_partitions intervals
+  # one-per-partition, then apply probabilistic logic to remaining intervals
+
   set.seed(seed)
   unique_intervals_ordered <- sort(unique(intervals))
-  interval_to_partition <- integer(length(unique_intervals_ordered))
+  n_intervals <- length(unique_intervals_ordered)
+  interval_to_partition <- integer(n_intervals)
 
-  for (i in seq_along(unique_intervals_ordered)) {
-    if (runif(1) < segregation_prob) {
-      # SEGREGATE: Join contiguous block (inherit previous partition)
-      if (i == 1) {
-        interval_to_partition[i] <- sample(1:n_partitions, 1)
-      } else {
-        interval_to_partition[i] <- interval_to_partition[i - 1]
+  # Step 1: Assign first n_partitions intervals (one per partition) to guarantee coverage
+  if (n_intervals >= n_partitions) {
+    interval_to_partition[1:n_partitions] <- 1:n_partitions
+
+    # Step 2: Apply probabilistic logic to remaining intervals
+    if (n_intervals > n_partitions) {
+      for (i in (n_partitions + 1):n_intervals) {
+        if (runif(1) < segregation_prob) {
+          # SEGREGATE: Join contiguous block (inherit previous partition)
+          interval_to_partition[i] <- interval_to_partition[i - 1]
+        } else {
+          # INTERLEAVE: Round-robin assignment
+          interval_to_partition[i] <- ((i - 1) %% n_partitions) + 1
+        }
       }
-    } else {
-      # INTERLEAVE: Round-robin assignment
+    }
+  } else {
+    # Edge case: fewer intervals than partitions
+    # Assign round-robin (some partitions will be empty)
+    cat("Warning: Only", n_intervals, "intervals but", n_partitions, "partitions requested.\n")
+    for (i in seq_along(unique_intervals_ordered)) {
       interval_to_partition[i] <- ((i - 1) %% n_partitions) + 1
     }
   }
@@ -97,41 +112,20 @@ create_cut_based_partitions <- function(
   cat("\nPartition summary:\n")
   print(partition_stats)
 
-  # Find test partition (closest to overall prevalence)
-  overall_prevalence <- sum(partition_stats$n_presence) / sum(partition_stats$n_total)
-  prevalence_diffs <- abs(partition_stats$prevalence - overall_prevalence)
-  test_partition <- which.min(prevalence_diffs)
-
-  cat("\nTest partition assignment:\n")
+  cat("\nPartition assignment:\n")
   for (p in 1:n_partitions) {
     cat(sprintf(
-      "Partition %d: %d obs (%.1f%%), %.3f prevalence%s\n",
+      "Partition %d: %d obs (%.1f%%), %.3f prevalence\n",
       p, partition_stats$n_total[p],
       partition_stats$n_total[p]/sum(partition_stats$n_total)*100,
-      partition_stats$prevalence[p],
-      ifelse(p == test_partition, " [TEST]", "")
+      partition_stats$prevalence[p]
     ))
   }
 
-  # Create outer (test vs train) and inner (CV folds) partitions
-  outer_partitions <- ifelse(partition_assignments == test_partition, "test", "train")
-
-  # For inner partitions, renumber non-test partitions as CV folds
-  inner_partitions <- rep(NA, length(partition_assignments))
-  train_mask <- outer_partitions == "train"
-  if (sum(train_mask) > 0) {
-    train_partitions <- partition_assignments[train_mask]
-    unique_train_partitions <- sort(unique(train_partitions))
-    fold_mapping <- setNames(1:length(unique_train_partitions), unique_train_partitions)
-    inner_partitions[train_mask] <- fold_mapping[as.character(train_partitions)]
-  }
-
   return(list(
-    outer_partitions = outer_partitions,
-    inner_partitions = inner_partitions,
+    partitions = partition_assignments,
     clusters = intervals,  # Return interval assignments for compatibility
     partition_stats = partition_stats,
-    test_partition_id = test_partition,
     silhouette = NA  # No silhouette for cut-based approach
   ))
 }
@@ -317,18 +311,14 @@ evaluate_cut_partitioning <- function(
   )
   top_feature <- top_features[1]
 
-  # Prepare data for CV distance calculation
-  # Create combined partition assignments: test partition gets its own ID
-  all_partitions <- partition_result$outer_partitions
-  combined_folds <- ifelse(all_partitions == "test",
-                           0,  # Assign test partition to fold 0
-                           partition_result$inner_partitions)
+  # Use partition assignments directly as CV folds
+  cv_folds <- partition_result$partitions
 
-  # Calculate CV distances for this n_cuts across all outer partitions
+  # Calculate CV distances across all partitions
   cv_dists <- calculate_cv_distances(
     training_data = data,
     variable_name = top_feature,
-    cv_folds = combined_folds,
+    cv_folds = cv_folds,
     sample_size = featuredist_sample_size,
     standardize = FALSE,
     seed = seed
@@ -722,4 +712,400 @@ calculate_cv_distances <- function(training_data, variable_name, cv_folds,
   }
 
   return(cv_dists)
+}
+
+
+# Function to calculate G-mean from predictions and true values
+# Robust to factor level ordering by explicitly identifying positive/negative classes
+calculate_gmean <- function(predicted_class, true_class) {
+  # Convert to character to avoid factor level issues
+  predicted_class <- as.character(predicted_class)
+  true_class <- as.character(true_class)
+  
+  # Create confusion matrix
+  cm <- table(Actual = true_class, Predicted = predicted_class)
+  
+  if(nrow(cm) == 2 && ncol(cm) == 2) {
+    # Explicitly identify which row/column corresponds to positive class ("1")
+    pos_row <- which(rownames(cm) == "1")
+    pos_col <- which(colnames(cm) == "1")
+    neg_row <- which(rownames(cm) == "0")
+    neg_col <- which(colnames(cm) == "0")
+    
+    # Handle case where positive or negative class is missing
+    if(length(pos_row) == 0 || length(pos_col) == 0 ||
+       length(neg_row) == 0 || length(neg_col) == 0) {
+      tpr <- 0
+      tnr <- 0
+      gmean <- 0
+    } else {
+      # Extract confusion matrix values using explicit indexing
+      tp <- cm[pos_row, pos_col]  # True positives
+      fn <- cm[pos_row, neg_col]  # False negatives
+      fp <- cm[neg_row, pos_col]  # False positives
+      tn <- cm[neg_row, neg_col]  # True negatives
+      
+      # Calculate TPR and TNR
+      tpr <- tp / (tp + fn)  # Sensitivity
+      tnr <- tn / (tn + fp)  # Specificity
+      
+      # Calculate G-mean
+      gmean <- sqrt(tpr * tnr)
+    }
+  } else {
+    # Handle edge cases (only one class present)
+    tpr <- 0
+    tnr <- 0
+    gmean <- 0
+  }
+  
+  return(list(gmean = gmean, tpr = tpr, tnr = tnr))
+}
+
+# Function to calculate comprehensive metrics at a specific threshold
+# Robust to factor level ordering and edge cases
+get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
+  # Convert probabilities to class predictions using threshold
+  predicted_class <- ifelse(predicted_prob >= threshold, "1", "0")
+
+  # Convert to character to avoid factor level issues
+  predicted_class <- as.character(predicted_class)
+  true_class <- as.character(true_class)
+
+  # Create confusion matrix
+  cm <- table(Actual = true_class, Predicted = predicted_class)
+
+  if(nrow(cm) == 2 && ncol(cm) == 2) {
+    # Explicitly identify which row/column corresponds to positive class ("1")
+    pos_row <- which(rownames(cm) == "1")
+    pos_col <- which(colnames(cm) == "1")
+    neg_row <- which(rownames(cm) == "0")
+    neg_col <- which(colnames(cm) == "0")
+
+    # Handle case where positive or negative class is missing
+    if(length(pos_row) == 0 || length(pos_col) == 0 ||
+       length(neg_row) == 0 || length(neg_col) == 0) {
+      tpr <- 0
+      fpr <- 0
+      tnr <- 0
+      fnr <- 0
+      gmean <- 0
+    } else {
+      # Extract confusion matrix values using explicit indexing
+      tp <- cm[pos_row, pos_col]  # True positives
+      fn <- cm[pos_row, neg_col]  # False negatives
+      fp <- cm[neg_row, pos_col]  # False positives
+      tn <- cm[neg_row, neg_col]  # True negatives
+
+      # Calculate all metrics
+      tpr <- tp / (tp + fn)  # Sensitivity = TPR = 1 - FNR
+      tnr <- tn / (tn + fp)  # Specificity = TNR = 1 - FPR
+      fpr <- fp / (fp + tn)  # False positive rate = 1 - TNR
+      fnr <- fn / (fn + tp)  # False negative rate = 1 - TPR
+
+      # Calculate G-mean
+      gmean <- sqrt(tpr * tnr)
+    }
+  } else {
+    # Handle edge cases (only one class present in predictions or true labels)
+    # Check which class is missing to provide appropriate metrics
+    if(nrow(cm) == 1 || ncol(cm) == 1) {
+      # Some calculations may still be possible
+      actual_classes <- rownames(cm)
+      predicted_classes <- colnames(cm)
+
+      if("1" %in% actual_classes && "1" %in% predicted_classes) {
+        # Only positive class present
+        tp <- cm["1", "1"]
+        tpr <- 1.0  # All positives correctly predicted
+        fnr <- 0.0
+        fpr <- NA   # No negatives to calculate
+        tnr <- NA
+      } else if("0" %in% actual_classes && "0" %in% predicted_classes) {
+        # Only negative class present
+        tn <- cm["0", "0"]
+        tnr <- 1.0  # All negatives correctly predicted
+        fpr <- 0.0
+        tpr <- NA   # No positives to calculate
+        fnr <- NA
+      } else {
+        # Complete mismatch
+        tpr <- 0
+        fpr <- 1
+        tnr <- 0
+        fnr <- 1
+      }
+      gmean <- 0  # Cannot calculate meaningful G-mean
+    } else {
+      # Completely empty or malformed
+      tpr <- 0
+      fpr <- 0
+      tnr <- 0
+      fnr <- 0
+      gmean <- 0
+    }
+  }
+
+  return(data.frame(
+    TPR = tpr,
+    FPR = fpr,
+    TNR = tnr,
+    FNR = fnr,
+    Gmean = gmean
+  ))
+}
+
+# Function to calculate classification thresholds using ROCR
+# Returns three thresholds: default (G-mean optimal or implicit), sens95, spec95
+calculate_classification_thresholds <- function(
+    predicted_prob,
+    true_labels,
+    method = c("gmean", "implicit"),
+    implicit_class = NULL,
+    target_sensitivity = 0.95,
+    target_specificity = 0.95) {
+
+  method <- match.arg(method)
+
+  # Convert to numeric for ROCR
+  true_numeric <- as.numeric(as.character(true_labels))
+
+  # Create ROCR prediction object
+  pred_obj <- ROCR::prediction(predicted_prob, true_numeric)
+
+  # Extract performance metrics
+  # Note: ROCR orders thresholds from high to low (Inf -> -Inf)
+  # TPR increases as threshold decreases (low -> high index)
+  # TNR decreases as threshold decreases (low -> high index)
+  tpr_values <- ROCR::performance(pred_obj, "tpr")@y.values[[1]]
+  tnr_values <- ROCR::performance(pred_obj, "tnr")@y.values[[1]]
+  all_thresholds <- ROCR::performance(pred_obj, "tpr")@x.values[[1]]
+
+  # 1. Calculate default threshold based on method
+  if (method == "gmean") {
+    # G-mean optimal threshold (for BRF)
+    gmean_values <- sqrt(tpr_values * tnr_values)
+    optimal_idx <- which.max(gmean_values)
+    threshold_default <- all_thresholds[optimal_idx]
+
+  } else if (method == "implicit") {
+    # Implicit threshold from class predictions (for RFQ)
+    if (is.null(implicit_class)) {
+      stop("implicit_class must be provided when method = 'implicit'")
+    }
+    predicted_positives <- implicit_class == "1"
+    if (sum(predicted_positives) > 0) {
+      threshold_default <- min(predicted_prob[predicted_positives])
+    } else {
+      threshold_default <- 0.5  # Fallback
+    }
+  }
+
+  # 2. High sensitivity threshold: TPR >= target_sensitivity
+  # Get FIRST threshold where TPR >= target (highest threshold = max specificity)
+  sens_candidates <- which(tpr_values >= target_sensitivity)
+  if (length(sens_candidates) > 0) {
+    threshold_sens <- all_thresholds[sens_candidates[1]]
+  } else {
+    # If target sensitivity not achievable, use highest sensitivity
+    threshold_sens <- all_thresholds[which.max(tpr_values)]
+    cat("Warning:", target_sensitivity * 100, "% sensitivity not achievable, using max TPR =",
+        round(max(tpr_values), 3), "\n")
+  }
+
+  # 3. High specificity threshold: TNR >= target_specificity
+  # Get LAST threshold where TNR >= target (lowest threshold = max sensitivity)
+  spec_candidates <- which(tnr_values >= target_specificity)
+  if (length(spec_candidates) > 0) {
+    threshold_spec <- all_thresholds[spec_candidates[length(spec_candidates)]]
+  } else {
+    # If target specificity not achievable, use highest specificity
+    threshold_spec <- all_thresholds[which.max(tnr_values)]
+    cat("Warning:", target_specificity * 100, "% specificity not achievable, using max TNR =",
+        round(max(tnr_values), 3), "\n")
+  }
+
+  return(list(
+    threshold_default = threshold_default,
+    threshold_sens = threshold_sens,
+    threshold_spec = threshold_spec
+  ))
+}
+
+## Model training functions ####
+
+# Function to train a BRF model with threshold optimization
+train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_partition = 1) {
+
+  cat("Job", job_id, "- BRF Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+
+  # Split data by partition (exclude test_partition from all tuning)
+  # train_fold: all partitions except cv_fold and test_partition
+  # val_fold: only cv_fold partition
+  train_fold <- train_data |>
+    filter(partition != test_partition, partition != cv_fold) |>
+    select(-partition) |>
+    as.data.frame()
+
+  val_fold <- train_data |>
+    filter(partition == cv_fold) |>
+    select(-partition) |>
+    as.data.frame()
+  
+  # Convert response to factor with explicit levels (0, 1) for consistency
+  train_fold$response <- factor(as.character(train_fold$response), levels = c("0", "1"))
+  val_fold$response <- factor(as.character(val_fold$response), levels = c("0", "1"))
+  
+  # Ensure ar50 is properly handled as factor if it exists
+  if("ar50" %in% names(train_fold)) {
+    train_fold$ar50 <- as.factor(as.character(train_fold$ar50))
+    val_fold$ar50 <- as.factor(as.character(val_fold$ar50))
+  }
+  
+  # Calculate class sizes for balanced sampling
+  n_presence <- sum(train_fold$response == "1")
+  n_absence <- sum(train_fold$response == "0")
+  balanced_size <- min(n_presence, n_absence)
+  
+  # Train BRF model with balanced sampling
+  model <- randomForest::randomForest(
+    formula = response ~ .,
+    data = train_fold,
+    ntree = 1000,
+    mtry = mtry,
+    nodesize = nodesize,
+    sampsize = c(balanced_size, balanced_size),  # Balanced sampling
+    replace = TRUE,
+    importance = FALSE,
+    do.trace = FALSE
+  )
+  
+  # Get predictions on training fold for threshold optimization
+  train_pred_prob <- predict(model, newdata = train_fold, type = "prob")[, "1"]
+  train_true <- as.numeric(as.character(train_fold$response))
+  
+  # Optimize threshold using ROCR on training folds
+  pred_obj <- ROCR::prediction(train_pred_prob, train_true)
+  
+  # Calculate G-mean for all possible thresholds
+  tpr_values <- ROCR::performance(pred_obj, "tpr")@y.values[[1]]
+  tnr_values <- ROCR::performance(pred_obj, "tnr")@y.values[[1]]
+  gmean_values <- sqrt(tpr_values * tnr_values)
+  
+  # Find optimal threshold
+  optimal_idx <- which.max(gmean_values)
+  optimal_threshold <- ROCR::performance(pred_obj, "tpr")@x.values[[1]][optimal_idx]
+  
+  # Get predictions on validation fold
+  val_pred_prob <- predict(model, newdata = val_fold, type = "prob")[, "1"]
+  val_pred_class <- ifelse(val_pred_prob >= optimal_threshold, "1", "0")
+  val_true <- as.character(val_fold$response)
+  
+  # Calculate G-mean on validation set with optimal threshold
+  metrics <- calculate_gmean(val_pred_class, val_true)
+  gmean <- metrics$gmean
+  tpr <- metrics$tpr
+  tnr <- metrics$tnr
+  
+  # Create result row
+  result <- data.frame(
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    model_type = "BRF",
+    cv_fold = cv_fold,
+    mtry = mtry,
+    nodesize = nodesize,
+    gmean = gmean,
+    tpr = tpr,
+    tnr = tnr,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to CSV immediately
+  write_csv(result, progress_file, append = TRUE)
+  cat("  Job", job_id, "completed - G-mean:", round(gmean, 4), "\n")
+  
+  return(result)
+}
+
+# Function to train a RFQ model (existing approach)
+train_rfq_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_partition = 1) {
+
+  cat("Job", job_id, "- RFQ Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+
+  # Split data by partition (exclude test_partition from all tuning)
+  # train_fold: all partitions except cv_fold and test_partition
+  # val_fold: only cv_fold partition
+  train_fold <- train_data |>
+    filter(partition != test_partition, partition != cv_fold) |>
+    select(-partition) |>
+    as.data.frame()  # Convert tibble to data.frame for imbalanced()
+
+  val_fold <- train_data |>
+    filter(partition == cv_fold) |>
+    select(-partition) |>
+    as.data.frame()  # Convert tibble to data.frame for imbalanced()
+  
+  # Convert response to factor with explicit levels (0, 1) for consistency
+  train_fold$response <- factor(as.character(train_fold$response), levels = c("0", "1"))
+  val_fold$response <- factor(as.character(val_fold$response), levels = c("0", "1"))
+  
+  # Ensure ar50 is properly handled as factor if it exists
+  if("ar50" %in% names(train_fold)) {
+    train_fold$ar50 <- as.factor(as.character(train_fold$ar50))
+    val_fold$ar50 <- as.factor(as.character(val_fold$ar50))
+  }
+  
+  # Train model with current parameters
+  model <- randomForestSRC::imbalanced(
+    formula = response ~ .,
+    data = train_fold,
+    ntree = 3000,
+    mtry = mtry,
+    nodesize = nodesize,
+    importance = FALSE,  # Skip importance for speed during tuning
+    do.trace = FALSE
+  )
+  
+  # Predict on validation set
+  pred <- predict(model, newdata = val_fold)
+  
+  # Calculate G-mean on validation set
+  pred_class <- pred$class
+  true_class <- val_fold$response
+  
+  # Calculate G-mean using common function
+  metrics <- calculate_gmean(pred_class, true_class)
+  gmean <- metrics$gmean
+  tpr <- metrics$tpr
+  tnr <- metrics$tnr
+  
+  # Create result row
+  result <- data.frame(
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    model_type = "RFQ",
+    cv_fold = cv_fold,
+    mtry = mtry,
+    nodesize = nodesize,
+    gmean = gmean,
+    tpr = tpr,
+    tnr = tnr,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to CSV immediately
+  write_csv(result, progress_file, append = TRUE)
+  cat("  Job", job_id, "completed - G-mean:", round(gmean, 4), "\n")
+  
+  return(result)
+}
+
+# Unified function to train either model type
+train_single_model <- function(cv_fold, model_type, mtry, nodesize, job_id, train_data, test_partition = 1) {
+  if(model_type == "BRF") {
+    return(train_brf_model(cv_fold, mtry, nodesize, job_id, train_data, test_partition))
+  } else if(model_type == "RFQ") {
+    return(train_rfq_model(cv_fold, mtry, nodesize, job_id, train_data, test_partition))
+  } else {
+    stop("Unknown model_type: ", model_type)
+  }
 }
