@@ -23,7 +23,7 @@ source("R/functions.R")
 
 # Select which partitioning schemes to evaluate
 # Options: "importance", "pca", "maxshift"
-partitioning_schemes <- c("importance")
+partitioning_schemes <- c("importance", "pca", "maxshift")
 
 cat("Partitioning schemes to evaluate:", paste(partitioning_schemes, collapse = ", "), "\n\n")
 
