@@ -4,13 +4,20 @@ library(sf)
 # Imagery listed in reports
 lyngstad1 <- read_csv("data/NiB/lyngstad-tabell3.csv", col_types = 'ccdcc')
 # Imagery not listed in reports but included in the dataset
-lyngstad2 <- read_csv("data/NiB/lyngstad-tabell3mangler.csv", col_types = 'ccdcc')
+lyngstad2 <- read_csv(
+  "data/NiB/lyngstad-tabell3mangler.csv",
+  col_types = 'ccdcc'
+)
 lyngstad <- bind_rows(lyngstad1, lyngstad2)
 
-gpkgfiles <- list.files("data/NiB/", pattern = '.gpkg', full.names = TRUE, 
-                        recursive = TRUE)
-polygons <- gpkgfiles |> 
-  map(st_read) |> 
+gpkgfiles <- list.files(
+  "data/NiB/",
+  pattern = '.gpkg',
+  full.names = TRUE,
+  recursive = TRUE
+)
+polygons <- gpkgfiles |>
+  map(st_read) |>
   bind_rows()
 
 # Clean and standardize the stripe numbers in both datasets
@@ -19,9 +26,11 @@ polygons <- gpkgfiles |>
 # First, clean the polygons dataset
 polygons_clean <- polygons %>%
   mutate(
-    # For regular numeric stripes, convert to character 
+    # For regular numeric stripes, convert to character
     stripenummer_clean = case_when(
-      str_detect(stripenummer,"^\\d+$") ~ as.character(as.numeric(stripenummer)), # Normalize numeric values
+      str_detect(stripenummer, "^\\d+$") ~ as.character(as.numeric(
+        stripenummer
+      )), # Normalize numeric values
       TRUE ~ as.character(stripenummer) # Keep other formats as is
     )
   )
@@ -59,17 +68,15 @@ lyngstad_clean <- lyngstad %>%
 # Function to expand ranges
 expand_number_ranges <- function(df) {
   # Extract special "alle" cases - these will be handled separately
-  alle_cases <- df %>% 
+  alle_cases <- df %>%
     filter(number == "alle") %>%
-    mutate(is_alle = TRUE,
-           bildenummer = "match_all") # Placeholder value
-  
+    mutate(is_alle = TRUE, bildenummer = "match_all") # Placeholder value
+
   # For non-ranges (and not "alle"), keep as is
-  non_ranges <- df %>% 
+  non_ranges <- df %>%
     filter(!is_range & number != "alle") %>%
-    mutate(bildenummer = number,
-           is_alle = FALSE)
-  
+    mutate(bildenummer = number, is_alle = FALSE)
+
   # For ranges, expand into individual numbers
   ranges <- df %>%
     filter(is_range & number != "alle") %>%
@@ -82,10 +89,9 @@ expand_number_ranges <- function(df) {
       expanded = list(seq(start_num, end_num))
     ) %>%
     unnest(expanded) %>%
-    mutate(bildenummer = as.character(expanded),
-           is_alle = FALSE) %>%
+    mutate(bildenummer = as.character(expanded), is_alle = FALSE) %>%
     select(-expanded)
-  
+
   # Combine the datasets
   bind_rows(alle_cases, non_ranges, ranges)
 }
@@ -94,15 +100,19 @@ lyngstad_expanded <- expand_number_ranges(lyngstad_clean)
 
 # Step 2: Filter the original polygons to include rows that match the reference data
 # Split reference data into "alle" records and specific records
-lyngstad_alle <- lyngstad_expanded %>% 
-  filter(is_alle == TRUE) %>%
-  select(nib_project_id, stripe_clean)
-
 lyngstad_specific <- lyngstad_expanded %>%
   filter(is_alle == FALSE) %>%
   select(nib_project_id, stripe_clean, bildenummer) %>%
   # Convert bildenummer to character to ensure matching
   mutate(bildenummer = as.character(bildenummer))
+
+lyngstad_alle <- lyngstad_expanded %>%
+  filter(is_alle == TRUE, stripe_clean != "alle") %>%
+  select(nib_project_id, stripe_clean)
+
+lyngstad_alle_alle <- lyngstad_expanded |>
+  filter(is_alle == TRUE, stripe_clean == "alle") |>
+  select(nib_project_id, stripe_clean)
 
 # Process specific matches (join on project, stripe, number)
 matches_specific <- polygons_clean %>%
@@ -125,21 +135,41 @@ matches_alle <- polygons_clean %>%
     )
   )
 
-# Combine both sets of matches
-polygons_filtered <- bind_rows(matches_specific, matches_alle) %>%
+# Additionally, include all stripes for projects where "alle" is specified
+matches_alle_alle <- polygons_clean %>%
+  semi_join(
+    lyngstad_alle_alle,
+    by = c(
+      "nib_project_id" = "nib_project_id"
+    )
+  )
+
+# Combine sets of matches
+polygons_filtered <- bind_rows(
+  matches_specific,
+  matches_alle,
+  matches_alle_alle
+) %>%
   # Remove duplicates that might occur if a row matches both criteria
   distinct(nib_project_id, stripenummer, bildenummer, .keep_all = TRUE) %>%
   # Remove temporary columns used for matching
-  select(nib_project_id, prosjektnavn, pixelstorrelse, stripenummer, 
-         stripenummer_clean, bildenummer, shape)
+  select(
+    nib_project_id,
+    prosjektnavn,
+    pixelstorrelse,
+    stripenummer,
+    stripenummer_clean,
+    bildenummer,
+    shape
+  )
 
 # Result: polygons_filtered now contains all rows that match the reference data,
 # including proper handling of "alle" entries and proper standardization of stripe numbers
 
 # Display summary statistics
-polygons_filtered |> 
-  st_drop_geometry() |> 
-  group_by(prosjektnavn, nib_project_id) |> 
+polygons_filtered |>
+  st_drop_geometry() |>
+  group_by(prosjektnavn, nib_project_id) |>
   count()
 
 # Plot the geometries
@@ -154,40 +184,46 @@ polygons_filtered |>
 # polygons_filtered %>%
 #   st_make_valid() %>%     # Ensure geometries are valid
 #   st_buffer(0) %>%        # Minor buffer to fix tiny gaps/overlaps
-#   st_union(is_coverage = TRUE)  |> 
+#   st_union(is_coverage = TRUE)  |>
 #   st_geometry() |>
 #   plot()
 # Above approach maintains overlaps but not differentiated by project
 
-footprint_projects <- polygons_filtered |> 
-  select(nib_project_id, prosjektnavn) |> 
+footprint_projects <- polygons_filtered |>
+  select(nib_project_id, prosjektnavn) |>
   group_by(nib_project_id, prosjektnavn) |>
   summarize()
-footprint_projects |> 
+footprint_projects |>
   st_geometry() |>
   plot()
 
-footprint_total <- footprint_projects |> 
-  st_union() |> 
+footprint_total <- footprint_projects |>
+  st_union() |>
   st_geometry()
-footprint_total |> 
+footprint_total |>
   plot()
 
 # Write to file
-st_write(polygons_filtered, 
-         "data/DMraisedbog.gpkg", 
-         layer = "nib-lyngstad-polygons",
-         append = FALSE)
+st_write(
+  polygons_filtered,
+  "data/DMraisedbog.gpkg",
+  layer = "nib-lyngstad-polygons",
+  append = FALSE
+)
 
-st_write(footprint_projects, 
-         "data/DMraisedbog.gpkg", 
-         layer = "nib-lyngstad-projects",
-         append = FALSE)
+st_write(
+  footprint_projects,
+  "data/DMraisedbog.gpkg",
+  layer = "nib-lyngstad-projects",
+  append = FALSE
+)
 
-st_write(footprint_total, 
-         "data/DMraisedbog.gpkg", 
-         layer = "nib-lyngstad-footprint",
-         append = FALSE)
+st_write(
+  footprint_total,
+  "data/DMraisedbog.gpkg",
+  layer = "nib-lyngstad-footprint",
+  append = FALSE
+)
 
 # sessionInfo ####
 
