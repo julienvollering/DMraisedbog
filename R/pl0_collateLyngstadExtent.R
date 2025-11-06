@@ -1,6 +1,7 @@
 library(tidyverse)
 library(sf)
 
+# Read data ####
 # Imagery listed in reports
 lyngstad1 <- read_csv("data/NiB/lyngstad-tabell3.csv", col_types = 'ccdcc')
 # Imagery not listed in reports but included in the dataset
@@ -20,7 +21,7 @@ polygons <- gpkgfiles |>
   map(st_read) |>
   bind_rows()
 
-# Clean and standardize the stripe numbers in both datasets
+# Clean and standardize the stripe numbers in reference and polygons datasets ####
 # We'll preserve the original values and create standardized versions for matching
 
 # First, clean the polygons dataset
@@ -98,7 +99,7 @@ expand_number_ranges <- function(df) {
 
 lyngstad_expanded <- expand_number_ranges(lyngstad_clean)
 
-# Step 2: Filter the original polygons to include rows that match the reference data
+# Filter the original polygons to match the reference data ####
 # Split reference data into "alle" records and specific records
 lyngstad_specific <- lyngstad_expanded %>%
   filter(is_alle == FALSE) %>%
@@ -166,13 +167,28 @@ polygons_filtered <- bind_rows(
 # Result: polygons_filtered now contains all rows that match the reference data,
 # including proper handling of "alle" entries and proper standardization of stripe numbers
 
-# Display summary statistics
+# Display summary statistics ####
 polygons_filtered |>
   st_drop_geometry() |>
   group_by(prosjektnavn, nib_project_id) |>
   count()
 
-# Plot the geometries
+# Add orthofoto coverage in Lyngstad 2016 ####
+
+orthofoto_2016 <- st_read(
+  "data/Lyngstad/Lyngstad2016-Fig1.gpkg",
+  layer = "searched-orthophoto"
+) |>
+  st_transform(st_crs(polygons_filtered)) |>
+  st_set_geometry(attr(polygons_filtered, "sf_column"))
+
+polygons_filtered <- bind_rows(
+  polygons_filtered,
+  orthofoto_2016
+)
+tail(polygons_filtered)
+
+# Plot the geometries ####
 
 # polygons_filtered %>%
 #   st_union() %>%
@@ -203,7 +219,7 @@ footprint_total <- footprint_projects |>
 footprint_total |>
   plot()
 
-# Write to file
+# Write to file ####
 st_write(
   polygons_filtered,
   "data/DMraisedbog.gpkg",
