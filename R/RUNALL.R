@@ -5,6 +5,8 @@ scripts_shared <- c(
   "R/pl0_collateLyngstad.R",
   "R/pl0_collateLyngstadExtent.R",
   "R/pl0_collateEuropeanRaisedBog.R",
+  "R/pl0_downloadCHELSA.R",
+  "R/pl0_prepareCHELSATrace.R",
   "R/pl0_collatePredictors.R",
   "R/pl0_rasterizePresenceAbsence.R",
   "R/pl0_spatiallyThinCells.R",
