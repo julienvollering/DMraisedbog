@@ -1,4 +1,3 @@
-
 library(readr)
 library(dplyr)
 library(terra)
@@ -13,22 +12,32 @@ library(twosamples)
 
 # Quantile cut-based partitioning with probabilistic interleaving/segregation
 create_cut_based_partitions <- function(
-    data,
-    feature_cols,
-    target_col,
+  data,
+  feature_cols,
+  target_col,
+  n_cuts,
+  n_partitions = 5,
+  segregation_prob = 0,
+  top_n_features = 1,
+  feature_weights = NULL,
+  seed = 42
+) {
+  cat(
+    "Creating",
+    n_partitions,
+    "partitions using",
     n_cuts,
-    n_partitions = 5,
-    segregation_prob = 0,
-    top_n_features = 1,
-    feature_weights = NULL,
-    seed = 42) {
-
-  cat("Creating", n_partitions, "partitions using", n_cuts, "quantile cuts",
-      "(segregation_prob =", segregation_prob, ")...\n")
+    "quantile cuts",
+    "(segregation_prob =",
+    segregation_prob,
+    ")...\n"
+  )
 
   # Select top feature(s)
   top_features <- select_clustering_features(
-    feature_cols, top_n_features, feature_weights
+    feature_cols,
+    top_n_features,
+    feature_weights
   )
 
   # For now, use only the top feature (single variable)
@@ -41,22 +50,32 @@ create_cut_based_partitions <- function(
   feature_values <- data[[top_feature]]
 
   # Create quantile-based cuts
-  quantile_breaks <- quantile(feature_values,
-                              probs = seq(0, 1, length.out = n_cuts + 1),
-                              na.rm = TRUE)
+  quantile_breaks <- quantile(
+    feature_values,
+    probs = seq(0, 1, length.out = n_cuts + 1),
+    na.rm = TRUE
+  )
 
   # Handle case where quantiles are not unique (can happen with discrete data)
   quantile_breaks <- unique(quantile_breaks)
   actual_cuts <- length(quantile_breaks) - 1
 
   if (actual_cuts < n_cuts) {
-    cat("Warning: Only", actual_cuts, "unique quantile breaks found (requested", n_cuts, ")\n")
+    cat(
+      "Warning: Only",
+      actual_cuts,
+      "unique quantile breaks found (requested",
+      n_cuts,
+      ")\n"
+    )
   }
 
-  intervals <- cut(feature_values,
-                   breaks = quantile_breaks,
-                   labels = FALSE,
-                   include.lowest = TRUE)
+  intervals <- cut(
+    feature_values,
+    breaks = quantile_breaks,
+    labels = FALSE,
+    include.lowest = TRUE
+  )
 
   # Probabilistic interleaving/segregation assignment
   # segregation_prob = 0: Pure interleaving (all intervals distributed round-robin)
@@ -89,7 +108,13 @@ create_cut_based_partitions <- function(
   } else {
     # Edge case: fewer intervals than partitions
     # Assign round-robin (some partitions will be empty)
-    cat("Warning: Only", n_intervals, "intervals but", n_partitions, "partitions requested.\n")
+    cat(
+      "Warning: Only",
+      n_intervals,
+      "intervals but",
+      n_partitions,
+      "partitions requested.\n"
+    )
     for (i in seq_along(unique_intervals_ordered)) {
       interval_to_partition[i] <- ((i - 1) %% n_partitions) + 1
     }
@@ -116,179 +141,39 @@ create_cut_based_partitions <- function(
   for (p in 1:n_partitions) {
     cat(sprintf(
       "Partition %d: %d obs (%.1f%%), %.3f prevalence\n",
-      p, partition_stats$n_total[p],
-      partition_stats$n_total[p]/sum(partition_stats$n_total)*100,
+      p,
+      partition_stats$n_total[p],
+      partition_stats$n_total[p] / sum(partition_stats$n_total) * 100,
       partition_stats$prevalence[p]
     ))
   }
 
   return(list(
     partitions = partition_assignments,
-    clusters = intervals,  # Return interval assignments for compatibility
+    clusters = intervals, # Return interval assignments for compatibility
     partition_stats = partition_stats,
-    silhouette = NA  # No silhouette for cut-based approach
+    silhouette = NA # No silhouette for cut-based approach
   ))
-}
-
-# Run CLARA clustering with standardization and return cluster object
-run_clara_clustering <- function(data, top_features, k_clusters, target_col,
-                                 max_sample_size = 10e3, sample_fraction = 0.25,
-                                 samples = 3, seed = 42) {
-  # Extract feature data for clustering (numeric only)
-  clustering_data <- data |>
-    select(all_of(top_features)) |>
-    select(where(is.numeric))
-
-  cat("Clustering data dimensions:", nrow(clustering_data), "x", ncol(clustering_data), "\n")
-
-  # Calculate CLARA sample size
-  clara_sampsize <- min(max_sample_size, nrow(clustering_data) * sample_fraction)
-  cat("CLARA sample size:", clara_sampsize, "\n")
-
-  # Run CLARA clustering with standardized Euclidean distance
-  set.seed(seed)
-  clara_result <- clara(
-    x = clustering_data,
-    k = k_clusters,
-    metric = "euclidean",
-    stand = TRUE,
-    rngR = TRUE,
-    samples = samples,
-    sampsize = clara_sampsize,
-    trace = 1
-  )
-
-  return(clara_result)
-}
-
-# Single clustering approach: consolidate clusters into equal partitions
-create_single_clustering_partitions <- function(
-    data,
-    feature_cols,
-    target_col,
-    n_clusters,
-    n_partitions,
-    top_n_features,
-    feature_weights = NULL,
-    max_sample_size = 10e3,
-    sample_fraction = 0.25,
-    samples = 3,
-    seed = 42) {
-
-  cat("Creating", n_clusters, "CLARA clusters for", n_partitions, "partitions...\n")
-
-  # Select features and run clustering
-  top_features <- select_clustering_features(
-    feature_cols, top_n_features, feature_weights
-  )
-  clara_result <- run_clara_clustering(
-    data, top_features, n_clusters, target_col, max_sample_size, sample_fraction, samples, seed
-  )
-
-  # Calculate cluster statistics
-  cluster_stats <- data |>
-    mutate(cluster = factor(clara_result$clustering)) |>
-    group_by(cluster) |>
-    summarise(
-      n_total = n(),
-      n_presence = sum(.data[[target_col]] == 1),
-      prevalence = n_presence / n_total,
-      .groups = "drop"
-    )
-
-  cat("\nCluster summary:\n")
-  print(cluster_stats)
-
-  # Consolidate clusters into equal partitions
-  total_obs <- sum(cluster_stats$n_total)
-  target_size <- total_obs / n_partitions
-  overall_prevalence <- sum(cluster_stats$n_presence) / total_obs
-
-  # Greedy assignment to minimize size deviation
-  cluster_assignments <- rep(NA, nrow(cluster_stats))
-  partition_sizes <- rep(0, n_partitions)
-  partition_presence <- rep(0, n_partitions)
-
-  # Sort clusters by size (largest first) for better packing
-  cluster_order <- order(cluster_stats$n_total, decreasing = TRUE)
-
-  for (i in cluster_order) {
-    # Find partition with most remaining capacity
-    best_partition <- which.min(partition_sizes)
-    cluster_assignments[i] <- best_partition
-    partition_sizes[best_partition] <- partition_sizes[best_partition] + cluster_stats$n_total[i]
-    partition_presence[best_partition] <- partition_presence[best_partition] + cluster_stats$n_presence[i]
-  }
-
-  # Calculate partition prevalences and find best test partition
-  partition_prevalences <- partition_presence / partition_sizes
-  prevalence_diffs <- abs(partition_prevalences - overall_prevalence)
-  test_partition <- which.min(prevalence_diffs)
-
-  cat("\nPartition consolidation results:\n")
-  for (p in 1:n_partitions) {
-    cat(sprintf(
-      "Partition %d: %d obs (%.1f%%), %.3f prevalence%s\n",
-      p, partition_sizes[p], partition_sizes[p]/total_obs*100,
-      partition_prevalences[p],
-      ifelse(p == test_partition, " [TEST]", "")
-    ))
-  }
-
-  # Create final assignments
-  all_clusters <- clara_result$clustering
-  partition_assignments <- cluster_assignments[all_clusters]
-
-  # Create outer (test vs train) and inner (CV folds) partitions
-  outer_partitions <- ifelse(partition_assignments == test_partition, "test", "train")
-
-  # For inner partitions, renumber non-test partitions as CV folds
-  inner_partitions <- rep(NA, length(partition_assignments))
-  train_mask <- outer_partitions == "train"
-  if (sum(train_mask) > 0) {
-    train_partitions <- partition_assignments[train_mask]
-    unique_train_partitions <- sort(unique(train_partitions))
-    fold_mapping <- setNames(1:length(unique_train_partitions), unique_train_partitions)
-    inner_partitions[train_mask] <- fold_mapping[as.character(train_partitions)]
-  }
-
-  return(list(
-    outer_partitions = outer_partitions,
-    inner_partitions = inner_partitions,
-    clusters = all_clusters,
-    cluster_stats = cluster_stats,
-    test_partition_id = test_partition,
-    silhouette = clara_result$silinfo$avg.width
-  ))
-}
-
-# Select features for clustering based on weights
-select_clustering_features <- function(
-    feature_cols, top_n_features, feature_weights = NULL) {
-  if (!is.null(feature_weights)) {
-    top_features <- feature_weights |>
-      sort(decreasing = TRUE) |>
-      head(top_n_features) |>
-      names()
-  } else {
-    top_features <- feature_cols[1:min(top_n_features, length(feature_cols))]
-  }
-
-  return(top_features)
 }
 
 # Evaluate cut-based partitioning for a given n_cuts and segregation_prob
 evaluate_cut_partitioning <- function(
+  n_cuts,
+  segregation_prob = 0,
+  data,
+  precomputed_distances,
+  feature_weights,
+  top_n_features = 1,
+  featuredist_sample_size = 1e4,
+  seed = 42
+) {
+  cat(
+    "Evaluating n_cuts =",
     n_cuts,
-    segregation_prob = 0,
-    data,
-    precomputed_distances,
-    feature_weights,
-    top_n_features = 1,
-    featuredist_sample_size = 1e4,
-    seed = 42) {
-
-  cat("Evaluating n_cuts =", n_cuts, ", segregation_prob =", segregation_prob, "...\n")
+    ", segregation_prob =",
+    segregation_prob,
+    "...\n"
+  )
 
   # Create partitions using cut-based approach
   partition_result <- create_cut_based_partitions(
@@ -296,7 +181,7 @@ evaluate_cut_partitioning <- function(
     feature_cols = setdiff(names(data), "response"),
     target_col = "response",
     n_cuts = n_cuts,
-    n_partitions = 5,  # Keep 5 partitions (1 test + 4 CV)
+    n_partitions = 5, # Keep 5 partitions (1 test + 4 CV)
     segregation_prob = segregation_prob,
     top_n_features = top_n_features,
     feature_weights = feature_weights,
@@ -325,20 +210,34 @@ evaluate_cut_partitioning <- function(
   )
 
   # Debug: Print CV distance statistics
-  cat("CV distances - n:", length(cv_dists),
-      ", mean:", round(mean(cv_dists, na.rm = TRUE), 4),
-      ", range:", round(range(cv_dists, na.rm = TRUE), 4), "\n")
+  cat(
+    "CV distances - n:",
+    length(cv_dists),
+    ", mean:",
+    round(mean(cv_dists, na.rm = TRUE), 4),
+    ", range:",
+    round(range(cv_dists, na.rm = TRUE), 4),
+    "\n"
+  )
 
   # Combine all distances and create result structure (unscaled)
-  all_dists <- c(precomputed_distances$sample_to_sample,
-                 precomputed_distances$prediction_to_sample,
-                 cv_dists)
+  all_dists <- c(
+    precomputed_distances$sample_to_sample,
+    precomputed_distances$prediction_to_sample,
+    cv_dists
+  )
 
-  distance_types <- factor(c(
-    rep("sample-to-sample", length(precomputed_distances$sample_to_sample)),
-    rep("prediction-to-sample", length(precomputed_distances$prediction_to_sample)),
-    rep("CV-distances", length(cv_dists))
-  ), levels = c("sample-to-sample", "prediction-to-sample", "CV-distances"))
+  distance_types <- factor(
+    c(
+      rep("sample-to-sample", length(precomputed_distances$sample_to_sample)),
+      rep(
+        "prediction-to-sample",
+        length(precomputed_distances$prediction_to_sample)
+      ),
+      rep("CV-distances", length(cv_dists))
+    ),
+    levels = c("sample-to-sample", "prediction-to-sample", "CV-distances")
+  )
 
   # Create feature_dists result structure for compatibility (no scaling)
   feature_dists <- tibble::tibble(
@@ -358,216 +257,147 @@ evaluate_cut_partitioning <- function(
   )
 
   # Print results
-  cat("n_cuts =", n_cuts, ", segregation_prob =", segregation_prob,
-      "-> W_CV =", round(W_CV, 4), "\n\n")
+  cat(
+    "n_cuts =",
+    n_cuts,
+    ", segregation_prob =",
+    segregation_prob,
+    "-> W_CV =",
+    round(W_CV, 4),
+    "\n\n"
+  )
 
   return(list(
     n_cuts = n_cuts,
     segregation_prob = segregation_prob,
     partition_result = partition_result,
     W_CV = W_CV,
-    silhouette = NA,  # Not applicable for cut-based approach
+    silhouette = NA, # Not applicable for cut-based approach
     top_feature = top_feature,
     feature_dists = feature_dists
   ))
 }
 
-# Evaluate clustering for a given k and return W_CV statistic
-evaluate_clustering_k <- function(k_clusters, data, precomputed_distances, feature_weights,
-                                  top_n_features = 1,
-                                  clara_max_sample_size = 10e3,
-                                  clara_sample_fraction = 0.25,
-                                  clara_samples = 3,
-                                  featuredist_sample_size = 1e4,
-                                  seed = 42) {
-
-  cat("Evaluating k =", k_clusters, "clusters...\n")
-
-  # Create partitions using existing function
-  partition_result <- create_single_clustering_partitions(
-    data = data,
-    feature_cols = setdiff(names(data), "response"),
-    target_col = "response",
-    n_clusters = k_clusters,
-    n_partitions = 5,  # Keep 5 partitions (1 test + 4 CV)
-    top_n_features = top_n_features,
-    feature_weights = feature_weights,
-    max_sample_size = clara_max_sample_size,
-    sample_fraction = clara_sample_fraction,
-    samples = clara_samples,
-    seed = seed
-  )
-
-  # Get top feature name (should match precomputed distances)
-  top_features <- select_clustering_features(
-    setdiff(names(data), "response"),
-    top_n_features,
-    feature_weights
-  )
-  top_feature <- top_features[1]
-
-  # Prepare data for CV distance calculation (all data including test partition)
-  # Create combined partition assignments: test partition gets its own ID
-  all_partitions <- partition_result$outer_partitions
-  combined_folds <- ifelse(all_partitions == "test",
-                           0,  # Assign test partition to fold 0
-                           partition_result$inner_partitions)
-
-  # Calculate CV distances for this k across all outer partitions
-  cv_dists <- calculate_cv_distances(
-    training_data = data,
-    variable_name = top_feature,
-    cv_folds = combined_folds,
-    sample_size = featuredist_sample_size,
-    standardize = FALSE,
-    seed = seed
-  )
-
-  # Debug: Print CV distance statistics
-  cat("CV distances - n:", length(cv_dists),
-      ", mean:", round(mean(cv_dists, na.rm = TRUE), 4),
-      ", range:", round(range(cv_dists, na.rm = TRUE), 4), "\n")
-
-  # Combine all distances and create result structure (unscaled)
-  all_dists <- c(precomputed_distances$sample_to_sample,
-                 precomputed_distances$prediction_to_sample,
-                 cv_dists)
-
-  distance_types <- factor(c(
-    rep("sample-to-sample", length(precomputed_distances$sample_to_sample)),
-    rep("prediction-to-sample", length(precomputed_distances$prediction_to_sample)),
-    rep("CV-distances", length(cv_dists))
-  ), levels = c("sample-to-sample", "prediction-to-sample", "CV-distances"))
-
-  # Create feature_dists result structure for compatibility (no scaling)
-  feature_dists <- tibble::tibble(
-    dist = all_dists,
-    what = distance_types,
-    dist_type = "feature"
-  )
-
-  # Set class and attributes similar to featuredist output
-  class(feature_dists) <- c("geodist", class(feature_dists))
-  attr(feature_dists, "type") <- "feature"
-
-  # Calculate W_CV statistic
-  W_CV <- twosamples::wass_stat(
-    feature_dists[feature_dists$what == "CV-distances", "dist"][[1]],
-    feature_dists[feature_dists$what == "prediction-to-sample", "dist"][[1]]
-  )
-
-  # Get silhouette width from partition result (no need to recompute clustering)
-  silhouette_avg <- partition_result$silhouette
-
-  # Print results for this k
-  cat("k =", k_clusters, "-> W_CV =", round(W_CV, 4), ", silhouette =", round(silhouette_avg, 3), "\n\n")
-
-  return(list(
-    k = k_clusters,
-    partition_result = partition_result,
-    W_CV = W_CV,
-    silhouette = silhouette_avg,
-    top_feature = top_feature,
-    feature_dists = feature_dists
-  ))
-}
-
-featuredist <- function(training_data, prediction_data, variable_name,
-                        cvfold_column = NULL, sample_size = 1e4,
-                        seed = NULL, standardize = FALSE, scale_distances = FALSE) {
-  
+featuredist <- function(
+  training_data,
+  prediction_data,
+  variable_name,
+  cvfold_column = NULL,
+  sample_size = 1e4,
+  seed = NULL,
+  standardize = FALSE,
+  scale_distances = FALSE
+) {
   # Set seed if provided
   if (!is.null(seed)) {
     set.seed(seed)
   }
-  
+
   # Sample training and prediction data
   n_train <- min(nrow(training_data), sample_size)
   n_pred <- min(nrow(prediction_data), sample_size)
-  
+
   train_sampled <- training_data[sample.int(nrow(training_data), n_train), ]
   pred_sampled <- prediction_data[sample.int(nrow(prediction_data), n_pred), ]
-  
+
   # Extract variable values
   train_var <- train_sampled[[variable_name]]
   pred_var <- pred_sampled[[variable_name]]
-  
+
   # Remove NA values
   train_clean <- train_var[!is.na(train_var)]
   pred_clean <- pred_var[!is.na(pred_var)]
-  
+
   # Standardize if requested
   if (standardize) {
-    train_mean <- mean(train_clean)
-    train_sd <- sd(train_clean)
-    if (train_sd > 0) {
-      train_clean <- (train_clean - train_mean) / train_sd
-      pred_clean <- (pred_clean - train_mean) / train_sd
+    # Min-max standardization using combined training + prediction data
+    combined_values <- c(train_clean, pred_clean)
+    min_val <- min(combined_values)
+    max_val <- max(combined_values)
+
+    if (max_val > min_val) {
+      train_clean <- (train_clean - min_val) / (max_val - min_val)
+      pred_clean <- (pred_clean - min_val) / (max_val - min_val)
+    } else {
+      # All values identical - set to 0.5 (middle of [0,1] range)
+      train_clean <- rep(0.5, length(train_clean))
+      pred_clean <- rep(0.5, length(pred_clean))
     }
   }
-  
+
   # Convert to matrices for FNN
   train_matrix <- matrix(train_clean, ncol = 1)
   pred_matrix <- matrix(pred_clean, ncol = 1)
-  
+
   # Calculate sample-to-sample distances
   s2s_dists <- numeric(length(train_clean))
   for (i in seq_along(train_clean)) {
-    dists <- FNN::knnx.dist(train_matrix[i, , drop = FALSE], train_matrix, k = 1)
-    dists[i] <- NA  # Exclude self-distance
+    dists <- FNN::knnx.dist(
+      train_matrix[i, , drop = FALSE],
+      train_matrix,
+      k = 1
+    )
+    dists[i] <- NA # Exclude self-distance
     s2s_dists[i] <- min(dists, na.rm = TRUE)
   }
-  
+
   # Calculate prediction-to-sample distances
   s2p_dists <- numeric(length(pred_clean))
   for (i in seq_along(pred_clean)) {
     dists <- FNN::knnx.dist(pred_matrix[i, , drop = FALSE], train_matrix, k = 1)
     s2p_dists[i] <- min(dists, na.rm = TRUE)
   }
-  
+
   # Combine results
   result <- tibble::tibble(
     dist = c(s2s_dists, s2p_dists),
-    what = factor(c(rep("sample-to-sample", length(s2s_dists)),
-                    rep("prediction-to-sample", length(s2p_dists))),
-                  levels = c("sample-to-sample", "prediction-to-sample",
-                             "CV-distances")),
+    what = factor(
+      c(
+        rep("sample-to-sample", length(s2s_dists)),
+        rep("prediction-to-sample", length(s2p_dists))
+      ),
+      levels = c("sample-to-sample", "prediction-to-sample", "CV-distances")
+    ),
     dist_type = "feature"
   )
-  
+
   # Add CV distances if fold column is provided
   if (!is.null(cvfold_column)) {
     cv_folds <- train_sampled[[cvfold_column]]
-    cv_folds <- cv_folds[!is.na(train_var)]  # Match cleaned training data
-    
+    cv_folds <- cv_folds[!is.na(train_var)] # Match cleaned training data
+
     cv_dists <- numeric(0)
     unique_folds <- unique(cv_folds)
-    
+
     for (fold in unique_folds) {
       test_idx <- which(cv_folds == fold)
       train_idx <- which(cv_folds != fold)
-      
+
       if (length(test_idx) > 0 && length(train_idx) > 0) {
         test_matrix <- matrix(train_clean[test_idx], ncol = 1)
         fold_train_matrix <- matrix(train_clean[train_idx], ncol = 1)
-        
+
         for (i in seq_along(test_idx)) {
-          dists <- FNN::knnx.dist(test_matrix[i, , drop = FALSE], fold_train_matrix, k = 1)
+          dists <- FNN::knnx.dist(
+            test_matrix[i, , drop = FALSE],
+            fold_train_matrix,
+            k = 1
+          )
           cv_dists <- c(cv_dists, min(dists, na.rm = TRUE))
         }
       }
     }
-    
+
     # Add CV distances to result
     cv_result <- tibble::tibble(
       dist = cv_dists,
       what = factor(rep("CV-distances", length(cv_dists))),
       dist_type = "feature"
     )
-    
+
     result <- dplyr::bind_rows(result, cv_result)
   }
-  
+
   # Scale distances if requested
   if (scale_distances) {
     max_dist <- max(result$dist, na.rm = TRUE)
@@ -575,18 +405,18 @@ featuredist <- function(training_data, prediction_data, variable_name,
       result$dist <- result$dist / max_dist
     }
   }
-  
+
   # Set class and attributes similar to geodist
   class(result) <- c("geodist", class(result))
   attr(result, "type") <- "feature"
-  
+
   # Calculate W statistics
   W_sample <- twosamples::wass_stat(
     result[result$what == "sample-to-sample", "dist"][[1]],
     result[result$what == "prediction-to-sample", "dist"][[1]]
   )
   attr(result, "W_sample") <- W_sample
-  
+
   if (!is.null(cvfold_column)) {
     W_CV <- twosamples::wass_stat(
       result[result$what == "CV-distances", "dist"][[1]],
@@ -594,14 +424,19 @@ featuredist <- function(training_data, prediction_data, variable_name,
     )
     attr(result, "W_CV") <- W_CV
   }
-  
+
   return(result)
 }
 
 # Calculate prediction-to-sample distances (independent of k)
-calculate_prediction_distances <- function(training_data, prediction_data, variable_name,
-                                          sample_size = 1e4, standardize = FALSE, seed = NULL) {
-
+calculate_prediction_distances <- function(
+  training_data,
+  prediction_data,
+  variable_name,
+  sample_size = 1e4,
+  standardize = FALSE,
+  seed = NULL
+) {
   # Set seed if provided
   if (!is.null(seed)) {
     set.seed(seed)
@@ -624,11 +459,18 @@ calculate_prediction_distances <- function(training_data, prediction_data, varia
 
   # Standardize if requested
   if (standardize) {
-    train_mean <- mean(train_clean)
-    train_sd <- sd(train_clean)
-    if (train_sd > 0) {
-      train_clean <- (train_clean - train_mean) / train_sd
-      pred_clean <- (pred_clean - train_mean) / train_sd
+    # Min-max standardization using combined training + prediction data
+    combined_values <- c(train_clean, pred_clean)
+    min_val <- min(combined_values)
+    max_val <- max(combined_values)
+
+    if (max_val > min_val) {
+      train_clean <- (train_clean - min_val) / (max_val - min_val)
+      pred_clean <- (pred_clean - min_val) / (max_val - min_val)
+    } else {
+      # All values identical - set to 0.5 (middle of [0,1] range)
+      train_clean <- rep(0.5, length(train_clean))
+      pred_clean <- rep(0.5, length(pred_clean))
     }
   }
 
@@ -639,8 +481,12 @@ calculate_prediction_distances <- function(training_data, prediction_data, varia
   # Calculate sample-to-sample distances
   s2s_dists <- numeric(length(train_clean))
   for (i in seq_along(train_clean)) {
-    dists <- FNN::knnx.dist(train_matrix[i, , drop = FALSE], train_matrix, k = 1)
-    dists[i] <- NA  # Exclude self-distance
+    dists <- FNN::knnx.dist(
+      train_matrix[i, , drop = FALSE],
+      train_matrix,
+      k = 1
+    )
+    dists[i] <- NA # Exclude self-distance
     s2s_dists[i] <- min(dists, na.rm = TRUE)
   }
 
@@ -660,9 +506,14 @@ calculate_prediction_distances <- function(training_data, prediction_data, varia
 }
 
 # Calculate CV distances only (depends on k via fold assignments)
-calculate_cv_distances <- function(training_data, variable_name, cv_folds,
-                                  sample_size = 1e4, standardize = FALSE, seed = NULL) {
-
+calculate_cv_distances <- function(
+  training_data,
+  variable_name,
+  cv_folds,
+  sample_size = 1e4,
+  standardize = FALSE,
+  seed = NULL
+) {
   # Set seed if provided
   if (!is.null(seed)) {
     set.seed(seed)
@@ -683,10 +534,15 @@ calculate_cv_distances <- function(training_data, variable_name, cv_folds,
 
   # Standardize if requested (consistent with precomputation)
   if (standardize) {
-    train_mean <- mean(train_clean)
-    train_sd <- sd(train_clean)
-    if (train_sd > 0) {
-      train_clean <- (train_clean - train_mean) / train_sd
+    # Min-max standardization using full training data
+    min_val <- min(train_clean)
+    max_val <- max(train_clean)
+
+    if (max_val > min_val) {
+      train_clean <- (train_clean - min_val) / (max_val - min_val)
+    } else {
+      # All values identical - set to 0.5 (middle of [0,1] range)
+      train_clean <- rep(0.5, length(train_clean))
     }
   }
 
@@ -705,7 +561,11 @@ calculate_cv_distances <- function(training_data, variable_name, cv_folds,
       fold_train_matrix <- matrix(train_clean[train_idx], ncol = 1)
 
       for (i in seq_along(test_idx)) {
-        dists <- FNN::knnx.dist(test_matrix[i, , drop = FALSE], fold_train_matrix, k = 1)
+        dists <- FNN::knnx.dist(
+          test_matrix[i, , drop = FALSE],
+          fold_train_matrix,
+          k = 1
+        )
         cv_dists <- c(cv_dists, min(dists, na.rm = TRUE))
       }
     }
@@ -721,34 +581,38 @@ calculate_gmean <- function(predicted_class, true_class) {
   # Convert to character to avoid factor level issues
   predicted_class <- as.character(predicted_class)
   true_class <- as.character(true_class)
-  
+
   # Create confusion matrix
   cm <- table(Actual = true_class, Predicted = predicted_class)
-  
-  if(nrow(cm) == 2 && ncol(cm) == 2) {
+
+  if (nrow(cm) == 2 && ncol(cm) == 2) {
     # Explicitly identify which row/column corresponds to positive class ("1")
     pos_row <- which(rownames(cm) == "1")
     pos_col <- which(colnames(cm) == "1")
     neg_row <- which(rownames(cm) == "0")
     neg_col <- which(colnames(cm) == "0")
-    
+
     # Handle case where positive or negative class is missing
-    if(length(pos_row) == 0 || length(pos_col) == 0 ||
-       length(neg_row) == 0 || length(neg_col) == 0) {
+    if (
+      length(pos_row) == 0 ||
+        length(pos_col) == 0 ||
+        length(neg_row) == 0 ||
+        length(neg_col) == 0
+    ) {
       tpr <- 0
       tnr <- 0
       gmean <- 0
     } else {
       # Extract confusion matrix values using explicit indexing
-      tp <- cm[pos_row, pos_col]  # True positives
-      fn <- cm[pos_row, neg_col]  # False negatives
-      fp <- cm[neg_row, pos_col]  # False positives
-      tn <- cm[neg_row, neg_col]  # True negatives
-      
+      tp <- cm[pos_row, pos_col] # True positives
+      fn <- cm[pos_row, neg_col] # False negatives
+      fp <- cm[neg_row, pos_col] # False positives
+      tn <- cm[neg_row, neg_col] # True negatives
+
       # Calculate TPR and TNR
-      tpr <- tp / (tp + fn)  # Sensitivity
-      tnr <- tn / (tn + fp)  # Specificity
-      
+      tpr <- tp / (tp + fn) # Sensitivity
+      tnr <- tn / (tn + fp) # Specificity
+
       # Calculate G-mean
       gmean <- sqrt(tpr * tnr)
     }
@@ -758,7 +622,7 @@ calculate_gmean <- function(predicted_class, true_class) {
     tnr <- 0
     gmean <- 0
   }
-  
+
   return(list(gmean = gmean, tpr = tpr, tnr = tnr))
 }
 
@@ -775,7 +639,7 @@ get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
   # Create confusion matrix
   cm <- table(Actual = true_class, Predicted = predicted_class)
 
-  if(nrow(cm) == 2 && ncol(cm) == 2) {
+  if (nrow(cm) == 2 && ncol(cm) == 2) {
     # Explicitly identify which row/column corresponds to positive class ("1")
     pos_row <- which(rownames(cm) == "1")
     pos_col <- which(colnames(cm) == "1")
@@ -783,8 +647,12 @@ get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
     neg_col <- which(colnames(cm) == "0")
 
     # Handle case where positive or negative class is missing
-    if(length(pos_row) == 0 || length(pos_col) == 0 ||
-       length(neg_row) == 0 || length(neg_col) == 0) {
+    if (
+      length(pos_row) == 0 ||
+        length(pos_col) == 0 ||
+        length(neg_row) == 0 ||
+        length(neg_col) == 0
+    ) {
       tpr <- 0
       fpr <- 0
       tnr <- 0
@@ -792,16 +660,16 @@ get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
       gmean <- 0
     } else {
       # Extract confusion matrix values using explicit indexing
-      tp <- cm[pos_row, pos_col]  # True positives
-      fn <- cm[pos_row, neg_col]  # False negatives
-      fp <- cm[neg_row, pos_col]  # False positives
-      tn <- cm[neg_row, neg_col]  # True negatives
+      tp <- cm[pos_row, pos_col] # True positives
+      fn <- cm[pos_row, neg_col] # False negatives
+      fp <- cm[neg_row, pos_col] # False positives
+      tn <- cm[neg_row, neg_col] # True negatives
 
       # Calculate all metrics
-      tpr <- tp / (tp + fn)  # Sensitivity = TPR = 1 - FNR
-      tnr <- tn / (tn + fp)  # Specificity = TNR = 1 - FPR
-      fpr <- fp / (fp + tn)  # False positive rate = 1 - TNR
-      fnr <- fn / (fn + tp)  # False negative rate = 1 - TPR
+      tpr <- tp / (tp + fn) # Sensitivity = TPR = 1 - FNR
+      tnr <- tn / (tn + fp) # Specificity = TNR = 1 - FPR
+      fpr <- fp / (fp + tn) # False positive rate = 1 - TNR
+      fnr <- fn / (fn + tp) # False negative rate = 1 - TPR
 
       # Calculate G-mean
       gmean <- sqrt(tpr * tnr)
@@ -809,24 +677,24 @@ get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
   } else {
     # Handle edge cases (only one class present in predictions or true labels)
     # Check which class is missing to provide appropriate metrics
-    if(nrow(cm) == 1 || ncol(cm) == 1) {
+    if (nrow(cm) == 1 || ncol(cm) == 1) {
       # Some calculations may still be possible
       actual_classes <- rownames(cm)
       predicted_classes <- colnames(cm)
 
-      if("1" %in% actual_classes && "1" %in% predicted_classes) {
+      if ("1" %in% actual_classes && "1" %in% predicted_classes) {
         # Only positive class present
         tp <- cm["1", "1"]
-        tpr <- 1.0  # All positives correctly predicted
+        tpr <- 1.0 # All positives correctly predicted
         fnr <- 0.0
-        fpr <- NA   # No negatives to calculate
+        fpr <- NA # No negatives to calculate
         tnr <- NA
-      } else if("0" %in% actual_classes && "0" %in% predicted_classes) {
+      } else if ("0" %in% actual_classes && "0" %in% predicted_classes) {
         # Only negative class present
         tn <- cm["0", "0"]
-        tnr <- 1.0  # All negatives correctly predicted
+        tnr <- 1.0 # All negatives correctly predicted
         fpr <- 0.0
-        tpr <- NA   # No positives to calculate
+        tpr <- NA # No positives to calculate
         fnr <- NA
       } else {
         # Complete mismatch
@@ -835,7 +703,7 @@ get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
         tnr <- 0
         fnr <- 1
       }
-      gmean <- 0  # Cannot calculate meaningful G-mean
+      gmean <- 0 # Cannot calculate meaningful G-mean
     } else {
       # Completely empty or malformed
       tpr <- 0
@@ -858,13 +726,13 @@ get_metrics_at_threshold <- function(predicted_prob, true_class, threshold) {
 # Function to calculate classification thresholds using ROCR
 # Returns three thresholds: default (G-mean optimal or implicit), sens95, spec95
 calculate_classification_thresholds <- function(
-    predicted_prob,
-    true_labels,
-    method = c("gmean", "implicit"),
-    implicit_class = NULL,
-    target_sensitivity = 0.95,
-    target_specificity = 0.95) {
-
+  predicted_prob,
+  true_labels,
+  method = c("gmean", "implicit"),
+  implicit_class = NULL,
+  target_sensitivity = 0.95,
+  target_specificity = 0.95
+) {
   method <- match.arg(method)
 
   # Convert to numeric for ROCR
@@ -887,7 +755,6 @@ calculate_classification_thresholds <- function(
     gmean_values <- sqrt(tpr_values * tnr_values)
     optimal_idx <- which.max(gmean_values)
     threshold_default <- all_thresholds[optimal_idx]
-
   } else if (method == "implicit") {
     # Implicit threshold from class predictions (for RFQ)
     if (is.null(implicit_class)) {
@@ -897,7 +764,7 @@ calculate_classification_thresholds <- function(
     if (sum(predicted_positives) > 0) {
       threshold_default <- min(predicted_prob[predicted_positives])
     } else {
-      threshold_default <- 0.5  # Fallback
+      threshold_default <- 0.5 # Fallback
     }
   }
 
@@ -909,8 +776,13 @@ calculate_classification_thresholds <- function(
   } else {
     # If target sensitivity not achievable, use highest sensitivity
     threshold_sens <- all_thresholds[which.max(tpr_values)]
-    cat("Warning:", target_sensitivity * 100, "% sensitivity not achievable, using max TPR =",
-        round(max(tpr_values), 3), "\n")
+    cat(
+      "Warning:",
+      target_sensitivity * 100,
+      "% sensitivity not achievable, using max TPR =",
+      round(max(tpr_values), 3),
+      "\n"
+    )
   }
 
   # 3. High specificity threshold: TNR >= target_specificity
@@ -921,8 +793,13 @@ calculate_classification_thresholds <- function(
   } else {
     # If target specificity not achievable, use highest specificity
     threshold_spec <- all_thresholds[which.max(tnr_values)]
-    cat("Warning:", target_specificity * 100, "% specificity not achievable, using max TNR =",
-        round(max(tnr_values), 3), "\n")
+    cat(
+      "Warning:",
+      target_specificity * 100,
+      "% specificity not achievable, using max TNR =",
+      round(max(tnr_values), 3),
+      "\n"
+    )
   }
 
   return(list(
@@ -935,9 +812,25 @@ calculate_classification_thresholds <- function(
 ## Model training functions ####
 
 # Function to train a BRF model with threshold optimization
-train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_partition = 1) {
-
-  cat("Job", job_id, "- BRF Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+train_brf_model <- function(
+  cv_fold,
+  mtry,
+  nodesize,
+  job_id,
+  train_data,
+  test_partition = 1
+) {
+  cat(
+    "Job",
+    job_id,
+    "- BRF Fold",
+    cv_fold,
+    "mtry:",
+    mtry,
+    "nodesize:",
+    nodesize,
+    "...\n"
+  )
 
   # Split data by partition (exclude test_partition from all tuning)
   # train_fold: all partitions except cv_fold and test_partition
@@ -951,22 +844,28 @@ train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_pa
     filter(partition == cv_fold) |>
     select(-partition) |>
     as.data.frame()
-  
+
   # Convert response to factor with explicit levels (0, 1) for consistency
-  train_fold$response <- factor(as.character(train_fold$response), levels = c("0", "1"))
-  val_fold$response <- factor(as.character(val_fold$response), levels = c("0", "1"))
-  
+  train_fold$response <- factor(
+    as.character(train_fold$response),
+    levels = c("0", "1")
+  )
+  val_fold$response <- factor(
+    as.character(val_fold$response),
+    levels = c("0", "1")
+  )
+
   # Ensure ar50 is properly handled as factor if it exists
-  if("ar50" %in% names(train_fold)) {
+  if ("ar50" %in% names(train_fold)) {
     train_fold$ar50 <- as.factor(as.character(train_fold$ar50))
     val_fold$ar50 <- as.factor(as.character(val_fold$ar50))
   }
-  
+
   # Calculate class sizes for balanced sampling
   n_presence <- sum(train_fold$response == "1")
   n_absence <- sum(train_fold$response == "0")
   balanced_size <- min(n_presence, n_absence)
-  
+
   # Train BRF model with balanced sampling
   model <- randomForest::randomForest(
     formula = response ~ .,
@@ -974,39 +873,41 @@ train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_pa
     ntree = 1000,
     mtry = mtry,
     nodesize = nodesize,
-    sampsize = c(balanced_size, balanced_size),  # Balanced sampling
+    sampsize = c(balanced_size, balanced_size), # Balanced sampling
     replace = TRUE,
     importance = FALSE,
     do.trace = FALSE
   )
-  
+
   # Get predictions on training fold for threshold optimization
   train_pred_prob <- predict(model, newdata = train_fold, type = "prob")[, "1"]
   train_true <- as.numeric(as.character(train_fold$response))
-  
+
   # Optimize threshold using ROCR on training folds
   pred_obj <- ROCR::prediction(train_pred_prob, train_true)
-  
+
   # Calculate G-mean for all possible thresholds
   tpr_values <- ROCR::performance(pred_obj, "tpr")@y.values[[1]]
   tnr_values <- ROCR::performance(pred_obj, "tnr")@y.values[[1]]
   gmean_values <- sqrt(tpr_values * tnr_values)
-  
+
   # Find optimal threshold
   optimal_idx <- which.max(gmean_values)
-  optimal_threshold <- ROCR::performance(pred_obj, "tpr")@x.values[[1]][optimal_idx]
-  
+  optimal_threshold <- ROCR::performance(pred_obj, "tpr")@x.values[[1]][
+    optimal_idx
+  ]
+
   # Get predictions on validation fold
   val_pred_prob <- predict(model, newdata = val_fold, type = "prob")[, "1"]
   val_pred_class <- ifelse(val_pred_prob >= optimal_threshold, "1", "0")
   val_true <- as.character(val_fold$response)
-  
+
   # Calculate G-mean on validation set with optimal threshold
   metrics <- calculate_gmean(val_pred_class, val_true)
   gmean <- metrics$gmean
   tpr <- metrics$tpr
   tnr <- metrics$tnr
-  
+
   # Create result row
   result <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -1019,18 +920,34 @@ train_brf_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_pa
     tnr = tnr,
     stringsAsFactors = FALSE
   )
-  
+
   # Append to CSV immediately
   write_csv(result, progress_file, append = TRUE)
   cat("  Job", job_id, "completed - G-mean:", round(gmean, 4), "\n")
-  
+
   return(result)
 }
 
 # Function to train a RFQ model (existing approach)
-train_rfq_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_partition = 1) {
-
-  cat("Job", job_id, "- RFQ Fold", cv_fold, "mtry:", mtry, "nodesize:", nodesize, "...\n")
+train_rfq_model <- function(
+  cv_fold,
+  mtry,
+  nodesize,
+  job_id,
+  train_data,
+  test_partition = 1
+) {
+  cat(
+    "Job",
+    job_id,
+    "- RFQ Fold",
+    cv_fold,
+    "mtry:",
+    mtry,
+    "nodesize:",
+    nodesize,
+    "...\n"
+  )
 
   # Split data by partition (exclude test_partition from all tuning)
   # train_fold: all partitions except cv_fold and test_partition
@@ -1038,23 +955,29 @@ train_rfq_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_pa
   train_fold <- train_data |>
     filter(partition != test_partition, partition != cv_fold) |>
     select(-partition) |>
-    as.data.frame()  # Convert tibble to data.frame for imbalanced()
+    as.data.frame() # Convert tibble to data.frame for imbalanced()
 
   val_fold <- train_data |>
     filter(partition == cv_fold) |>
     select(-partition) |>
-    as.data.frame()  # Convert tibble to data.frame for imbalanced()
-  
+    as.data.frame() # Convert tibble to data.frame for imbalanced()
+
   # Convert response to factor with explicit levels (0, 1) for consistency
-  train_fold$response <- factor(as.character(train_fold$response), levels = c("0", "1"))
-  val_fold$response <- factor(as.character(val_fold$response), levels = c("0", "1"))
-  
+  train_fold$response <- factor(
+    as.character(train_fold$response),
+    levels = c("0", "1")
+  )
+  val_fold$response <- factor(
+    as.character(val_fold$response),
+    levels = c("0", "1")
+  )
+
   # Ensure ar50 is properly handled as factor if it exists
-  if("ar50" %in% names(train_fold)) {
+  if ("ar50" %in% names(train_fold)) {
     train_fold$ar50 <- as.factor(as.character(train_fold$ar50))
     val_fold$ar50 <- as.factor(as.character(val_fold$ar50))
   }
-  
+
   # Train model with current parameters
   model <- randomForestSRC::imbalanced(
     formula = response ~ .,
@@ -1062,23 +985,23 @@ train_rfq_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_pa
     ntree = 3000,
     mtry = mtry,
     nodesize = nodesize,
-    importance = FALSE,  # Skip importance for speed during tuning
+    importance = FALSE, # Skip importance for speed during tuning
     do.trace = FALSE
   )
-  
+
   # Predict on validation set
   pred <- predict(model, newdata = val_fold)
-  
+
   # Calculate G-mean on validation set
   pred_class <- pred$class
   true_class <- val_fold$response
-  
+
   # Calculate G-mean using common function
   metrics <- calculate_gmean(pred_class, true_class)
   gmean <- metrics$gmean
   tpr <- metrics$tpr
   tnr <- metrics$tnr
-  
+
   # Create result row
   result <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
@@ -1091,20 +1014,42 @@ train_rfq_model <- function(cv_fold, mtry, nodesize, job_id, train_data, test_pa
     tnr = tnr,
     stringsAsFactors = FALSE
   )
-  
+
   # Append to CSV immediately
   write_csv(result, progress_file, append = TRUE)
   cat("  Job", job_id, "completed - G-mean:", round(gmean, 4), "\n")
-  
+
   return(result)
 }
 
 # Unified function to train either model type
-train_single_model <- function(cv_fold, model_type, mtry, nodesize, job_id, train_data, test_partition = 1) {
-  if(model_type == "BRF") {
-    return(train_brf_model(cv_fold, mtry, nodesize, job_id, train_data, test_partition))
-  } else if(model_type == "RFQ") {
-    return(train_rfq_model(cv_fold, mtry, nodesize, job_id, train_data, test_partition))
+train_single_model <- function(
+  cv_fold,
+  model_type,
+  mtry,
+  nodesize,
+  job_id,
+  train_data,
+  test_partition = 1
+) {
+  if (model_type == "BRF") {
+    return(train_brf_model(
+      cv_fold,
+      mtry,
+      nodesize,
+      job_id,
+      train_data,
+      test_partition
+    ))
+  } else if (model_type == "RFQ") {
+    return(train_rfq_model(
+      cv_fold,
+      mtry,
+      nodesize,
+      job_id,
+      train_data,
+      test_partition
+    ))
   } else {
     stop("Unknown model_type: ", model_type)
   }

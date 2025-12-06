@@ -1,9 +1,8 @@
-# MaxShift Feature Space Partitioning (Pessimistic Bound) ####
+# MaxShift Feature Space Partitioning ####
 
 # This script implements quantile cut-based partitioning using the feature with
 # highest W_sample (maximum distribution shift between current and future).
 # Optimizes n_cuts × segregation_prob to minimize W_CV.
-# This represents the "pessimistic bound" partitioning scheme.
 
 library(readr)
 library(dplyr)
@@ -57,7 +56,7 @@ cat("Training data - Presences:", n_presence, "Absences:", n_absence, "\n")
 cat("Prevalence:", round(prevalence * 100, 2), "%\n")
 
 ## Load W_sample results and identify most shifted feature ####
-w_sample_results <- read_csv("output/pl2/w_sample_by_feature.csv")
+w_sample_results <- read_csv("output/pl2/Wsample_by_feature.csv")
 
 most_shifted_feature <- w_sample_results |>
   slice_max(W_sample, n = 1) |>
@@ -103,7 +102,11 @@ if (file.exists(eval_file)) {
   existing_results <- read_csv(eval_file, show_col_types = FALSE)
   cat("Found", nrow(existing_results), "previous evaluations\n")
 } else {
-  existing_results <- tibble(n_cuts = numeric(), segregation_prob = numeric(), W_CV = numeric())
+  existing_results <- tibble(
+    n_cuts = numeric(),
+    segregation_prob = numeric(),
+    W_CV = numeric()
+  )
   cat("No existing results found, starting fresh\n")
 }
 
@@ -125,17 +128,22 @@ if (nrow(combinations_to_run) > 0) {
   # Run only unevaluated combinations
   new_evaluations <- combinations_to_run |>
     mutate(
-      results = future_map2(n_cuts, segregation_prob, ~evaluate_cut_partitioning(
-        n_cuts = .x,
-        segregation_prob = .y,
-        data = mf_current,
-        precomputed_distances = precomputed_distances,
-        feature_weights = feature_weights,
-        top_n_features = 1,
-        featuredist_sample_size = featuredist_sample_size,
-        seed = 42
-      ), .options = furrr_options(seed = TRUE)),
-      W_CV = map_dbl(results, ~.x$W_CV)
+      results = future_map2(
+        n_cuts,
+        segregation_prob,
+        ~ evaluate_cut_partitioning(
+          n_cuts = .x,
+          segregation_prob = .y,
+          data = mf_current,
+          precomputed_distances = precomputed_distances,
+          feature_weights = feature_weights,
+          top_n_features = 1,
+          featuredist_sample_size = featuredist_sample_size,
+          seed = 42
+        ),
+        .options = furrr_options(seed = TRUE)
+      ),
+      W_CV = map_dbl(results, ~ .x$W_CV)
     )
 
   # Save new results immediately (without results column)
@@ -168,13 +176,25 @@ evaluation_summary <- all_results_summary |>
 print(evaluation_summary)
 
 # Heatmap
-p1 <- ggplot(all_results_summary, aes(x = n_cuts, y = segregation_prob, fill = W_CV)) +
+p1 <- ggplot(
+  all_results_summary,
+  aes(x = n_cuts, y = segregation_prob, fill = W_CV)
+) +
   geom_tile() +
   scale_fill_viridis_c(option = "plasma", direction = -1) +
-  geom_point(data = all_results_summary |> slice_min(W_CV, n = 1),
-             color = "red", size = 4, shape = 21, stroke = 2) +
+  geom_point(
+    data = all_results_summary |> slice_min(W_CV, n = 1),
+    color = "red",
+    size = 4,
+    shape = 21,
+    stroke = 2
+  ) +
   labs(
-    title = paste("W_CV across n_cuts × segregation_prob (MaxShift:", most_shifted_feature, ")"),
+    title = paste(
+      "W_CV across n_cuts × segregation_prob (MaxShift:",
+      most_shifted_feature,
+      ")"
+    ),
     subtitle = "Red point = optimal combination",
     x = "Number of quantile cuts (n_cuts)",
     y = "Segregation probability",
@@ -185,11 +205,18 @@ p1 <- ggplot(all_results_summary, aes(x = n_cuts, y = segregation_prob, fill = W
 print(p1)
 
 # Line plot
-p2 <- ggplot(all_results_summary, aes(x = segregation_prob, y = W_CV, color = factor(n_cuts))) +
+p2 <- ggplot(
+  all_results_summary,
+  aes(x = segregation_prob, y = W_CV, color = factor(n_cuts))
+) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
   labs(
-    title = paste("W_CV vs Segregation Probability (MaxShift:", most_shifted_feature, ")"),
+    title = paste(
+      "W_CV vs Segregation Probability (MaxShift:",
+      most_shifted_feature,
+      ")"
+    ),
     x = "Segregation probability",
     y = "W_CV",
     color = "n_cuts"
@@ -262,8 +289,11 @@ mf_partitioned <- mf_current_with_coords |>
   bind_rows(filter(mf, scenario != "current")) |>
   select(scenario, partition, response, everything())
 
-write_csv(mf_partitioned, "output/pl2/modeling_frame_regional_partitioned_maxshift.csv",
-          append = FALSE)
+write_csv(
+  mf_partitioned,
+  "output/pl2/modeling_frame_regional_partitioned_maxshift.csv",
+  append = FALSE
+)
 
 writeRaster(raster, "output/pl2/partition_maxshift.tif", overwrite = TRUE)
 
