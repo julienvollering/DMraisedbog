@@ -10,8 +10,6 @@ CLAUDE.md
 *.qgs~
 *.qgz
 *.html
-*.svg
-*.png
 notebook.md
 data
 meetings
