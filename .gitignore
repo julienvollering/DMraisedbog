@@ -4,6 +4,7 @@
 .Ruserdata
 .claude
 CLAUDE.md
+.positai
 *.lnk
 * alias
 *.qgs
@@ -13,6 +14,7 @@ CLAUDE.md
 notebook.md
 data
 meetings
+R/MEE_AOA-master
 output/
 ms/submission/1_coauthors
 ms/submission/2_reviewers

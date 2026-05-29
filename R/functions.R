@@ -10,16 +10,107 @@ library(twosamples)
 
 ## Functions ####
 
+# Calculate weighted Euclidean Dissimilarity Index from test to train ####
+# Implements custom DI calculation using weighted Euclidean distance
+# Similar to CAST::trainDI but optimized for pairwise train-test comparisons
+calculate_weighted_di <- function(
+  train_data,
+  test_data,
+  weights = NULL,
+  verbose = TRUE
+) {
+  # Inputs:
+  #   train_data: data.frame/tibble with training features (no response column)
+  #   test_data: data.frame/tibble with test features (no response column)
+  #   weights: optional named vector of variable importance weights
+  #   verbose: logical, whether to show progress bars
+  #
+  # Returns:
+  #   List with DI vector for test data and train_avg_dist
+
+  # Ensure both datasets have same columns in same order
+  common_cols <- intersect(colnames(train_data), colnames(test_data))
+  train_data <- train_data[, common_cols, drop = FALSE]
+  test_data <- test_data[, common_cols, drop = FALSE]
+
+  # Scale features (use training data center/scale for both)
+  train_scaled <- scale(train_data)
+  center_vec <- attr(train_scaled, "scaled:center")
+  scale_vec <- attr(train_scaled, "scaled:scale")
+
+  test_scaled <- scale(test_data, center = center_vec, scale = scale_vec)
+
+  # Apply variable importance weights if provided
+  if (!is.null(weights)) {
+    # Match weight order to column order
+    weight_vec <- weights[common_cols]
+    # Set negative weights to 0
+    weight_vec[weight_vec < 0] <- 0
+    # Apply weights by multiplying each column by weight (following trainDI approach)
+    train_scaled <- sweep(train_scaled, 2, weight_vec, "*")
+    test_scaled <- sweep(test_scaled, 2, weight_vec, "*")
+  }
+
+  # Calculate average training-to-training distance (normalization factor)
+  # Vectorized Euclidean distance calculation
+  n_train <- nrow(train_scaled)
+  train_to_train_dists <- numeric(n_train)
+
+  if (verbose) {
+    message("Computing DI of training data...")
+    pb <- txtProgressBar(min = 0, max = n_train, style = 3)
+  }
+
+  for (i in 1:n_train) {
+    # Euclidean distance from point i to all training points
+    diffs <- sweep(train_scaled, 2, train_scaled[i, ], "-")
+    dists <- sqrt(rowSums(diffs^2))
+    dists[i] <- NA # Exclude self-distance
+    train_to_train_dists[i] <- mean(dists, na.rm = TRUE)
+    if (verbose) setTxtProgressBar(pb, i)
+  }
+
+  if (verbose) close(pb)
+  train_avg_dist <- mean(train_to_train_dists)
+
+  # Calculate minimum test-to-train distance for each test point
+  # Vectorized Euclidean distance calculation
+  n_test <- nrow(test_scaled)
+  test_min_dist <- numeric(n_test)
+
+  if (verbose) {
+    message("Computing DI of test data...")
+    pb <- txtProgressBar(min = 0, max = n_test, style = 3)
+  }
+
+  for (i in 1:n_test) {
+    # Euclidean distance from test point i to all training points
+    diffs <- sweep(train_scaled, 2, test_scaled[i, ], "-")
+    dists <- sqrt(rowSums(diffs^2))
+    test_min_dist[i] <- min(dists)
+    if (verbose) setTxtProgressBar(pb, i)
+  }
+
+  if (verbose) close(pb)
+
+  # Dissimilarity Index = normalized minimum distance
+  DI <- test_min_dist / train_avg_dist
+
+  # Return results
+  return(list(
+    DI = DI,
+    train_avg_dist = train_avg_dist
+  ))
+}
+
 # Quantile cut-based partitioning with probabilistic interleaving/segregation
 create_cut_based_partitions <- function(
   data,
-  feature_cols,
+  feature_name,
   target_col,
   n_cuts,
   n_partitions = 5,
   segregation_prob = 0,
-  top_n_features = 1,
-  feature_weights = NULL,
   seed = 42
 ) {
   cat(
@@ -27,27 +118,15 @@ create_cut_based_partitions <- function(
     n_partitions,
     "partitions using",
     n_cuts,
-    "quantile cuts",
-    "(segregation_prob =",
+    "quantile cuts on feature '",
+    feature_name,
+    "' (segregation_prob =",
     segregation_prob,
     ")...\n"
   )
 
-  # Select top feature(s)
-  top_features <- select_clustering_features(
-    feature_cols,
-    top_n_features,
-    feature_weights
-  )
-
-  # For now, use only the top feature (single variable)
-  if (length(top_features) > 1) {
-    cat("Note: Using only top feature:", top_features[1], "\n")
-  }
-  top_feature <- top_features[1]
-
   # Extract feature values
-  feature_values <- data[[top_feature]]
+  feature_values <- data[[feature_name]]
 
   # Create quantile-based cuts
   quantile_breaks <- quantile(
@@ -81,7 +160,7 @@ create_cut_based_partitions <- function(
   # segregation_prob = 0: Pure interleaving (all intervals distributed round-robin)
   # segregation_prob = 1: Maximum segregation (intervals form contiguous blocks)
 
-  # REVISED: Guarantee all n_partitions are non-empty by assigning first n_partitions intervals
+  # Guarantee all n_partitions are non-empty by assigning first n_partitions intervals
   # one-per-partition, then apply probabilistic logic to remaining intervals
 
   set.seed(seed)
@@ -150,9 +229,310 @@ create_cut_based_partitions <- function(
 
   return(list(
     partitions = partition_assignments,
-    clusters = intervals, # Return interval assignments for compatibility
-    partition_stats = partition_stats,
-    silhouette = NA # No silhouette for cut-based approach
+    partition_stats = partition_stats
+  ))
+}
+
+# Spacer-based partitioning ####
+create_spacer_based_partitions <- function(
+  data,
+  feature_name,
+  target_col,
+  n_cuts,
+  spacer_proportion = 0,
+  n_partitions = 5,
+  seed = 42
+) {
+  cat(
+    "Creating",
+    n_partitions,
+    "partitions using",
+    n_cuts,
+    "quantile cuts on feature '",
+    feature_name,
+    "' with spacer_proportion =",
+    spacer_proportion,
+    "...\n"
+  )
+
+  # Extract feature values
+  feature_values <- data[[feature_name]]
+
+  # Create quantile-based cuts (same as cut-based approach)
+  quantile_breaks <- quantile(
+    feature_values,
+    probs = seq(0, 1, length.out = n_cuts + 1),
+    na.rm = TRUE
+  )
+
+  # Handle case where quantiles are not unique (can happen with discrete data)
+  quantile_breaks <- unique(quantile_breaks)
+  actual_cuts <- length(quantile_breaks) - 1
+
+  if (actual_cuts < n_cuts) {
+    cat(
+      "Warning: Only",
+      actual_cuts,
+      "unique quantile breaks found (requested",
+      n_cuts,
+      ")\n"
+    )
+  }
+
+  intervals <- cut(
+    feature_values,
+    breaks = quantile_breaks,
+    labels = FALSE,
+    include.lowest = TRUE
+  )
+
+  # Validate inputs
+  if (spacer_proportion < 0 || spacer_proportion > 1) {
+    stop("spacer_proportion must be in [0, 1]")
+  }
+
+  # Spacer-based assignment: Create contiguous blocks with spacer gaps
+  set.seed(seed)
+  unique_intervals_ordered <- sort(unique(intervals))
+  n_intervals <- length(unique_intervals_ordered)
+
+  # Check if we have enough intervals
+  if (n_intervals < n_partitions) {
+    stop(sprintf(
+      "Insufficient intervals (%d) for %d partitions",
+      n_intervals, n_partitions
+    ))
+  }
+
+  interval_to_partition <- integer(n_intervals)
+
+  # Calculate spacer and partition allocations
+  n_spacers <- n_partitions - 1
+  total_intervals <- n_intervals
+
+  spacer_intervals_total <- floor(total_intervals * spacer_proportion)
+  spacer_intervals_per_gap <- floor(spacer_intervals_total / n_spacers)
+  remaining_spacer_intervals <- spacer_intervals_total - (spacer_intervals_per_gap * n_spacers)
+
+  partition_intervals_total <- total_intervals - spacer_intervals_total
+  partition_intervals_per_block <- floor(partition_intervals_total / n_partitions)
+  remaining_partition_intervals <- partition_intervals_total - (partition_intervals_per_block * n_partitions)
+
+  # Build partition and spacer size vectors
+  partition_sizes <- rep(partition_intervals_per_block, n_partitions)
+  if (remaining_partition_intervals > 0) {
+    partition_sizes[1:remaining_partition_intervals] <-
+      partition_sizes[1:remaining_partition_intervals] + 1
+  }
+
+  spacer_sizes <- rep(spacer_intervals_per_gap, n_spacers)
+  if (remaining_spacer_intervals > 0) {
+    spacer_sizes[1:remaining_spacer_intervals] <-
+      spacer_sizes[1:remaining_spacer_intervals] + 1
+  }
+
+  # Build interval-to-partition mapping with spacers
+  current_interval <- 1
+
+  for (p in 1:n_partitions) {
+    # Assign partition block
+    end_interval <- current_interval + partition_sizes[p] - 1
+    if (end_interval > n_intervals) end_interval <- n_intervals
+
+    interval_to_partition[current_interval:end_interval] <- p
+    current_interval <- end_interval + 1
+
+    # Assign spacer gap (if not last partition)
+    if (p < n_partitions && current_interval <= n_intervals) {
+      end_interval <- current_interval + spacer_sizes[p] - 1
+      if (end_interval > n_intervals) end_interval <- n_intervals
+
+      interval_to_partition[current_interval:end_interval] <- NA
+      current_interval <- end_interval + 1
+    }
+  }
+
+  # Map intervals to their assigned partitions
+  partition_assignments <- interval_to_partition[intervals]
+
+  # Calculate partition statistics (excluding spacer rows)
+  non_spacer_mask <- !is.na(partition_assignments)
+
+  partition_stats <- data[non_spacer_mask, ] |>
+    mutate(partition = factor(partition_assignments[non_spacer_mask])) |>
+    group_by(partition) |>
+    summarise(
+      n_total = n(),
+      n_presence = sum(.data[[target_col]] == 1),
+      prevalence = n_presence / n_total,
+      .groups = "drop"
+    )
+
+  # Calculate spacer statistics
+  n_spacer_rows <- sum(!non_spacer_mask)
+  spacer_prevalence <- if (n_spacer_rows > 0) {
+    sum(data[[target_col]][!non_spacer_mask] == 1) / n_spacer_rows
+  } else {
+    0
+  }
+
+  # Print diagnostics
+  cat("\nSpacer-based partitioning summary:\n")
+  cat("  Total intervals:", n_intervals, "\n")
+  cat("  Spacer proportion:", round(spacer_proportion, 3), "\n")
+  cat("  Spacer intervals:", spacer_intervals_total, "(",
+      round(spacer_intervals_total / n_intervals * 100, 1), "%)\n")
+  cat("  Partition intervals:", partition_intervals_total, "(",
+      round(partition_intervals_total / n_intervals * 100, 1), "%)\n")
+  cat("  Spacer rows (data excluded):", n_spacer_rows, "(",
+      round(n_spacer_rows / nrow(data) * 100, 1), "%)\n")
+  if (n_spacer_rows > 0) {
+    cat("  Spacer prevalence:", round(spacer_prevalence, 3), "\n")
+  }
+  cat("\n")
+
+  cat("Partition summary (excluding spacers):\n")
+  print(partition_stats)
+
+  cat("\nPartition assignment:\n")
+  for (p in 1:n_partitions) {
+    cat(sprintf(
+      "Partition %d: %d obs (%.1f%%), %.3f prevalence\n",
+      p,
+      partition_stats$n_total[p],
+      partition_stats$n_total[p] / sum(partition_stats$n_total) * 100,
+      partition_stats$prevalence[p]
+    ))
+  }
+
+  # Validation: Warn if any partition is too small
+  min_partition_size <- min(partition_stats$n_total)
+  if (min_partition_size < 100) {
+    warning(sprintf(
+      "Smallest partition has only %d observations (< 100)",
+      min_partition_size
+    ))
+  }
+
+  return(list(
+    partitions = partition_assignments,
+    partition_stats = partition_stats
+  ))
+}
+
+# Evaluate spacer-based partitioning for a given n_cuts and spacer_proportion
+evaluate_spacer_partitioning <- function(
+  n_cuts,
+  spacer_proportion = 0,
+  data,
+  precomputed_distances,
+  feature_name,
+  featuredist_sample_size = 1e4,
+  seed = 42
+) {
+  cat(
+    "Evaluating n_cuts =",
+    n_cuts,
+    ", spacer_proportion =",
+    spacer_proportion,
+    "...\n"
+  )
+
+  # Create partitions using spacer-based approach
+  partition_result <- create_spacer_based_partitions(
+    data = data,
+    feature_name = feature_name,
+    target_col = "response",
+    n_cuts = n_cuts,
+    n_partitions = 5,
+    spacer_proportion = spacer_proportion,
+    seed = seed
+  )
+
+  # Filter out spacer rows (partition == NA)
+  cv_folds <- partition_result$partitions
+  non_spacer_mask <- !is.na(cv_folds)
+
+  cat(
+    "Non-spacer data:", sum(non_spacer_mask), "rows",
+    "(", round(sum(non_spacer_mask) / length(non_spacer_mask) * 100, 1), "%)\n"
+  )
+
+  # Calculate CV distances using only non-spacer data
+  cv_dists <- calculate_cv_distances(
+    training_data = data[non_spacer_mask, ],
+    variable_name = feature_name,
+    cv_folds = cv_folds[non_spacer_mask],
+    sample_size = featuredist_sample_size,
+    standardize = FALSE,
+    seed = seed
+  )
+
+  # Debug: Print CV distance statistics
+  cat(
+    "CV distances - n:",
+    length(cv_dists),
+    ", mean:",
+    round(mean(cv_dists, na.rm = TRUE), 4),
+    ", range:",
+    paste(round(range(cv_dists, na.rm = TRUE), 4), collapse = " - "),
+    "\n"
+  )
+
+  # Combine all distances and create result structure (unscaled)
+  all_dists <- c(
+    precomputed_distances$sample_to_sample,
+    precomputed_distances$prediction_to_sample,
+    cv_dists
+  )
+
+  distance_types <- factor(
+    c(
+      rep("sample-to-sample", length(precomputed_distances$sample_to_sample)),
+      rep(
+        "prediction-to-sample",
+        length(precomputed_distances$prediction_to_sample)
+      ),
+      rep("CV-distances", length(cv_dists))
+    ),
+    levels = c("sample-to-sample", "prediction-to-sample", "CV-distances")
+  )
+
+  # Create feature_dists result structure for compatibility (no scaling)
+  feature_dists <- tibble::tibble(
+    dist = all_dists,
+    what = distance_types,
+    dist_type = "feature"
+  )
+
+  # Set class and attributes similar to featuredist output
+  class(feature_dists) <- c("geodist", class(feature_dists))
+  attr(feature_dists, "type") <- "feature"
+
+  # Calculate W_CV statistic
+  W_CV <- twosamples::wass_stat(
+    feature_dists[feature_dists$what == "CV-distances", "dist"][[1]],
+    feature_dists[feature_dists$what == "prediction-to-sample", "dist"][[1]]
+  )
+
+  # Print results
+  cat(
+    "n_cuts =",
+    n_cuts,
+    ", spacer_proportion =",
+    spacer_proportion,
+    "-> W_CV =",
+    round(W_CV, 4),
+    "\n\n"
+  )
+
+  return(list(
+    n_cuts = n_cuts,
+    spacer_proportion = spacer_proportion,
+    partition_result = partition_result,
+    W_CV = W_CV,
+    feature_name = feature_name,
+    feature_dists = feature_dists
   ))
 }
 
@@ -162,8 +542,7 @@ evaluate_cut_partitioning <- function(
   segregation_prob = 0,
   data,
   precomputed_distances,
-  feature_weights,
-  top_n_features = 1,
+  feature_name,
   featuredist_sample_size = 1e4,
   seed = 42
 ) {
@@ -178,23 +557,13 @@ evaluate_cut_partitioning <- function(
   # Create partitions using cut-based approach
   partition_result <- create_cut_based_partitions(
     data = data,
-    feature_cols = setdiff(names(data), "response"),
+    feature_name = feature_name,
     target_col = "response",
     n_cuts = n_cuts,
     n_partitions = 5, # Keep 5 partitions (1 test + 4 CV)
     segregation_prob = segregation_prob,
-    top_n_features = top_n_features,
-    feature_weights = feature_weights,
     seed = seed
   )
-
-  # Get top feature name (should match precomputed distances)
-  top_features <- select_clustering_features(
-    setdiff(names(data), "response"),
-    top_n_features,
-    feature_weights
-  )
-  top_feature <- top_features[1]
 
   # Use partition assignments directly as CV folds
   cv_folds <- partition_result$partitions
@@ -202,7 +571,7 @@ evaluate_cut_partitioning <- function(
   # Calculate CV distances across all partitions
   cv_dists <- calculate_cv_distances(
     training_data = data,
-    variable_name = top_feature,
+    variable_name = feature_name,
     cv_folds = cv_folds,
     sample_size = featuredist_sample_size,
     standardize = FALSE,
@@ -272,8 +641,7 @@ evaluate_cut_partitioning <- function(
     segregation_prob = segregation_prob,
     partition_result = partition_result,
     W_CV = W_CV,
-    silhouette = NA, # Not applicable for cut-based approach
-    top_feature = top_feature,
+    feature_name = feature_name,
     feature_dists = feature_dists
   ))
 }
@@ -1053,4 +1421,116 @@ train_single_model <- function(
   } else {
     stop("Unknown model_type: ", model_type)
   }
+}
+
+# Presence-based partitioning along sorted feature values ####
+# Creates k partitions by sorting presences along a feature and dividing into groups
+# Absences are assigned to partitions based on feature value overlap
+# Absences in gaps between partitions are dropped
+partition_by_presence_sorting <- function(
+  data,
+  feature_name,
+  k = 6,
+  min_pres = 50,
+  seed = NULL
+) {
+  # Set seed if provided
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
+
+  # Extract response and feature values
+  Y <- data$response
+  X <- data[[feature_name]]
+
+  # Identify presence and absence indices
+  pres_idx <- which(Y == 1)
+  abs_idx <- which(Y == 0)
+
+  n_pres <- length(pres_idx)
+  n_abs <- length(abs_idx)
+
+  # Check minimum presence constraint
+  if (n_pres < k * min_pres) {
+    stop(
+      "Insufficient presences for ", k, " partitions with min_pres = ", min_pres,
+      "\n  Available presences: ", n_pres,
+      "\n  Required: ", k * min_pres
+    )
+  }
+
+  # STEP 1: Partition the presences ####
+  # Sort presences by feature value
+  pres_X <- X[pres_idx]
+  pres_order <- order(pres_X)
+  pres_sorted <- pres_idx[pres_order]
+
+  # Divide into k groups of roughly equal size
+  group_size <- floor(n_pres / k)
+  remainder <- n_pres %% k
+
+  pres_groups <- vector("list", k)
+  start <- 1
+  for (i in 1:k) {
+    # Distribute remainder across first groups
+    this_size <- group_size + ifelse(i <= remainder, 1, 0)
+    pres_groups[[i]] <- pres_sorted[start:(start + this_size - 1)]
+    start <- start + this_size
+  }
+
+  # STEP 2: Define partition boundaries ####
+  # For each presence group, find X-range
+  partitions <- vector("list", k)
+  for (i in 1:k) {
+    pres_in_group <- pres_groups[[i]]
+    x_min <- min(X[pres_in_group])
+    x_max <- max(X[pres_in_group])
+
+    partitions[[i]] <- list(
+      x_lower = x_min,
+      x_upper = x_max,
+      presence_idx = pres_in_group,
+      absence_idx = integer(0)
+    )
+  }
+
+  # STEP 3: Assign absences ####
+  # Each absence goes to the partition whose X-range contains it
+  # Absences in gaps between partitions are dropped
+  dropped_abs <- integer(0)
+
+  for (j in abs_idx) {
+    assigned <- FALSE
+    for (i in 1:k) {
+      if (X[j] >= partitions[[i]]$x_lower && X[j] <= partitions[[i]]$x_upper) {
+        partitions[[i]]$absence_idx <- c(partitions[[i]]$absence_idx, j)
+        assigned <- TRUE
+        break  # No overlap assumption, so at most one match
+      }
+    }
+
+    if (!assigned) {
+      # Falls in a gap - dropped from analysis
+      dropped_abs <- c(dropped_abs, j)
+    }
+  }
+
+  # Create partition assignment vector
+  partition_assignment <- rep(NA_integer_, nrow(data))
+  for (i in 1:k) {
+    all_idx <- c(partitions[[i]]$presence_idx, partitions[[i]]$absence_idx)
+    partition_assignment[all_idx] <- i
+  }
+
+  # Return results
+  list(
+    partitions = partition_assignment,
+    partition_list = partitions,
+    n_presences = sapply(partitions, function(p) length(p$presence_idx)),
+    n_absences = sapply(partitions, function(p) length(p$absence_idx)),
+    n_dropped = length(dropped_abs),
+    dropped_idx = dropped_abs,
+    feature_name = feature_name,
+    k = k
+  )
 }

@@ -2,12 +2,10 @@
 
 # This script implements comprehensive hyperparameter tuning that compares
 # Balanced Random Forest (BRF) and Quantile Random Forest (RFQ) approaches
-# across three data partitioning schemes (importance, pca, maxshift).
 #
 # CV Strategy:
-# - Partition 1 held out entirely as final test set (never used in tuning)
-# - Partitions 2-5 used for 4-fold LOO CV during hyperparameter tuning
-# - Each CV iteration: 1 of 4 partitions held out for validation, 3 for training
+# - 1 partition held out entirely as final test set (never used in tuning)
+# - 4 partitions used for 4-fold LOO CV during hyperparameter tuning
 #
 # Optimal hyperparameters selected using weighted average G-mean by partition size
 # to account for imbalanced CV fold sizes.
@@ -22,22 +20,29 @@ source("R/functions.R")
 ## Configuration ####
 
 # Select which partitioning schemes to tune
-# Options: "importance", "pca", "maxshift"
-partitioning_schemes <- c("importance", "pca", "maxshift")
+# Options: "topfeature",...
+partitioning_schemes <- c("topfeature")
 
-cat("Partitioning schemes to process:", paste(partitioning_schemes, collapse = ", "), "\n\n")
+cat(
+  "Partitioning schemes to process:",
+  paste(partitioning_schemes, collapse = ", "),
+  "\n\n"
+)
 
 ## Main loop over partitioning schemes ####
 
 for (scheme in partitioning_schemes) {
-
   cat("\n", paste(rep("=", 80), collapse = ""), "\n")
   cat("Processing partitioning scheme:", toupper(scheme), "\n")
   cat(paste(rep("=", 80), collapse = ""), "\n\n")
 
   ### Load partitioned data ####
 
-  input_file <- paste0("output/pl2/modeling_frame_regional_partitioned_", scheme, ".csv")
+  input_file <- paste0(
+    "output/pl2/modeling_frame_regional_partitioned_",
+    scheme,
+    ".csv"
+  )
   cat("Loading data from:", input_file, "\n")
 
   mf <- read_csv(input_file, show_col_types = FALSE)
@@ -45,10 +50,14 @@ for (scheme in partitioning_schemes) {
   # Extract training data (current scenario only)
   train_data <- mf |>
     filter(scenario == "current") |>
-    select(-scenario, -x, -y)  # Keep partition, response, and predictors
+    select(-scenario, -x, -y) # Keep partition, response, and predictors
 
   cat("Total observations:", nrow(train_data), "\n")
-  cat("Partitions:", paste(sort(unique(train_data$partition)), collapse = ", "), "\n\n")
+  cat(
+    "Partitions:",
+    paste(sort(unique(train_data$partition)), collapse = ", "),
+    "\n\n"
+  )
 
   ### Select test partition based on prevalence ####
 
@@ -73,17 +82,26 @@ for (scheme in partitioning_schemes) {
 
   # Select partition with prevalence closest to overall prevalence as test partition
   test_partition <- all_partition_stats |>
+    filter(!is.na(partition)) |>
     slice_min(prev_diff, n = 1) |>
     pull(partition)
 
-  cat("\nTest partition selected:", test_partition,
-      "(prevalence =", round(all_partition_stats$prevalence[test_partition], 4),
-      ", closest to overall)\n")
+  cat(
+    "\nTest partition selected:",
+    test_partition,
+    "(prevalence =",
+    round(all_partition_stats$prevalence[test_partition], 4),
+    ", closest to overall)\n"
+  )
 
   # CV folds (remaining partitions used for tuning)
   cv_partitions <- setdiff(1:5, test_partition)
 
-  cat("CV partitions (for tuning):", paste(cv_partitions, collapse = ", "), "\n\n")
+  cat(
+    "CV partitions (for tuning):",
+    paste(cv_partitions, collapse = ", "),
+    "\n\n"
+  )
 
   # Extract CV and test partition statistics from all_partition_stats
   partition_stats <- all_partition_stats |>
@@ -100,18 +118,22 @@ for (scheme in partitioning_schemes) {
   cat("\nTest partition (", test_partition, ") statistics:\n", sep = "")
   print(test_stats)
 
+  ### Remove partition == NA ####
+
+  train_data <- train_data |>
+    filter(!is.na(partition)) # Spacers
+
   ### Create parameter grid ####
 
   # Define hyperparameter grid for tuning
-  n_predictors <- ncol(train_data) - 1  # Exclude partition column (response is included as predictor count)
-  n_predictors <- n_predictors - 1  # Now exclude response
-  mtry_values <- c(4, 7, 11) # seq(floor(sqrt(n_predictors)), ceiling(n_predictors/2), by = 1)
+  n_predictors <- ncol(train_data) - 2 # Exclude partition and response column
+  mtry_values <- c(6, 14, 22) # seq(floor(sqrt(n_predictors)), ceiling(n_predictors/2), by = 1)
   nodesize_values <- c(1, 20)
   model_types <- c("BRF", "RFQ")
 
   # Create complete parameter combination grid
   param_grid <- expand_grid(
-    cv_fold = cv_partitions,  # Only CV partitions (exclude test partition)
+    cv_fold = cv_partitions, # Only CV partitions (exclude test partition)
     model_type = model_types,
     mtry = mtry_values,
     nodesize = nodesize_values
@@ -126,25 +148,35 @@ for (scheme in partitioning_schemes) {
   ### Check parameter grid progress ####
 
   # Initialize progress tracking CSV file
-  progress_file <- paste0("output/pl2/hyperparameter_tuning_progress_", scheme, ".csv")
+  progress_file <- paste0(
+    "output/pl2/hyperparameter_tuning_progress_",
+    scheme,
+    ".csv"
+  )
 
-  if(file.exists(progress_file)) {
+  if (file.exists(progress_file)) {
     cat("\nFound existing progress file.\nChecking for completed jobs...\n")
 
     # Read existing results with explicit column types to ensure timestamp is character
-    completed_runs <- read_csv(progress_file, show_col_types = FALSE,
-                             col_types = cols(timestamp = col_character()))
+    completed_runs <- read_csv(
+      progress_file,
+      show_col_types = FALSE,
+      col_types = cols(timestamp = col_character())
+    )
 
-    if(nrow(completed_runs) > 0) {
+    if (nrow(completed_runs) > 0) {
       cat("Found", nrow(completed_runs), "completed jobs\n")
 
       # Filter out completed parameter combinations
       param_grid <- param_grid |>
-        anti_join(completed_runs, by = c("cv_fold", "model_type", "mtry", "nodesize"))
+        anti_join(
+          completed_runs,
+          by = c("cv_fold", "model_type", "mtry", "nodesize")
+        )
 
       cat("Remaining jobs to complete:", nrow(param_grid), "\n")
 
-      if(nrow(param_grid) == 0) {
+      if (nrow(param_grid) == 0) {
         cat("All parameter combinations already completed!\n")
         cat("Loading results from progress file...\n")
         all_results <- completed_runs
@@ -170,8 +202,7 @@ for (scheme in partitioning_schemes) {
   }
 
   ### Tune remaining parameter grid ####
-  if(nrow(param_grid) > 0) {
-
+  if (nrow(param_grid) > 0) {
     cat("\nStarting hyperparameter tuning...\n")
     cat("Running", nrow(param_grid), "parameter combinations\n")
 
@@ -180,7 +211,7 @@ for (scheme in partitioning_schemes) {
       mutate(
         results = pmap(
           list(cv_fold, model_type, mtry, nodesize, job_id),
-          ~train_single_model(
+          ~ train_single_model(
             cv_fold = ..1,
             model_type = ..2,
             mtry = ..3,
@@ -191,14 +222,14 @@ for (scheme in partitioning_schemes) {
           )
         )
       ) |>
-      select(results) |>  # Keep only results column to avoid duplicates
-      pull(results) |>    # Extract list of data.frames
-      bind_rows()         # Combine into single data.frame
+      select(results) |> # Keep only results column to avoid duplicates
+      pull(results) |> # Extract list of data.frames
+      bind_rows() # Combine into single data.frame
 
     cat("\nHyperparameter tuning completed!\n")
 
     # Combine with any existing results
-    if(exists("completed_runs") && nrow(completed_runs) > 0) {
+    if (exists("completed_runs") && nrow(completed_runs) > 0) {
       all_results <- bind_rows(completed_runs, tuning_results)
     } else {
       all_results <- tuning_results
@@ -212,8 +243,10 @@ for (scheme in partitioning_schemes) {
 
   # Join partition sizes to results
   all_results_weighted <- all_results |>
-    left_join(partition_stats |> select(partition, n_obs),
-              by = c("cv_fold" = "partition"))
+    left_join(
+      partition_stats |> select(partition, n_obs),
+      by = c("cv_fold" = "partition")
+    )
 
   # Calculate WEIGHTED average performance across folds
   avg_results <- all_results_weighted |>
@@ -238,7 +271,7 @@ for (scheme in partitioning_schemes) {
   best_config <- avg_results |>
     slice_max(weighted_mean_gmean, n = 1)
 
-  if(nrow(best_config) > 1) {
+  if (nrow(best_config) > 1) {
     # If there's a tie, select the one with smallest standard deviation
     best_config <- best_config |>
       slice_min(sd_gmean, n = 1)
@@ -254,7 +287,11 @@ for (scheme in partitioning_schemes) {
   ### Save hyperparameter tuning results ####
 
   # Save aggregated results
-  avg_results_file <- paste0("output/pl2/hyperparameter_tuning_summary_", scheme, ".csv")
+  avg_results_file <- paste0(
+    "output/pl2/hyperparameter_tuning_summary_",
+    scheme,
+    ".csv"
+  )
   write_csv(avg_results, avg_results_file)
 
   # Save final hyperparameters
@@ -275,7 +312,11 @@ for (scheme in partitioning_schemes) {
     stringsAsFactors = FALSE
   )
 
-  final_hyperparams_file <- paste0("output/pl2/hyperparameters_", scheme, ".csv")
+  final_hyperparams_file <- paste0(
+    "output/pl2/hyperparameters_",
+    scheme,
+    ".csv"
+  )
   write_csv(final_hyperparams, final_hyperparams_file)
   cat("Saved final hyperparameters to:", final_hyperparams_file, "\n")
 
@@ -289,12 +330,14 @@ for (scheme in partitioning_schemes) {
   final_file <- paste0("output/pl2/hyperparameters_", scheme, ".csv")
   if (file.exists(final_file)) {
     results <- read_csv(final_file, show_col_types = FALSE)
-    cat(sprintf("%-15s: %s, mtry=%d, nodesize=%d, weighted G-mean=%.4f\n",
-                toupper(scheme),
-                results$model_type,
-                results$mtry,
-                results$nodesize,
-                results$weighted_mean_gmean))
+    cat(sprintf(
+      "%-15s: %s, mtry=%d, nodesize=%d, weighted G-mean=%.4f\n",
+      toupper(scheme),
+      results$model_type,
+      results$mtry,
+      results$nodesize,
+      results$weighted_mean_gmean
+    ))
   }
 }
 

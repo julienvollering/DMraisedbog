@@ -1,31 +1,28 @@
 # Top-Feature Partitioning ####
 
-# This script implements quantile cut-based partitioning using the most important
-# feature. Optimizes n_cuts × segregation_prob to minimize W_CV.
+# This script implements presence-based partitioning using the most important
+# feature. Sorts presences along the feature and divides into k groups.
+# Absences are assigned based on overlap with partition boundaries.
+# Absences in gaps between partitions are dropped.
 
 library(readr)
 library(dplyr)
 library(terra)
-library(tidyr)
 library(ggplot2)
 library(sf)
-library(purrr)
-library(furrr)
-library(twosamples)
-library(CAST)
+
+source("R/functions.R")
 
 ## Configuration ####
 
-# Parallelization
-n_cores <- 4
-plan(multisession, workers = n_cores)
+# Number of partitions
+k_partitions <- 5
 
-# Feature distance calculation subsampling
-featuredist_sample_size <- 3e4
+# Minimum presences per partition
+min_presences <- 50
 
-# Evaluation ranges for 2D grid search (configurable)
-n_cuts_range <- seq(1000, 2000, by = 500)
-segregation_prob_range <- seq(0.5, 0.75, by = 0.05)
+# Random seed for reproducibility
+partition_seed <- 42
 
 ## Read modeling frame ####
 mf <- read_csv("output/pl2/modeling_frame_regional.csv")
@@ -35,24 +32,20 @@ raster_current <- rast("output/pl2/scenario_current.tif")
 mf_current_with_coords <- mf |>
   filter(scenario == "current") |>
   select(-scenario)
+
 mf_current <- mf_current_with_coords |>
   select(-x, -y)
 
-toJoin <- mf |>
-  filter(scenario == "future") |>
-  select(-scenario)
-mf_future_presence <- mf |>
-  filter(response == 1) |>
-  select(x, y) |>
-  left_join(toJoin, by = c("x", "y")) |>
-  select(-x, -y)
-
-n_presence <- sum(mf_current$response == "1")
-n_absence <- sum(mf_current$response == "0")
+n_presence <- sum(mf_current$response == 1)
+n_absence <- sum(mf_current$response == 0)
 prevalence <- n_presence / (n_presence + n_absence)
 
+cat("\n=== DATA SUMMARY ===\n")
 cat("Training data - Presences:", n_presence, "Absences:", n_absence, "\n")
 cat("Prevalence:", round(prevalence * 100, 2), "%\n")
+cat("Requested partitions:", k_partitions, "\n")
+cat("Minimum presences per partition:", min_presences, "\n")
+cat("Total presences needed:", k_partitions * min_presences, "\n")
 
 ## Load feature weights and identify most important feature ####
 weights_features <- read_csv("output/pl2/weights_feature_data_partitioning.csv")
@@ -66,221 +59,127 @@ weights <- weights_features |>
 
 most_important_feature <- names(weights)[1]
 
-cat("\nMost important feature:", most_important_feature, "\n")
+cat("\n=== TOP FEATURE ===\n")
+cat("Most important feature:", most_important_feature, "\n")
+cat("Feature importance:", round(weights[most_important_feature], 4), "\n")
 
-## Functions ####
-source("R/functions.R")
+## Apply presence-based partitioning ####
 
-## Pre-compute prediction distances on most important feature ####
+cat("\n=== PARTITIONING ===\n")
+cat("Running presence-based partitioning algorithm...\n")
 
-cat("\nPre-computing prediction distances on", most_important_feature, "...\n")
-
-precomputed_distances <- calculate_prediction_distances(
-  training_data = mf_current,
-  prediction_data = mf_future_presence,
-  variable_name = most_important_feature,
-  sample_size = featuredist_sample_size,
-  standardize = FALSE,
-  seed = 42
-)
-
-cat("Pre-computation complete.\n\n")
-
-## 2D grid search over n_cuts and segregation_prob ####
-
-cat("Starting parallel 2D grid search over n_cuts × segregation_prob...\n")
-cat("Using", n_cores, "cores\n")
-
-# Create single-feature weights vector for compatibility
-feature_weights <- setNames(
-  weights[most_important_feature],
-  most_important_feature
-)
-
-# Check for existing evaluation results
-eval_file <- "output/pl2/n_cuts_evaluation_topfeature.csv"
-if (file.exists(eval_file)) {
-  cat("Loading existing evaluation results from:", eval_file, "\n")
-  existing_results <- read_csv(eval_file, show_col_types = FALSE)
-  cat("Found", nrow(existing_results), "previous evaluations\n")
-} else {
-  existing_results <- tibble(
-    n_cuts = numeric(),
-    segregation_prob = numeric(),
-    W_CV = numeric()
-  )
-  cat("No existing results found, starting fresh\n")
-}
-
-# Create grid of all combinations to evaluate
-all_combinations <- expand_grid(
-  n_cuts = n_cuts_range,
-  segregation_prob = segregation_prob_range
-)
-
-# Identify which combinations still need evaluation
-combinations_to_run <- all_combinations |>
-  anti_join(existing_results, by = c("n_cuts", "segregation_prob"))
-
-cat("Parameter grid:", nrow(all_combinations), "total combinations\n")
-cat("Already evaluated:", nrow(existing_results), "combinations\n")
-cat("To evaluate:", nrow(combinations_to_run), "combinations\n\n")
-
-if (nrow(combinations_to_run) > 0) {
-  # Run only unevaluated combinations
-  new_evaluations <- combinations_to_run |>
-    mutate(
-      results = future_map2(
-        n_cuts,
-        segregation_prob,
-        ~ evaluate_cut_partitioning(
-          n_cuts = .x,
-          segregation_prob = .y,
-          data = mf_current,
-          precomputed_distances = precomputed_distances,
-          feature_weights = feature_weights,
-          top_n_features = 1,
-          featuredist_sample_size = featuredist_sample_size,
-          seed = 42
-        ),
-        .options = furrr_options(seed = TRUE)
-      ),
-      W_CV = map_dbl(results, ~ .x$W_CV)
-    )
-
-  # Save new results immediately (without results column)
-  new_results_summary <- new_evaluations |>
-    select(n_cuts, segregation_prob, W_CV)
-
-  write_csv(new_results_summary, eval_file, append = file.exists(eval_file))
-  cat("Saved", nrow(new_results_summary), "new evaluations to", eval_file, "\n")
-
-  # Combine all results for analysis
-  partitioning_evaluation <- new_evaluations
-  all_results_summary <- bind_rows(existing_results, new_results_summary)
-} else {
-  cat("All combinations already evaluated, skipping grid search\n")
-  partitioning_evaluation <- tibble(
-    n_cuts = numeric(),
-    segregation_prob = numeric(),
-    results = list(),
-    W_CV = numeric()
-  )
-  all_results_summary <- existing_results
-}
-
-## Display and visualize results ####
-
-cat("\nTop 10 parameter combinations by W_CV (across all runs):\n")
-evaluation_summary <- all_results_summary |>
-  arrange(W_CV) |>
-  head(10)
-print(evaluation_summary)
-
-# Heatmap
-p1 <- ggplot(
-  all_results_summary,
-  aes(x = n_cuts, y = segregation_prob, fill = W_CV)
-) +
-  geom_tile() +
-  scale_fill_viridis_c(option = "plasma", direction = -1) +
-  geom_point(
-    data = all_results_summary |> slice_min(W_CV, n = 1),
-    color = "red",
-    size = 4,
-    shape = 21,
-    stroke = 2
-  ) +
-  labs(
-    title = paste(
-      "W_CV across n_cuts × segregation_prob (Most Important:",
-      most_important_feature,
-      ")"
-    ),
-    subtitle = "Red point = optimal combination",
-    x = "Number of quantile cuts (n_cuts)",
-    y = "Segregation probability",
-    fill = "W_CV"
-  ) +
-  theme_minimal()
-
-print(p1)
-
-# Line plot
-p2 <- ggplot(
-  all_results_summary,
-  aes(x = segregation_prob, y = W_CV, color = factor(n_cuts))
-) +
-  geom_line(linewidth = 1) +
-  geom_point(size = 2) +
-  labs(
-    title = paste(
-      "W_CV vs Segregation Probability (Most Important:",
-      most_important_feature,
-      ")"
-    ),
-    x = "Segregation probability",
-    y = "W_CV",
-    color = "n_cuts"
-  ) +
-  theme_minimal()
-
-print(p2)
-
-## Extract optimal results ####
-
-optimal_params <- all_results_summary |> slice_min(W_CV, n = 1)
-optimal_n_cuts <- optimal_params$n_cuts
-optimal_segregation_prob <- optimal_params$segregation_prob
-optimal_w_cv <- optimal_params$W_CV
-
-cat("\nOptimal parameters (minimum W_CV across all runs):\n")
-cat("  n_cuts =", optimal_n_cuts, "\n")
-cat("  segregation_prob =", optimal_segregation_prob, "\n")
-cat("  W_CV =", round(optimal_w_cv, 4), "\n")
-
-# Re-run optimal combination to get full results
-cat("\nRe-running optimal combination to generate partitions...\n")
-optimal_result <- evaluate_cut_partitioning(
-  n_cuts = optimal_n_cuts,
-  segregation_prob = optimal_segregation_prob,
+partitioning_result <- partition_by_presence_sorting(
   data = mf_current,
-  precomputed_distances = precomputed_distances,
-  feature_weights = feature_weights,
-  top_n_features = 1,
-  featuredist_sample_size = featuredist_sample_size,
-  seed = 42
+  feature_name = most_important_feature,
+  k = k_partitions,
+  min_pres = min_presences,
+  seed = partition_seed
 )
 
-# ECDF plot
-plot(optimal_result$feature_dists, stat = "ecdf")
-
-## Save results ####
-
-partitioning_result <- optimal_result$partition_result
-
+# Display results
 cat("\nPartition summary:\n")
-print(table(partitioning_result$partitions))
+cat("  Partitions created:", partitioning_result$k, "\n")
+cat("  Feature used:", partitioning_result$feature_name, "\n")
+cat("  Observations dropped (in gaps):", partitioning_result$n_dropped, "\n\n")
+
+cat("Presences per partition:\n")
+print(partitioning_result$n_presences)
+
+cat("\nAbsences per partition:\n")
+print(partitioning_result$n_absences)
+
+cat("\nTotal observations per partition:\n")
+partition_totals <- partitioning_result$n_presences +
+  partitioning_result$n_absences
+names(partition_totals) <- paste0("P", 1:k_partitions)
+print(partition_totals)
+
+## Feature distribution visualization ####
+
+cat("\n=== VISUALIZATION ===\n")
+
+# Histogram of feature with partition boundaries
+partition_boundaries <- data.frame(
+  partition = 1:k_partitions,
+  x_lower = sapply(partitioning_result$partition_list, function(p) p$x_lower),
+  x_upper = sapply(partitioning_result$partition_list, function(p) p$x_upper)
+)
+
+cat("Partition boundaries on feature", most_important_feature, ":\n")
+print(partition_boundaries)
+
+# Plot feature distribution by partition
+mf_current_plot <- mf_current |>
+  mutate(partition = factor(partitioning_result$partitions))
+
+p_dist <- ggplot(
+  mf_current_plot |> filter(!is.na(partition)),
+  aes(x = .data[[most_important_feature]], fill = partition)
+) +
+  geom_histogram(bins = 50, alpha = 0.7, position = "identity") +
+  facet_wrap(~partition, ncol = 1) +
+  labs(
+    title = paste("Distribution of", most_important_feature, "by Partition"),
+    x = most_important_feature,
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+print(p_dist)
+
+# Boxplot by partition and response
+p_box <- ggplot(
+  mf_current_plot |> filter(!is.na(partition)),
+  aes(
+    x = partition,
+    y = .data[[most_important_feature]],
+    fill = factor(response)
+  )
+) +
+  geom_boxplot() +
+  labs(
+    title = paste(most_important_feature, "by Partition and Response"),
+    x = "Partition",
+    y = most_important_feature,
+    fill = "Response"
+  ) +
+  theme_minimal()
+
+print(p_box)
 
 ## Map visualization ####
+
+cat("\nCreating spatial visualization...\n")
+
 mf_current_with_coords_partitioned <- mf_current_with_coords |>
   select(response, x, y) |>
   mutate(
-    interval = factor(partitioning_result$clusters),
     partition = factor(partitioning_result$partitions)
   ) |>
+  filter(!is.na(partition)) |>
   st_as_sf(coords = c("x", "y"), crs = st_crs(raster_current)) |>
   vect()
 
 raster <- rasterize(
   mf_current_with_coords_partitioned,
   raster_current,
-  field = c("interval", "partition")
+  field = "partition"
 )
 
-plot(raster["partition"])
+plot(
+  raster["partition"],
+  main = paste(
+    "Spatial Distribution of Partitions\n(Feature:",
+    most_important_feature,
+    ")"
+  ),
+  col = rainbow(k_partitions)
+)
 
 ## Save partitioned datasets ####
+
+cat("\n=== SAVING RESULTS ===\n")
 
 mf_partitioned <- mf_current_with_coords |>
   mutate(
@@ -291,13 +190,28 @@ mf_partitioned <- mf_current_with_coords |>
   bind_rows(filter(mf, scenario != "current")) |>
   select(scenario, partition, response, everything())
 
-write_csv(
-  mf_partitioned,
-  "output/pl2/modeling_frame_regional_partitioned_topfeature.csv",
-  append = FALSE
-)
+output_csv <- "output/pl2/modeling_frame_regional_partitioned_topfeature.csv"
+output_tif <- "output/pl2/partition_topfeature.tif"
 
-writeRaster(raster, "output/pl2/partition_topfeature.tif", overwrite = TRUE)
+write_csv(mf_partitioned, output_csv, append = FALSE)
+cat("Saved partitioned modeling frame to:", output_csv, "\n")
+
+writeRaster(raster, output_tif, overwrite = TRUE)
+cat("Saved partition raster to:", output_tif, "\n")
+
+cat("\nPartitioning complete!\n")
+cat("  Total observations:", nrow(mf_current), "\n")
+cat(
+  "  Observations in partitions:",
+  sum(!is.na(partitioning_result$partitions)),
+  "\n"
+)
+cat("  Observations dropped:", partitioning_result$n_dropped, "\n")
+cat(
+  "  Drop rate:",
+  round(100 * partitioning_result$n_dropped / nrow(mf_current), 2),
+  "%\n"
+)
 
 # sessionInfo ####
 

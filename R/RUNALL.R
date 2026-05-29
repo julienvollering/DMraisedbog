@@ -26,11 +26,7 @@ scripts_pipeline2 <- c(
   "R/pl2_createModelingFrame.R",
   "R/pl2_weightFeaturesDataPartitioning.R",
   "R/pl2_exploreFeatureSpaceDistances.R",
-  # Three parallel partitioning schemes for performance bounds:
-  "R/pl2_partitionDataByImportance.R", # Optimistic bound
-  "R/pl2_partitionDataByPCA.R", # Best estimate
-  "R/pl2_partitionDataByMaxShift.R", # Pessimistic bound
-  "R/pl2_tuneHyperparameters.R",
+  "R/pl2_partitionDataByTopFeature.R",
   "R/pl2_evaluate.R",
   "R/pl2_predict.R",
   "R/pl2_interpret.R"

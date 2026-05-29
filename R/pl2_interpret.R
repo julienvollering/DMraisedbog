@@ -10,27 +10,21 @@ library(tidyr)
 library(sf)
 library(terra)
 
-## Configuration ####
-
-# Select which partitioning schemes to process
-partitioning_schemes <- c("importance", "pca", "maxshift")
-
 ## Load spatial data ####
 
-# Read Lyngstad raised bog polygons
 cat("Loading Lyngstad raised bog polygons...\n")
-lyngstad <- st_read("data/DMraisedbog.gpkg", layer = "lyngstad-MTYPE_A", quiet = TRUE)
+lyngstad <- st_read(
+  "data/DMraisedbog.gpkg",
+  layer = "lyngstad-MTYPE_A",
+  quiet = TRUE
+)
 cat("Loaded", nrow(lyngstad), "polygons\n")
 
-# Transform to EPSG:3035 to match modeling CRS
 lyngstad_proj <- st_transform(lyngstad, crs = 3035)
-
-# Convert to SpatVector for terra operations
 lyngstad_vect <- vect(lyngstad_proj)
 
 ## Load prevalence threshold ####
 
-# Read modeling frame to calculate prevalence (same as pl2_predict.R)
 mf <- read_csv("output/pl2/modeling_frame_regional.csv", show_col_types = FALSE)
 
 train_data <- mf |>
@@ -40,18 +34,17 @@ train_data <- mf |>
 prevalence <- mean(train_data$response == 1)
 cat("Training data prevalence (threshold):", round(prevalence, 4), "\n\n")
 
-## Main loop over partitioning schemes ####
+## Main loop over models ####
 
+models <- c("brf", "rfq")
 all_data <- list()
 
-# scheme <- partitioning_schemes[1]  # For testing
-
-for (scheme in partitioning_schemes) {
-  cat("Processing scheme:", toupper(scheme), "\n")
+for (model in models) {
+  cat("Processing model:", toupper(model), "\n")
 
   ### Load predictions ####
 
-  pred_file <- paste0("output/pl2/rf_local_pred_", scheme, ".tif")
+  pred_file <- paste0("output/pl2/rf_local_pred_", model, ".tif")
   pred_rasters <- rast(pred_file)
 
   ### Extract zonal statistics for both scenarios ####
@@ -59,11 +52,12 @@ for (scheme in partitioning_schemes) {
   zonal <- terra::extract(
     pred_rasters,
     lyngstad_vect,
-    fun = mean) |>
+    fun = mean
+  ) |>
     as_tibble()
 
   ### Analyze change ####
-  
+
   change <- zonal |>
     mutate(
       change = future - current,
@@ -75,24 +69,21 @@ for (scheme in partitioning_schemes) {
         !positive_current & positive_future ~ "become_positive",
         positive_current & !positive_future ~ "become_negative"
       )
-    ) |> 
+    ) |>
     select(ID, current, future, change, transition)
 
-  # Store data for combined CSV
-  all_data[[scheme]] <- change
+  all_data[[model]] <- change
 
   ### Create output polygon layer ####
 
-  # Add to polygon layer
   lyngstad_predicted <- lyngstad_proj
-  lyngstad_predicted <- bind_cols(lyngstad_predicted, change) |> 
-    mutate(scheme = scheme, .before = current)
+  lyngstad_predicted <- bind_cols(lyngstad_predicted, change) |>
+    mutate(model = model, .before = current)
 
-  # Save polygon layer
   st_write(
     lyngstad_predicted,
     dsn = "output/pl2/lyngstad_predictions.gpkg",
-    layer = scheme,
+    layer = model,
     delete_layer = TRUE,
     quiet = TRUE
   )
