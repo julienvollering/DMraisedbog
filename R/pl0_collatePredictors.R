@@ -42,9 +42,13 @@ names(chelsa_past_stack) <- stringr::str_extract(
 )
 
 ### Future climate ####
+# CHELSA CMIP6 scenario; must match files downloaded by pl0_downloadCHELSA.R.
+# Filtering by scenario means leftover files from other scenarios (e.g. ssp585)
+# in the same directory will not be stacked.
+future_scenario <- "ssp370"
 chelsa_future_files <- list.files(
   "data/CHELSA/2071-2100",
-  pattern = "CHELSA_.*\\.tif$",
+  pattern = paste0("CHELSA_gfdl-esm4_", future_scenario, "_.*\\.tif$"),
   full.names = TRUE
 ) %>%
   sort()
@@ -52,7 +56,7 @@ chelsa_future_files <- list.files(
 chelsa_future_stack <- rast(chelsa_future_files)
 names(chelsa_future_stack) <- stringr::str_extract(
   names(chelsa_future_stack),
-  "(?<=CHELSA_gfdl-esm4_ssp585_).+(?=_2071)"
+  paste0("(?<=CHELSA_gfdl-esm4_", future_scenario, "_).+(?=_2071)")
 )
 
 ### Paleo-derived predictors ####

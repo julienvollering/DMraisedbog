@@ -5,7 +5,7 @@ library(terra)
 #
 # Objective: Download CHELSA climate data for raised bog distribution modeling
 # - Current period bioclim (1981-2010, v2.1)
-# - Near future bioclim (2071-2100, SSP585, CMIP6)
+# - Near future bioclim (2071-2100, SSP370, CMIP6)
 # - Optional: Paleo data from CHELSA-TRACE
 # - Data source: Direct download from CHELSA bucket (>https://os.unil.cloud.switch.ch/chelsa02/>; <https://os.zhdk.cloud.switch.ch/chelsa01/chelsa_trace21k/>)
 # - Output: GeoTIFF files organized by time period in data/CHELSA/
@@ -29,8 +29,9 @@ future_period <- "2071-2100"
 
 ### Climate scenarios ####
 
-# Climate scenarios for future projections
-ssp_scenarios <- c("ssp585")
+# Climate scenario for future projections (CHELSA CMIP6: ssp126, ssp370, ssp585)
+scenario <- "ssp370"
+ssp_scenarios <- c(scenario)
 
 ### Spatial extent ####
 
@@ -114,7 +115,7 @@ for (var in candidate_vars) {
   future_file <- paste0(
     "CHELSA_",
     tolower(gcm_model),
-    "_ssp585_",
+    "_", scenario, "_",
     var,
     "_2071-2100_V.2.1.tif"
   )
@@ -123,7 +124,7 @@ for (var in candidate_vars) {
     var,
     "2071-2100",
     gcm_model,
-    "ssp585",
+    scenario,
     future_file
   )
 
@@ -208,7 +209,7 @@ cat("\n")
 cat(
   "Downloading future period (",
   future_period,
-  ", SSP585) variables...\n",
+  ", ", toupper(scenario), ") variables...\n",
   sep = ""
 )
 
@@ -216,11 +217,11 @@ for (var in variables_to_download) {
   cat("  Downloading", var, "...\n")
 
   # Construct filename following CHELSA CMIP6 naming convention
-  # Format: CHELSA_gfdl-esm4_ssp585_bio01_2071-2100_V.2.1.tif
+  # Format: CHELSA_gfdl-esm4_<scenario>_bio01_2071-2100_V.2.1.tif
   chelsa_filename <- paste0(
     "CHELSA_",
     tolower(gcm_model),
-    "_ssp585_",
+    "_", scenario, "_",
     var,
     "_2071-2100_V.2.1.tif"
   )
@@ -232,7 +233,7 @@ for (var in variables_to_download) {
     var,
     "2071-2100",
     gcm_model,
-    "ssp585",
+    scenario,
     chelsa_filename
   )
 
