@@ -45,9 +45,9 @@ dbffiles <- list.files("data/Lyngstad/rawdata20240212", pattern = '.dbf', full.n
 dbfs <- dbffiles |> 
   map(read.dbf) |> 
   bind_rows(.id = "fileindex")
-colnames(validpolygons)
+colnames(polygons)
 colnames(dbfs)
-all(colnames(dbfs) %in% colnames(validpolygons))
+all(colnames(dbfs) %in% colnames(polygons))
 
 # dbf <- read.dbf('data/Lyngstad/rawdata20240212/1_Hedmark 2012_terratec_20120613f.dbf')
 # Hedmark20120613 <- st_as_sf(dbf, coords =c('X', 'Y'), crs = 25832)
