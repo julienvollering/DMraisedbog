@@ -101,16 +101,29 @@ scripts <- c(scripts_pl0, scripts_pl2)
 # Named rather than indexed so inserting a script upstream cannot silently repoint it.
 to_run <- scripts
 
+# Every render() runs in THIS R process, so all 25 scripts share one tempdir and one
+# terra scratch pool. terra only clears its spill files when a session ends, so across a
+# full run they accumulate instead of turning over: on 2026-08-21 pl0_collatePredictors.R
+# alone reached 15 GB of `spat_*.tif` and filled the disk mid-pipeline. Clearing after
+# each script holds the high-water mark at whatever a single script needs rather than the
+# sum over all of them. `tmpFiles()` only ever removes terra's own scratch files, and only
+# those orphaned by this process -- outputs already written are untouched.
 for (script in to_run) {
-  cat("Executing:", script, "\n")
+  cat("Executing:", script, format(Sys.time(), "%H:%M:%S"), "\n")
   tryCatch(
     {
       render(script, output_format = "html_document", knit_root_dir = "../")
-      cat("✓ Completed:", script, "\n\n")
+      cat("✓ Completed:", script, format(Sys.time(), "%H:%M:%S"), "\n\n")
     },
     error = function(e) {
       cat("✗ ERROR in", script, ":\n", e$message, "\n\n")
       stop("Script execution failed at: ", script)
+    },
+    finally = {
+      # gc() first so SpatRasters left behind by the render environment are finalised
+      # and release their files; only then are the scratch files safe to delete.
+      gc(verbose = FALSE)
+      terra::tmpFiles(current = TRUE, orphan = TRUE, remove = TRUE)
     }
   )
 }
