@@ -1,3 +1,7 @@
+# Rasterize presences and absences onto the modelling grids ####
+
+# PURPOSE: Converts bog polygons and the survey footprint into presence/absence cell coordinate tables at both the 250 m and 5 km resolutions.
+
 library(tidyverse)
 library(sf)
 library(terra)

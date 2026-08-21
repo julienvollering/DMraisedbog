@@ -1,3 +1,7 @@
+# Spatially thin presence cells ####
+
+# PURPOSE: Thins presence coordinates to the median nearest-neighbour distance so comprehensive Norwegian survey effort does not outweigh opportunistic EU records.
+
 library(tidyverse)
 library(sf)
 library(GeoThinneR)

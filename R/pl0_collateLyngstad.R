@@ -1,3 +1,7 @@
+# Collate the Lyngstad raised-bog survey ####
+
+# PURPOSE: Reads the raw Lyngstad shapefiles/dbf per region, standardises attributes and CRS, and writes the merged bog polygons to data/DMraisedbog.gpkg.
+
 library(tidyverse)
 library(foreign)
 library(sf)

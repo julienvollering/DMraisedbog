@@ -1,5 +1,7 @@
 # Top-Feature Partitioning ####
 
+# PURPOSE: Cuts the frame into k CV partitions by sorting bog presences along the top materially-shifting feature (bio10), assigning other classes by range overlap.
+
 # This script implements presence-based partitioning using the most important
 # feature. Sorts presences along the feature and divides into k groups.
 # Absences are assigned based on overlap with partition boundaries.
@@ -21,6 +23,10 @@ k_partitions <- 5
 # Minimum presences per partition
 min_presences <- 50
 
+# The class that anchors the partitions. With the 3-class response, only bog rows sort
+# the feature axis; nonpeat and otherpeat rows are assigned by range overlap.
+presence_level <- "bog"
+
 # Random seed for reproducibility
 partition_seed <- 42
 
@@ -36,13 +42,13 @@ mf_current_with_coords <- mf |>
 mf_current <- mf_current_with_coords |>
   select(-x, -y)
 
-n_presence <- sum(mf_current$response == 1)
-n_absence <- sum(mf_current$response == 0)
-prevalence <- n_presence / (n_presence + n_absence)
+n_presence <- sum(mf_current$response == presence_level)
+prevalence <- n_presence / nrow(mf_current)
 
 cat("\n=== DATA SUMMARY ===\n")
-cat("Training data - Presences:", n_presence, "Absences:", n_absence, "\n")
-cat("Prevalence:", round(prevalence * 100, 2), "%\n")
+cat("Training rows:", nrow(mf_current), "\n")
+print(table(mf_current$dataset, mf_current$response))
+cat("Prevalence of", presence_level, ":", round(prevalence * 100, 2), "%\n")
 cat("Requested partitions:", k_partitions, "\n")
 cat("Minimum presences per partition:", min_presences, "\n")
 cat("Total presences needed:", k_partitions * min_presences, "\n")
@@ -51,8 +57,23 @@ cat("Total presences needed:", k_partitions * min_presences, "\n")
 weights_features <- read_csv("output/pl2/weights_feature_data_partitioning.csv")
 weighting_method <- "Balanced Random Forest"
 
+# Restricted to predictors that MOVE MATERIALLY under the scenario (`material`, written
+# by pl2_weightFeaturesDataPartitioning.R: projection-dynamic AND a mean shift of at least
+# 0.5 SD of the predictor's own spread). The partitions exist to make the pairwise CV an
+# extrapolation test along the axis the projection actually travels, and two filters are
+# needed to get there:
+#
+#  - the unrestricted ruler's top feature is `slope`, static terrain that is identical in
+#    the current and future frames, so folds cut on it differ in terrain and not climate;
+#  - the top merely-dynamic feature is `bio02`, which changes in nearly every cell but
+#    shifts only 0.26 SD, so folds cut on it separate the data along a gradient the
+#    projection barely traverses.
+#
+# The bar (17 of 32 dynamic features clear it) leaves `bio10` as the top-VI candidate,
+# which is also the cut axis of the section 1.3 sweep -- so pl2's CV and pl3's sweep sit
+# on the same gradient rather than on two unrelated ones.
 weights <- weights_features |>
-  filter(method == weighting_method) |>
+  filter(method == weighting_method, material) |>
   select(feature, median) |>
   arrange(desc(median)) |>
   tibble::deframe()
@@ -60,8 +81,9 @@ weights <- weights_features |>
 most_important_feature <- names(weights)[1]
 
 cat("\n=== TOP FEATURE ===\n")
-cat("Most important feature:", most_important_feature, "\n")
+cat("Most important materially-shifting feature:", most_important_feature, "\n")
 cat("Feature importance:", round(weights[most_important_feature], 4), "\n")
+cat("Candidates considered:", length(weights), "of", nrow(filter(weights_features, method == weighting_method)), "\n")
 
 ## Apply presence-based partitioning ####
 
@@ -73,7 +95,8 @@ partitioning_result <- partition_by_presence_sorting(
   feature_name = most_important_feature,
   k = k_partitions,
   min_pres = min_presences,
-  seed = partition_seed
+  seed = partition_seed,
+  presence_level = presence_level
 )
 
 # Display results
@@ -82,11 +105,17 @@ cat("  Partitions created:", partitioning_result$k, "\n")
 cat("  Feature used:", partitioning_result$feature_name, "\n")
 cat("  Observations dropped (in gaps):", partitioning_result$n_dropped, "\n\n")
 
-cat("Presences per partition:\n")
-print(partitioning_result$n_presences)
+cat("Rows per partition and class:\n")
+print(partitioning_result$n_by_class)
 
-cat("\nAbsences per partition:\n")
-print(partitioning_result$n_absences)
+cat("\nDropped rows (in gaps) by class:\n")
+print(partitioning_result$dropped_by_class)
+
+# Every partition has to carry all three classes, or a fold trained on it silently
+# becomes a two-class problem and the contrast the partition exists to test is absent.
+if (any(partitioning_result$n_by_class == 0)) {
+  cat("\nWARNING: at least one partition x class cell is empty (see table above)\n")
+}
 
 cat("\nTotal observations per partition:\n")
 partition_totals <- partitioning_result$n_presences +
@@ -128,13 +157,13 @@ p_dist <- ggplot(
 
 print(p_dist)
 
-# Boxplot by partition and response
+# Boxplot by partition and class
 p_box <- ggplot(
   mf_current_plot |> filter(!is.na(partition)),
   aes(
     x = partition,
     y = .data[[most_important_feature]],
-    fill = factor(response)
+    fill = response
   )
 ) +
   geom_boxplot() +
@@ -142,7 +171,7 @@ p_box <- ggplot(
     title = paste(most_important_feature, "by Partition and Response"),
     x = "Partition",
     y = most_important_feature,
-    fill = "Response"
+    fill = "Class"
   ) +
   theme_minimal()
 

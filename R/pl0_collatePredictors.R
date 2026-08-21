@@ -1,3 +1,7 @@
+# Build the predictor stacks ####
+
+# PURPOSE: Assembles the 5 km EU and 250 m Norway predictor stacks (CHELSA, paleo, DTM50 terrain, AR50 land cover) on a common EPSG:3035 grid.
+
 library(terra)
 library(sf)
 library(rnaturalearth)

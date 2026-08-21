@@ -1,3 +1,7 @@
+# Derive paleoclimate predictors from CHELSA-TraCE21k ####
+
+# PURPOSE: Turns the 21k-year TraCE series into the paleo_* predictors, chiefly time since deglaciation and long-run temperature/precipitation summaries.
+
 library(tidyverse)
 library(terra)
 

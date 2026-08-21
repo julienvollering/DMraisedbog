@@ -1,5 +1,7 @@
 # Explore Feature Space Distances Between Current and Future Conditions ####
 
+# PURPOSE: Diagnostic: per-feature W_sample, comparing sample-to-sample against prediction-to-sample distances to show which predictors shift most under the scenario.
+
 # This script calculates W_sample for each feature to quantify distributional
 # shifts between current and future conditions.
 # W_sample compares sample-to-sample distances vs prediction-to-sample distances.
@@ -28,6 +30,7 @@ seed <- 42
 ## Read modeling frame ####
 mf <- read_csv("output/pl2/modeling_frame_regional.csv")
 
+# Training data is the pooled frame; `dataset` is a bookkeeping column, never a feature.
 mf_current <- mf |>
   filter(scenario == "current") |>
   select(-scenario, -x, -y)
@@ -36,17 +39,25 @@ mf_current <- mf |>
 # These are the locations we care most about for our research questions
 toJoin <- mf |>
   filter(scenario == "future") |>
-  select(-scenario)
+  select(-scenario, -response, -dataset)
 
+# Norwegian bog cells only. The future block covers the Norway projection domain alone
+# (plan_EUintegration.md section 5 step 7), so joining future conditions onto EU presence
+# coordinates would return a row of NAs for every EU bog -- silently, and straight into
+# the distance calculation. The research question is Norway's future, so Norway's
+# presences are the prediction locations; the EU block's job here is to widen the
+# *training* envelope those distances are measured against.
 mf_future_presence <- mf |>
-  filter(response == 1) |>
+  filter(scenario == "current", response == "bog", dataset == "NO") |>
   select(x, y) |>
   left_join(toJoin, by = c("x", "y")) |>
   select(-x, -y)
 
+stopifnot(!anyNA(mf_future_presence))
+
 cat("Training data:", nrow(mf_current), "observations\n")
 cat(
-  "Prediction locations (future @ presences):",
+  "Prediction locations (future @ Norwegian bog cells):",
   nrow(mf_future_presence),
   "\n"
 )

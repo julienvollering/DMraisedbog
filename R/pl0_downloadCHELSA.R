@@ -1,3 +1,7 @@
+# Download CHELSA climate data ####
+
+# PURPOSE: Fetches CHELSA v2.1 bioclim+ layers for the current (1981-2010) and future (2071-2100) periods used as climate predictors.
+
 library(tidyverse)
 library(terra)
 

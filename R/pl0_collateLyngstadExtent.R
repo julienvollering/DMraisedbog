@@ -1,3 +1,7 @@
+# Reconstruct the Lyngstad survey footprint ####
+
+# PURPOSE: Matches NiB orthophoto stripes to the Lyngstad project reports to delimit the area actually surveyed -- the only area where an absence is meaningful.
+
 library(tidyverse)
 library(sf)
 
