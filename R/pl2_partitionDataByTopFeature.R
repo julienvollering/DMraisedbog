@@ -4,8 +4,11 @@
 
 # This script implements presence-based partitioning using the most important
 # feature. Sorts presences along the feature and divides into k groups.
-# Absences are assigned based on overlap with partition boundaries.
-# Absences in gaps between partitions are dropped.
+# Absences are assigned by a complete tiling of the feature axis: interior cuts at the
+# midpoint between adjacent presence groups, terminal intervals open to +/- Inf. Nothing
+# is dropped. Each row also carries `envelope_side` -- its position relative to the
+# presence envelope (`inside` / `below` / `above`) -- so skill can be reported both
+# inside-envelope and tail-inclusive without refitting anything.
 
 library(readr)
 library(dplyr)
@@ -214,10 +217,11 @@ mf_partitioned <- mf_current_with_coords |>
   mutate(
     scenario = "current",
     partition = partitioning_result$partitions,
+    envelope_side = partitioning_result$envelope_side,
     .before = 1
   ) |>
   bind_rows(filter(mf, scenario != "current")) |>
-  select(scenario, partition, response, everything())
+  select(scenario, partition, envelope_side, response, everything())
 
 output_csv <- "output/pl2/modeling_frame_regional_partitioned_topfeature.csv"
 output_tif <- "output/pl2/partition_topfeature.tif"

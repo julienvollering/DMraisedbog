@@ -1855,36 +1855,57 @@ partition_by_presence_sorting <- function(
     start <- start + this_size
   }
 
-  # STEP 2: Define partition boundaries ####
-  # For each presence group, find X-range
+  # STEP 2: Define the presence envelope and the assignment boundaries ####
+  #
+  # These are two different things, and conflating them is what used to discard a quarter
+  # of the frame. Each group's presence extremes describe where the ANCHORS of that group
+  # lie; they are kept because they define the envelope and are what `envelope_side` is
+  # measured against. They are NOT used to assign non-anchor rows, because outside the
+  # outermost anchors there is no interval to fall into, and between two groups there is a
+  # gap. Rows landing in either were previously dropped -- on the pooled frame that was
+  # 20,447 of 82,359 rows, including every non-anchor beyond the warm end of the anchor
+  # range, which is precisely the region a climate projection travels into.
+  #
+  # The assignment boundaries instead TILE the axis completely: half-open intervals cut at
+  # the midpoint between adjacent groups, with the terminal intervals open to +/- Inf.
+  # Every row therefore lands in exactly one partition and nothing is discarded.
   partitions <- vector("list", k)
   for (i in 1:k) {
     pres_in_group <- pres_groups[[i]]
-    x_min <- min(X[pres_in_group])
-    x_max <- max(X[pres_in_group])
-
     partitions[[i]] <- list(
-      x_lower = x_min,
-      x_upper = x_max,
+      x_lower = min(X[pres_in_group]),   # presence extremes: the envelope, not the cut
+      x_upper = max(X[pres_in_group]),
       presence_idx = pres_in_group,
       absence_idx = integer(0)
     )
   }
 
-  # STEP 3: Assign non-anchor rows ####
-  # Each goes to the partition whose X-range contains it; rows in gaps are dropped.
-  # Done as k vectorized passes rather than a per-row scan: the pooled frame has ~83k
-  # non-anchor rows, and first-match-wins is preserved by only ever assigning rows that
-  # are still unassigned -- the same rule as the earlier `break`.
-  abs_assignment <- rep(NA_integer_, length(abs_idx))
-  abs_X <- X[abs_idx]
-
+  # Interior cuts at midpoints between adjacent groups; ends open.
+  interior_cuts <- vapply(
+    seq_len(k - 1),
+    function(i) mean(c(partitions[[i]]$x_upper, partitions[[i + 1]]$x_lower)),
+    numeric(1)
+  )
+  boundaries <- c(-Inf, interior_cuts, Inf)
   for (i in 1:k) {
-    in_range <- is.na(abs_assignment) &
-      abs_X >= partitions[[i]]$x_lower &
-      abs_X <= partitions[[i]]$x_upper
-    abs_assignment[in_range] <- i
+    partitions[[i]]$cut_lower <- boundaries[i]
+    partitions[[i]]$cut_upper <- boundaries[i + 1]
   }
+
+  # The presence envelope, against which position is reported.
+  envelope_min <- min(pres_X)
+  envelope_max <- max(pres_X)
+
+  # STEP 3: Assign non-anchor rows ####
+  # findInterval over the interior cuts rather than k range tests: the intervals are
+  # disjoint and exhaustive by construction, so there is no first-match-wins rule left to
+  # preserve and no row can fail to match. Anchors keep the group they were sorted into in
+  # STEP 1 and are never reassigned here -- with tied feature values an anchor can sit on
+  # the far side of a midpoint cut from its own group, and the sort is what defines the
+  # equal-count property the partitions exist for.
+  abs_X <- X[abs_idx]
+  abs_assignment <- findInterval(abs_X, interior_cuts) + 1L
+  abs_assignment[is.na(abs_X)] <- NA_integer_
 
   for (i in 1:k) {
     partitions[[i]]$absence_idx <- abs_idx[which(abs_assignment == i)]
@@ -1899,15 +1920,33 @@ partition_by_presence_sorting <- function(
     partition_assignment[all_idx] <- i
   }
 
+  # Position relative to the presence envelope, named for the axis rather than for what
+  # the axis measures -- this function is generic over `feature_name`. Every row carries
+  # it, so any metric can be reported inside-envelope and tail-inclusive without refitting.
+  envelope_side <- rep(NA_character_, nrow(data))
+  envelope_side[!is.na(X)] <- "inside"
+  envelope_side[!is.na(X) & X < envelope_min] <- "below"
+  envelope_side[!is.na(X) & X > envelope_max] <- "above"
+
   # Return results
   list(
     partitions = partition_assignment,
     partition_list = partitions,
+    envelope_side = envelope_side,
+    envelope_range = c(lower = envelope_min, upper = envelope_max),
+    boundaries = boundaries,
     n_presences = sapply(partitions, function(p) length(p$presence_idx)),
     n_absences = sapply(partitions, function(p) length(p$absence_idx)),
     # Full class breakdown per partition: with three classes, "presences and absences"
     # no longer describes the table a reader needs to check the partitions against.
     n_by_class = table(partition = partition_assignment, class = Y, useNA = "no"),
+    n_by_envelope_side = table(
+      partition = partition_assignment,
+      side = envelope_side,
+      useNA = "no"
+    ),
+    # Retained so callers that report them keep working. With complete tiling these are
+    # empty unless the feature itself is NA, which makes a non-zero count a real signal.
     n_dropped = length(dropped_abs),
     dropped_idx = dropped_abs,
     dropped_by_class = table(Y[dropped_abs]),
