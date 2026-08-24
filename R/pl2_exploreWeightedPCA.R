@@ -82,7 +82,7 @@ future_rows <- mf |>
   filter(scenario == "future") |>
   select(x, y, all_of(feat))
 future_presence <- mf |>
-  filter(scenario == "current", response == 1) |>
+  filter(scenario == "current", response == "bog") |>
   select(x, y) |>
   left_join(future_rows, by = c("x", "y")) |>
   select(all_of(feat)) |>

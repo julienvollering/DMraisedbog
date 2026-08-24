@@ -113,7 +113,7 @@ validpolygons |>
 rb |> 
   st_write("data/DMraisedbog.gpkg", 
            layer = "lyngstad-MTYPE_A",
-           append = TRUE)
+           append = FALSE)
 
 # sessionInfo ####
 
