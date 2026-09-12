@@ -21,3 +21,9 @@ ms/submission/2_reviewers
 R/archive/MEE_AOA-master
 .vscode
 Rplots.pdf
+
+# manuscript build by-products
+ms/*.log
+ms/ms.pdf
+ms/ms.tex
+ms/ms_files/

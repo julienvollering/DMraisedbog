@@ -1,0 +1,44 @@
+predictor,description,source,changes_under_scenario,in_distance_metric,projected_shift_sd,importance_all,importance_bog
+slope,Slope,DTM50 (Norway); AWS terrain tiles via elevatr (Europe),no,no,0,0.3182,0.0347
+elevation,Elevation,DTM50 (Norway); AWS terrain tiles via elevatr (Europe),no,no,0,0.0251,0.0201
+bio02,Mean diurnal temperature range,CHELSA V2.1 bioclim,yes,yes,-0.26,0.0193,0.0139
+bio10,Mean temperature of the warmest quarter,CHELSA V2.1 bioclim,yes,yes,0.89,0.0171,0.0319
+paleo_bio01_sum_icefree,Summed annual temperature over the ice-free period,"CHELSA-TraCE21k, derived",no,no,0,0.015,0.0211
+bio08,Mean temperature of the wettest quarter,CHELSA V2.1 bioclim,yes,yes,0.08,0.0142,0.0135
+gdd5,Growing degree days above 5 °C,CHELSA V2.1 bioclim+,yes,yes,0.9,0.014,0.021
+bio05,Maximum temperature of the warmest month,CHELSA V2.1 bioclim,yes,yes,0.8,0.0139,0.0247
+gdd0,Growing degree days above 0 °C,CHELSA V2.1 bioclim+,yes,yes,0.89,0.0138,0.0257
+gdd10,Growing degree days above 10 °C,CHELSA V2.1 bioclim+,yes,yes,0.93,0.0136,0.0253
+gst,Growing season mean temperature,CHELSA V2.1 bioclim+,yes,yes,0.65,0.0132,0.0226
+paleo_years_icefreeland,Years as ice-free land (last 16 ka),"CHELSA-TraCE21k, derived",no,no,0,0.0126,0.0187
+bio03,Isothermality,CHELSA V2.1 bioclim,yes,yes,-0.12,0.0114,0.018
+paleo_bio12_mean_16ka,"Mean annual precipitation, 16 ka to present","CHELSA-TraCE21k, derived",no,no,0,0.0114,0.0098
+ngd10,Days with mean temperature above 10 °C,CHELSA V2.1 bioclim+,yes,yes,0.8,0.0113,0.0263
+paleo_bio12_sum_16ka,"Summed annual precipitation, 16 ka to present","CHELSA-TraCE21k, derived",no,no,0,0.0111,0.0102
+bio04,Temperature seasonality,CHELSA V2.1 bioclim,yes,yes,-0.25,0.0107,0.0116
+fcf,Frost change frequency,CHELSA V2.1 bioclim+,yes,yes,-0.58,0.01,0.0188
+bio09,Mean temperature of the driest quarter,CHELSA V2.1 bioclim,yes,yes,0.76,0.0092,0.0092
+paleo_bio01_mean_16ka,"Mean annual temperature, 16 ka to present","CHELSA-TraCE21k, derived",no,no,0,0.0089,0.0118
+ngd5,Days with mean temperature above 5 °C,CHELSA V2.1 bioclim+,yes,yes,0.85,0.0088,0.0175
+bio12,Annual precipitation,CHELSA V2.1 bioclim,yes,yes,0.22,0.0087,0.0112
+bio18,Precipitation of the warmest quarter,CHELSA V2.1 bioclim,yes,yes,-0.02,0.0087,0.0084
+paleo_bio12_sum_icefree,Summed annual precipitation over the ice-free period,"CHELSA-TraCE21k, derived",no,no,0,0.0087,0.0108
+gsp,Growing season precipitation,CHELSA V2.1 bioclim+,yes,yes,-0.36,0.0086,0.0109
+paleo_bio01_sum_16ka,"Summed annual temperature, 16 ka to present","CHELSA-TraCE21k, derived",no,no,0,0.0086,0.011
+scd,Snow cover days,CHELSA V2.1 bioclim+,yes,yes,-0.74,0.0083,0.0106
+bio17,Precipitation of the driest quarter,CHELSA V2.1 bioclim,yes,yes,0.23,0.0082,0.0092
+bio14,Precipitation of the driest month,CHELSA V2.1 bioclim,yes,yes,0.23,0.008,0.0081
+gsl,Growing season length,CHELSA V2.1 bioclim+,yes,yes,0.78,0.008,0.0106
+bio19,Precipitation of the coldest quarter,CHELSA V2.1 bioclim,yes,yes,0.13,0.0076,0.0063
+swe,Snow water equivalent,CHELSA V2.1 bioclim+,yes,yes,-0.38,0.0074,0.0136
+bio01,Annual mean temperature,CHELSA V2.1 bioclim,yes,yes,0.9,0.0074,0.0176
+bio16,Precipitation of the wettest quarter,CHELSA V2.1 bioclim,yes,yes,0.2,0.0072,0.0097
+bio13,Precipitation of the wettest month,CHELSA V2.1 bioclim,yes,yes,0.38,0.0069,0.0082
+npp,Potential net primary productivity,CHELSA V2.1 bioclim+,yes,yes,0.98,0.0067,0.0131
+ngd0,Days with mean temperature above 0 °C,CHELSA V2.1 bioclim+,yes,yes,0.85,0.0066,0.0112
+bio15,Precipitation seasonality,CHELSA V2.1 bioclim,yes,yes,-0.01,0.0065,0.0119
+bio07,Annual temperature range,CHELSA V2.1 bioclim,yes,yes,-0.34,0.0064,0.0113
+paleo_bio12_mean_icefree,Mean annual precipitation over the ice-free period,"CHELSA-TraCE21k, derived",no,no,0,0.0057,0.0074
+bio11,Mean temperature of the coldest quarter,CHELSA V2.1 bioclim,yes,yes,0.96,0.0051,0.012
+paleo_bio01_mean_icefree,Mean annual temperature over the ice-free period,"CHELSA-TraCE21k, derived",no,no,0,0.0049,0.0097
+bio06,Minimum temperature of the coldest month,CHELSA V2.1 bioclim,yes,yes,0.97,0.0034,0.0167

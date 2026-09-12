@@ -1,0 +1,761 @@
+---
+title: "Where will the climate still support raised bogs? Projecting the loss of climatic suitability for Norway's typical raised bogs with a three-class distribution model and warm-flank evidence from Europe"
+# TODO(JV): working title only.
+format:
+  plos-pdf:
+    number-sections: false
+    journal:
+      id: plosone
+      # TODO(JV): target journal. Notebook 2025-05-14 mentions Global Change Biology; the
+      # PLOS template is kept until that is decided.
+    include-in-header:
+      text: |
+        % \usepackage{setspace}
+        % \doublespacing
+author:
+  - name: Julien Vollering
+    affiliations:
+      - ref: aff1
+    corresponding: true
+    email: julien.vollering@hvl.no
+  # TODO(JV): co-authors and order (Anders Lyngstad, Knut Rydgren, Asbjørn Moen?, ...).
+  - name: Anders Lyngstad
+    affiliations:
+      - ref: aff2
+  - name: Knut Rydgren
+    affiliations:
+      - ref: aff1
+affiliations:
+  - id: aff1
+    name: Department of Environmental Sciences, Western Norway University of Applied Sciences
+    city: Sogndal
+    country: Norway
+  - id: aff2
+    name: NTNU University Museum, Norwegian University of Science and Technology
+    city: Trondheim
+    country: Norway
+abstract: |
+  TODO(JV): abstract (max 300 words). Suggested skeleton: (1) raised bogs are landforms
+  sustained by a narrow climatic window, and Norway's typical raised bogs sit at the cool
+  end of that window; (2) we pooled a complete aerial-photo inventory of Norwegian raised
+  bogs with European raised-bog records and mapped peatland, so the model could learn where
+  raised bogs stop on the warm side; (3) a three-class model (raised bog, other peatland,
+  non-peat) projects that 96% of mapped Norwegian raised bogs lose climatic suitability by
+  2071-2100 under SSP3-7.0; (4) the same conclusion follows without any model, from the
+  observed prevalence of raised bogs in the climates the future brings; (5) cross-validation
+  organised along the warming axis shows how far the model can be trusted and where it
+  cannot.
+author-summary: |
+  TODO(JV): author summary (150-200 words, first person; not used by PLOS ONE).
+bibliography: Repeat-raisedbogDM.bib
+---
+
+<!--
+DRAFTING NOTES (delete before submission)
+
+* This draft covers Materials and methods and Results only. Introduction and Discussion are
+  placeholders. Search for "TODO" for every point that needs input.
+* It describes the pipeline as it stood on 2026-09-12 (R/RUNALL.R: 24 scripts, pl0 + pl2).
+  Retired designs (hierarchical global/local cascade, binary response with the AR50 mask,
+  RFQ, separate pl3 cross-validation, DI as the skill axis) are deliberately not mentioned.
+* Figures and tables are produced by ms/make_figures.R from pipeline outputs; the numbers in
+  the text were transcribed from output/pl0 and output/pl2 on the same date.
+* DATA-QUALITY FLAG, found while drawing @fig-occupancy: 8,987 training rows (27% of Norwegian
+  non-peat, 12% of European non-peat, all cold high-elevation cells with bio10 <= 12.5 C)
+  carry CHELSA's no-data code in growing-season precipitation (gsp), read as ~4.3e8 mm.
+  pl0_collatePredictors.R converts NA to 0 for gdd10, gdd5, gst and swe but not gsp. No
+  bog row in Norway is affected and the warm columns of the occupancy table are untouched,
+  but the cold-wet cell of that table is inflated, gsp's contribution to the DI ruler is
+  effectively nil (its scaling SD is dominated by the code), and the model has seen the code
+  as a feature value. Fixing it means rerunning from pl0_collatePredictors.R. See TODOs.
+-->
+
+# Introduction
+
+TODO(JV): Introduction not drafted. Points the Methods and Results are written to connect
+to: raised bogs as ombrotrophic landforms with a climatically bounded distribution
+[@joostenMiresPeatlandsEurope2017; @gallego-salaBioclimaticEnvelopeModel2010;
+@parviainenClimateEnvelopesMire2007]; the "typical raised bog" region of Europe and its
+Norwegian outpost [@tannebergerMiresEuropeRegional2021]; the complete Norwegian inventory
+from aerial-photo interpretation [@lyngstadFlybildetolkingAvHogmyr2012;
+@lyngstadKartleggingAvTypisk2015]; the management question (restoration prioritisation,
+@miljodirektoratetPlanRestaureringAv2020); and the modelling problem that a Norwegian-only
+model cannot see the warm edge of the niche because Norway does not contain it.
+
+# Materials and methods
+
+## Study system and question
+
+Typical raised bogs are domed, ombrotrophic peat landforms whose surface is fed only by
+precipitation. Their distribution in Europe is confined to a band of climate that is cool
+enough to limit evaporation and decomposition but productive enough for *Sphagnum* peat
+to accumulate; on the cold and wet side they give way to fens, aapa mires and blanket bogs,
+and on the warm and dry side to forest, heath and farmland
+[@joostenMiresPeatlandsEurope2017; @tannebergerMiresEuropeRegional2021]. Norway holds the
+north-western edge of the typical raised bog region, and Norway's raised bogs therefore sit
+at the cool end of the climatic band that supports the landform.
+
+We asked which of Norway's mapped typical raised bogs will still have a climate that
+supports a raised bog at the end of this century, and where in Norway such a climate will
+exist. Two features of the question shape the analysis. First, the future climate of
+Norway's raised bogs lies outside the range of climate that Norway's raised bogs occupy
+today, so any model trained on Norwegian data alone is asked to extrapolate. We therefore
+recruited data from the rest of the typical raised bog region, where raised bogs and their
+warm-side neighbours already occur under the climates Norway is moving into. Second, the
+loss of a raised bog under warming does not lead to a single alternative state: the site
+may remain peatland of another kind, or it may cease to be peatland at all. We therefore
+modelled a three-class response rather than presence and absence, so that the two
+ecologically opposite non-bog outcomes are kept apart.
+
+The analysis is organised in four parts: assembling the occurrence data and their labels
+(this section and the next three), a model-free description of where the future climate of
+today's bogs sits relative to what is observed today, one pooled three-class model and its
+projection over Norway, and a cross-validation designed to say how the model behaves when
+it is pushed into warmer climates than the bogs it learned from.
+
+## Raised-bog occurrence data
+
+### Norway: a complete aerial-photo inventory
+
+Norwegian raised bogs come from a systematic inventory of typical raised bogs carried out
+by stereo interpretation of digital aerial photographs at the NTNU University Museum
+between 2012 and 2023 [@lyngstadFlybildetolkingAvHogmyr2012;
+@lyngstadKartleggingAvTypisk2015; @lyngstadKartleggingAvTypisk2016;
+@lyngstadKartleggingAvTypisk2017; @lyngstadKartleggingAvTypisk2021]. Raised bogs are
+domed, with easily visible surface patterns, which makes them well suited to
+identification from stereo imagery. Every mire massif in the surveyed areas was assessed,
+and massifs classified as concentric, eccentric or plateau raised bog were delineated as
+polygons. We used all massifs of these three types (mire-massif type "A" in the survey
+database) and dissolved adjoining polygons into 564 contiguous raised-bog polygons with a
+total area of 70 km^2^ (@fig-studyarea). TODO(JV): confirm that ridge raised bog (kanthøgmyr, A6) is
+included in type A and should be, and whether atlantic raised bog is excluded by the
+region definition alone.
+
+Because the survey was designed to be complete within the areas it covered, the absence of
+a mapped raised bog is informative there and nowhere else. We reconstructed the surveyed
+area from the aerial-photo project coverages listed in the survey reports (13 orthophoto
+projects flown 2008--2015, matched image strip by image strip to the reports) plus the
+orthophoto-surveyed area given in @lyngstadKartleggingAvTypisk2016. The survey footprint
+covers 110,065 km^2^ of southern, eastern and central Norway, and all Norwegian absences
+were drawn from inside it (@fig-studyarea (B)). TODO(JV): check the footprint area and the count of
+projects against the reports; the Hedmark 2012 survey has no strip table
+(notebook 2025-11).
+
+Norway was modelled on a 250 m grid in the European equal-area projection (EPSG:3035).
+A cell was a raised-bog presence if its centre fell inside a raised-bog polygon (1,137
+cells) and an absence candidate if its centre fell inside the survey footprint but not
+inside a polygon (1.76 million cells).
+
+### Europe: raised-bog records from the typical raised bog region
+
+European raised-bog presences were taken from the Natura 2000 habitat inventory
+[TODO(JV): citation for the Natura 2000 end-2021 spatial dataset], habitat types 7110
+(active raised bogs) and 7120 (degraded raised bogs still capable of regeneration), within
+the typical raised bog region of Europe (region IV of @tannebergerMiresEuropeRegional2021,
+@fig-studyarea (A)). Natura 2000 sites are polygons that often contain a raised bog as one part of a
+larger complex, so a site polygon cannot be used as a presence at 250 m resolution without
+a rule for where in the polygon the bog is. We used two rules. Sites smaller than 1 km^2^
+were used directly. Larger sites were used only where a vegetation-plot record of raised
+bog vegetation (EUNIS habitat Q11 in the European Vegetation Archive plot database,
+@chytryEUNISHabitatClassification2020) pinned the bog to a location inside the site; each
+such plot became one presence point. Only sites with habitat data quality "good" were
+used, and sites with representativity "D" (non-significant presence) were excluded.
+
+This is deliberately narrow. Of the good-quality raised-bog sites in the region, 494
+larger sites without a plot record (10,045 km^2^ of designated area) were not used as
+presences. The loss costs statistical power but not climatic coverage: the median
+warmest-quarter temperature of the discarded sites (15.7 °C) lies between that of the
+small sites retained (15.4 °C) and the large sites with plots (16.0 °C), and the retained
+small sites span the widest temperature range of the three sets (9.5--19.1 °C). The final
+European presence set held 701 geometries (445 small site polygons and 256 plot points),
+falling in 524 grid cells.
+
+The European domain from which absences were drawn was region IV intersected with the
+EU-27 (because Natura 2000 exists only in member states, so raised bogs elsewhere in the
+region are unmapped rather than absent), with the country coverage of the European
+Peatland Map (next section), and with the extent of our climate data, minus Norway. The
+domain covers 495,223 km^2^ in ten countries (Finland, Sweden, Latvia, Lithuania,
+Estonia, Poland, Austria, France, Germany and Czechia; @fig-studyarea (A)). It contains the whole
+range of warmest-quarter temperature that Norway is projected to reach by 2071--2100 (see
+Results), which is the property the European data were recruited for.
+
+## A three-class response
+
+### Why three classes
+
+A raised bog is a climatic intermediate. Colder and wetter than the raised-bog band lie
+other mire types (fens, aapa mires, blanket bogs); warmer and drier lie forest, heath and
+farmland on mineral soil. A binary model of raised bog against everything else lumps these
+two opposite flanks into one negative class, and the negatives that define the cold edge
+of the niche have nothing in common with those that define the warm edge. Under warming
+the relevant transition is away from the cold flank and towards the warm one, so a model
+that cannot tell the flanks apart cannot say which way a bog is moving. We therefore
+labelled every training cell as one of three classes: *raised bog*, *other peatland*, or
+*non-peat*. The probability of raised bog is the quantity of interest; the split of the
+remaining probability between the other two classes says what a site is predicted to
+become. The same three labels were built on both the Norwegian and the European side, from
+different sources but by the same logic (@tbl-frame).
+
+### Norway: labels from the AR50 land-resource map
+
+For Norwegian absence candidates we used the peatland class (class 60, myr) of the AR50
+land-resource map [TODO(JV): NIBIO AR50 citation and version], rasterised at 50 m and
+aggregated to the fraction of each 250 m cell mapped as peatland. Cells with a peatland
+fraction of at least 0.5 were labelled *other peatland*; cells with a fraction below 0.1
+were labelled *non-peat*; cells in between (mixed cells) and cells with no AR50 value were
+excluded from training rather than assigned to either class. Of the 1.76 million absence
+candidates, 1.32 million were non-peat, 61,850 other peatland, 177,860 mixed and 197,190
+without a value. The peatland fraction was used only as a label and was not a predictor in
+the model.
+
+### Europe: labels from the European Peatland Map 2025
+
+For European absence candidates we used the raster European Peatland Map 2025
+[@tannebergerPeatlandMapEurope2017; TODO(JV): add Tegetmeyer et al. 2025 EPM2025 technical description to the library], a compilation of national peatland maps, resampled by majority to the
+250 m grid within each country. Its map category 0 (no peatland) became *non-peat* and
+category 1 (peat-dominated) became *other peatland*. Category 2 (peat in a soil mosaic)
+was excluded, exactly as Norway's mixed cells were: the data producers already flag it as
+the class where the extent of peat is uncertain. Inside a mapped country, no value means no
+peatland; outside the mapped countries, no value means unknown, and those cells were
+excluded rather than treated as non-peat. At 250 m the domain was 90.2% non-peat, 9.3%
+peat-dominated and 0.5% soil mosaic.
+
+Before absences were drawn, every cell that could be a raised bog was removed from the
+European candidate pool with a deliberately generous exclusion mask: all Natura 2000
+raised-bog and blanket-bog sites (7110, 7120, 7130) of any data quality, all raised-bog and
+blanket-bog vegetation plots (EUNIS Q11 and Q12) buffered by one cell, and all polygons of
+the vector European Peatland Map whose national peatland-type attribute contained "bog",
+the whole union dilated by one cell. The mask removed 13.2% of the domain (69,289 km^2^).
+Its generosity costs almost nothing in absence supply and ensures that a mapped raised
+bog that did not qualify as a presence (for example a large site without a plot record)
+became unlabelled rather than a false absence.
+
+### One land-use and water screen for both blocks
+
+Cells dominated by cropland, built-up land or open water carry no information about whether
+climate can support peat, and their inclusion as non-peat would charge drainage,
+cultivation and the sea to warming. We therefore screened every candidate cell of every
+class on both blocks with one rule built from the 10 m ESA WorldCover map for 2021
+[TODO(JV): WorldCover citation, Zanaga et al.]: a cell was dropped if more than 50% of
+its area was cropland plus built-up land, or more than 50% was water plus unmapped (open
+sea). The screen was applied before absences were drawn, so the draw was filled from
+eligible cells. It kept 98.2% of Norwegian raised-bog cells (1,116 of 1,137), 89.9% of the
+Norwegian absence pool, 95.2% of European raised-bog cells (499 of 524) and 79.5% of the
+European absence pool. The two blocks fail the screen for different reasons, Norway mostly
+on water and Europe mostly on human land cover, which is why the same rule had to be
+applied to both: screening Norway alone would have manufactured a warm-flank asymmetry
+instead of removing one.
+
+### A climate-stratified absence draw
+
+The two absence classes are far more numerous than raised bogs on both blocks, and the
+non-peat pool in particular is dominated by climates far from any raised bog. Drawing
+absences at random would fill the training set with cold uplands and leave the warm edge,
+where the European data are needed, thin. We therefore drew a fixed budget of 25 absences
+per raised-bog cell per absence class from each block (27,900 per class in Norway, 12,475
+per class in Europe), spread as evenly as possible across 1 °C strata of mean
+warmest-quarter temperature (bio10). Strata with fewer candidates than their share were
+taken in full and the remainder redistributed. Strata warmer than the warmest Norwegian
+training cell (17.1 °C) were guaranteed a minimum share before the general allocation, so
+that the European block always contributed labelled cells beyond the Norwegian envelope.
+The final pooled training frame held 82,359 cells (@tbl-frame).
+
+## Predictors
+
+Each cell carried 43 predictors (S1 Table). Thirty-two were climate variables from CHELSA
+V2.1 [@kargerClimatologiesHighResolution2017; @kargerCHELSAV21Technical2021]: the 19
+standard bioclimatic variables and 13 of the CHELSA-BIOCLIM+ variables that have future
+projections [@brunGlobalClimaterelatedPredictors2022; @kargerBIOCLIMNovelSet2022] (growing
+degree days and number of growing days above 0, 5 and 10 °C, growing-season length,
+temperature and precipitation, frost-change frequency, snow-cover days, snow water
+equivalent and potential net primary productivity). Current climate is the 1981--2010
+climatology; future climate is the 2071--2100 climatology under SSP3-7.0 from the
+GFDL-ESM4 model. TODO(JV): only one general circulation model and one scenario are used;
+notebook 2026-09-12 raises adding a milder scenario. State the choice of GFDL-ESM4.
+
+Two terrain variables, elevation and slope, were derived by aggregating a digital
+elevation model to 250 m and then computing slope in degrees. For Norway the source was the
+national 50 m terrain model [TODO(JV): Kartverket DTM50 citation]; for Europe, where that
+model does not exist, elevation was fetched from AWS terrain tiles at about 90 m with the
+elevatr package [TODO(JV): citation] and processed by the same aggregate-then-slope
+recipe. Nine variables summarised deglaciation and long-term climate history from the
+CHELSA-TraCE21k palaeoclimate series [TODO(JV): TraCE21k citation] sampled every 500 years
+from 16 ka to the present: the time a cell has been continuously ice-free land, and the
+mean and sum of annual temperature and precipitation over that ice-free period and over
+the whole 16 ka. These express the time a site has had to accumulate peat and were the
+same in both scenarios.
+
+Climate and palaeoclimate layers were projected from their native 30 arc-second grid to
+the 250 m grid for Norway and to a 5 km grid for Europe (no 250 m European stack was built;
+both are resamples of the same source). Growing-degree, growing-season-temperature and
+snow variables that CHELSA leaves undefined where the threshold is never crossed were set
+to zero where all other layers had data. TODO(JV): growing-season precipitation (gsp) is
+not on that list, and its no-data code was carried into 8,987 training cells (see the
+drafting note at the top of this file). Decide whether to fix and rerun before submission;
+the affected cells are all cold (bio10 <= 12.5 °C), so the warm-edge results do not
+depend on them.
+
+## Model-free description of the projection problem
+
+Before fitting any model we asked two questions of the data alone. First, where does the
+future climate of today's Norwegian raised bogs lie relative to the climates occupied
+today by the three classes? Second, among the training cells that already have such a
+climate, how common are raised bogs? The second question is an observational reading of
+the same evidence the model will be asked to generalise, and it does not depend on a
+learner.
+
+For the first question we compared the 15 predictors that shift most under the scenario
+between the three current classes and the 1,116 Norwegian raised-bog cells carried to their
+2071--2100 climate. All 15 are temperature or degree-day measures; no precipitation
+variable shifts by more than 0.4 standard deviations of its current spread. For the
+second question we cross-tabulated the training cells on warmest-quarter temperature
+(bio10; < 14, 14--16, 16--18 and > 18 °C) and growing-season precipitation (gsp; < 500,
+500--650 and > 650 mm) and reported the observed prevalence of raised bog in each cell of
+the grid alongside the share of future raised-bog cells that land there. Temperature is
+the axis the projection travels; growing-season precipitation is the moisture axis with
+the highest importance in the model and it barely changes under the scenario, so crossing
+the two isolates the temperature effect. Raised bogs are ombrotrophic, so a warm-and-dry
+analogue would say little about a warm-and-wet future, and the grid keeps the two apart.
+The same grid was repeated with annual precipitation as the moisture axis.
+
+## The model
+
+We fitted one random forest to the pooled three-class frame with the randomForestSRC
+package [TODO(JV): Ishwaran & Kogalur citation], using the package's balanced-sampling
+recipe for imbalanced classes [@chenUsingRandomForest]: each of 1,000 trees was grown on a
+class-balanced bootstrap sample (three times the size of the rarest class, drawn with
+class-equalising weights), so that the 2% of cells that are raised bogs count as much as
+either abundant class. The predicted class of a cell was the most probable of the three
+(argmax), which for a balanced forest needs no separately tuned threshold. We used default
+values for the number of variables tried at each split and the terminal node size; random
+forests are insensitive to these at this sample size
+[@valaviPredictivePerformancePresenceonly2022; @ludwigAssessingImprovingTransferability2023].
+The data block (Norway or Europe) was carried through every table as bookkeeping and was
+never a predictor: a forest allowed to split on it could learn "Europe" as a shortcut for
+"warm" instead of learning the climate.
+
+We note what the class probabilities are and are not. Because the forest was fitted under
+a rebalanced prior, its probability of raised bog is not the probability that a cell is a
+raised bog at the prevalence found in the landscape. It is a score that ranks cells and,
+together with the two other scores, decides the predicted class. Everything below treats
+it as such.
+
+## Evaluating transfer into a warmer climate
+
+### Partitions cut along summer temperature
+
+A random cross-validation would test the model on cells with near-identical neighbours in
+training and say nothing about the projection, which moves every Norwegian bog into a
+climate warmer than any Norwegian training bog [@meyerPredictingUnknownSpace2021;
+@linnenbrinkKNNDMCVKfold2024]. We therefore partitioned the training frame in
+climate space along the axis the projection travels. The candidate axis was chosen among
+predictors that change under the scenario by at least half a standard deviation of their
+current spread (17 of the 32 climate predictors qualify) as the one with the highest
+importance in the forest; that was warmest-quarter temperature (bio10). The 1,615
+raised-bog cells were sorted on bio10 and cut into five equal groups of 323; the other
+cells were assigned to the partition whose bog temperature range they fell in, with the
+cuts between partitions placed midway between adjacent bog groups and the two end
+partitions open-ended, so that every cell belongs to exactly one partition and cells warmer
+than the warmest training bog are kept, in partition 5, rather than dropped (S2 Table;
+TODO(JV): decide whether the partition table goes in the main text or supplement).
+
+Two cross-validation arms were run on these partitions with the same learner. The
+*pairwise* arm trained on one partition and tested on each of the other four (20 train--test
+pairs); it is the harder extrapolation test but trains on a median of 5,042 cells against
+the production model's 82,359, so its skill confounds extrapolation with data starvation.
+The *leave-one-partition-out* arm trained on four partitions and tested on the fifth (5
+folds, median 77,317 training cells); it is the arm that resembles the production model and
+the one used for the reliability curves below. Reading the two together separates the cost
+of extrapolating from the cost of a small training set.
+
+Skill was summarised per fold as the 3 x 3 confusion matrix, per-class recall
+(sensitivity), per-class one-vs-rest AUC, the macro AUC (mean over classes) and the macro
+G-mean (geometric mean of the three recalls, which falls to zero if any class is
+abandoned). All metrics were reported for the whole test partition and separately for the
+Norwegian and European test cells, so that a good score on one block cannot mask a poor
+score on the other. They were also reported separately for test cells warmer than the
+warmest training bog and colder than the coldest, where the only meaningful quantity is
+the rate at which the model wrongly calls such a cell a raised bog.
+
+### Skill as a function of warming beyond the training bogs
+
+A single cross-validated score describes the model on average, but the projection is read
+at a specific place in climate space: about 3 °C warmer than the bogs the model learned
+from. What matters is the model's skill *there*. Following the logic of pixel-wise
+accuracy estimation [@meyerPredictingUnknownSpace2021;
+@ludwigAssessingImprovingTransferability2023], we used the held-out predictions of the
+leave-one-partition-out arm as a calibration dataset and expressed each held-out cell's
+position as its signed offset in warmest-quarter temperature from the median bio10 of the
+raised bogs in that fold's training set. A cell at +2 °C was, for the model that scored it,
+2 °C warmer than the typical raised bog it had seen. The signed offset was preferred to a
+multivariate distance because the model treats warm-side and cold-side novelty
+oppositely, and an unsigned distance pools the two.
+
+Held-out cells were binned into eight bins with equal numbers of raised-bog cells (about
+200 each), so that the warm end of the axis, where the projection sits, is not resting on
+a handful of presences, and skill was computed per bin. Because cells within a fold share
+one model, uncertainty was estimated by resampling folds, not cells (cluster bootstrap,
+500 resamples). With partitions cut on the same axis, a bin and a fold are nearly the same
+thing: four of the eight bins are fed by a single fold, and for those no interval can be
+estimated and none is reported. The bins fed by two folds carry intervals that should be
+read as coarse.
+
+### Multivariate novelty and area of applicability
+
+Warming along one axis is not the only way a projected cell can differ from the training
+data. To capture novelty in all climate dimensions at once we computed the dissimilarity
+index of @meyerPredictingUnknownSpace2021: the Euclidean distance from a cell to its
+nearest training cell in standardised, importance-weighted predictor space, divided by the
+mean distance between training cells. Three choices made this comparable everywhere it was
+measured. The weights (median permutation importance over five fits of the production
+learner to the whole training frame, 500 trees each) and the standardisation were frozen
+once and reused for every fold and for the projection. The distance was computed over the 32 climate
+predictors only: terrain and palaeoclimate are identical in both scenarios, cannot register
+any projected change, and would only dilute the distance (they carry 58% of the
+unrestricted importance mass, slope alone 43%). And the area of applicability threshold
+was derived from held-out cross-validation distances (the Tukey upper fence of the
+leave-one-partition-out distances), as in the original method, rather than from
+within-training distances, which with 82,000 densely packed cells measure training density
+rather than attainable novelty. The dissimilarity index was used for the applicability
+mask and as a second, retained axis for the skill curves; the map's expected skill was
+read on the signed temperature offset.
+
+## Projection and reliability mapping
+
+The production forest, fitted on all 82,359 cells, was applied to every 250 m land cell of
+mainland Norway under current and future climate, giving three class-probability layers
+per scenario. Change at the mapped raised bogs was summarised per polygon as the mean of
+each layer over the polygon's cells, the predicted class before and after, and the change
+in the raised-bog score. For every projected cell we also computed its signed bio10 offset
+from the production model's training bogs (median 15.53 °C), its dissimilarity index, and
+the cross-validated recall and false-positive rate for raised bog interpolated from the
+offset bins to the cell's offset; cells beyond the last bin inherit that bin's values,
+and cells beyond the applicability threshold are flagged so that no estimate is read
+there.
+
+## Software
+
+All analyses were run in R [TODO(JV): version] with the packages sf and terra for
+spatial data [TODO(JV): citations], randomForestSRC for the forest, and the tidyverse for
+data handling. The full pipeline is available at
+<https://github.com/julienvollering/DMraisedbog>. TODO(JV): archive a release (Zenodo)
+and cite it.
+
+# Results
+
+## Training data
+
+The pooled training frame held 1,615 raised-bog cells, 1,116 Norwegian and 499 European,
+against 25 absences per bog cell in each of the two other classes (@tbl-frame). The Norwegian
+raised bogs occupy warmest-quarter temperatures of 12.1--16.5 °C (median 15.5 °C), and no
+Norwegian training cell of any class is warmer than 17.1 °C. The European presences span
+9.5--19.1 °C and so extend the warm edge of the raised-bog class by 2.6 °C, and the
+European absences reach 21 °C. Of the 344,513 screened European absence candidates warmer
+than any Norwegian training cell, the stratified draw placed 1,134 non-peat cells in each
+1 °C stratum from 17 to 21 °C, against 745 per stratum in the cooler strata; other
+peatland is scarce that warm (12,423 candidates above 17 °C, 518 above 18 °C) and all of
+it up to the budget was taken.
+
+| Class | Norway | Europe | Total |
+|:--|--:|--:|--:|
+| Raised bog | 1,116 | 499 | 1,615 |
+| Other peatland | 27,900 | 12,471 | 40,371 |
+| Non-peat | 27,900 | 12,473 | 40,373 |
+| All | 56,916 | 25,443 | 82,359 |
+
+: **Composition of the pooled training frame** (250 m cells, current climate).
+Absences were drawn at 25 per raised-bog cell per class from each block, stratified on
+warmest-quarter temperature, after the land-use and water screen. {#tbl-frame}
+
+![**Study area.** (A) The European absence domain (green: mire region IV within the
+EU-27, the countries mapped by the European Peatland Map, and the climate-data extent) with
+the 701 European raised-bog presences (green points), and the Norwegian survey footprint
+(orange) with the 564 mapped raised bogs (orange points). (B) Norway with the survey
+footprint (black outline) and the mapped raised bogs over mean temperature of the warmest
+quarter, 1981--2010.](figures/fig_studyarea.png){#fig-studyarea}
+
+## Where the future takes today's raised bogs, and what is observed there
+
+Under SSP3-7.0 the mean warmest-quarter temperature at the 1,116 Norwegian raised-bog
+cells rises from a median of 15.5 °C to 19.1 °C (range 14.8--20.2 °C), so that 48% of them
+become warmer than the warmest raised bog in the pooled training data (19.1 °C, a European
+one), and every one of the 15 most strongly
+shifting predictors moves the bog cells past the current raised-bog distribution and into
+the range of today's non-peat cells (@fig-occupancy (A); growing degree days above 5 °C, for example,
+from a median of 1,354 to 2,096). Precipitation barely changes: growing-season
+precipitation shifts by 0.36 standard deviations and annual precipitation by 0.22.
+
+The climates the bogs are moving into are already sampled, by the European block. In the
+wet column of the occupancy grid (growing-season precipitation above 650 mm), which holds
+83% of the future raised-bog cells, the observed prevalence of raised bog is 8.5% at
+14--16 °C, 4.1% at 16--18 °C and 0.19% at temperatures above 18 °C (7 raised bogs among
+3,782 cells; @fig-occupancy (B), @tbl-occupancy). Ninety per cent of the future raised-bog cells fall in that
+warmest band, three-quarters of them in its wet column: a 21-fold drop in observed
+prevalence at constant moisture, on 3,782 sampled cells, with the moisture that raised bogs
+need still present. The grid on annual precipitation shows the same pattern (0.34% raised
+bog above 18 °C in the wettest column; S2 Table TODO).
+
+Two caveats belong with this table. The warm evidence is entirely European and
+geographically concentrated: the 4,081 training cells warmer than 18 °C lie in 16
+one-degree squares between 45 and 49 °N (the Massif Central, Jura, Alpine foothills and
+the Bohemian belt), with 60% of them in three squares, at elevations of 160--870 m. Matching
+on temperature and precipitation does not match day length or evaporative demand, and the
+effective sample size is far below the cell count. And the cold-wet cell of the grid
+(< 14 °C, > 650 mm) is inflated by the 8,987 cells carrying the growing-season
+precipitation no-data code (Methods); its prevalence with those cells removed is about
+0.9%. Neither caveat touches the warm columns.
+
+| bio10 (°C) | gsp (mm) | Cells | Raised bog | Prevalence | Share from Europe | Future raised-bog cells |
+|:--|:--|--:|--:|--:|--:|--:|
+| < 14 | < 500 | 18,589 | 23 | 0.12% | 6% | 0% |
+| < 14 | 500--650 | 16,888 | 21 | 0.12% | 16% | 0% |
+| < 14 | > 650 | 16,538 | 68 | 0.41% | 28% | 0% |
+| 14--16 | < 500 | 5,330 | 244 | 4.58% | 80% | 0% |
+| 14--16 | 500--650 | 8,948 | 834 | 9.32% | 18% | 0% |
+| 14--16 | > 650 | 2,869 | 243 | 8.47% | 9% | 0.4% |
+| 16--18 | < 500 | 4,210 | 39 | 0.93% | 99% | 1.0% |
+| 16--18 | 500--650 | 3,073 | 61 | 1.99% | 64% | 1.2% |
+| 16--18 | > 650 | 1,833 | 75 | 4.09% | 39% | 7.8% |
+| > 18 | < 500 | 196 | 0 | 0.00% | 100% | 0% |
+| > 18 | 500--650 | 103 | 0 | 0.00% | 100% | 14.7% |
+| > 18 | > 650 | 3,782 | 7 | 0.19% | 100% | 75.0% |
+
+: **Observed prevalence of raised bog across the climate grid, and where the
+future raised-bog cells land.** Training cells (current climate) are cross-tabulated on
+mean temperature of the warmest quarter (bio10) and growing-season precipitation (gsp).
+The last column is the share of the 1,116 Norwegian raised-bog cells whose 2071--2100
+climate falls in that cell of the grid. {#tbl-occupancy}
+
+![**The climate the projection moves into, and what is observed there.** (A) Training
+cells in the space of warmest-quarter temperature and growing-season precipitation
+(15,000 cells drawn at random from each absence class; all 1,615 raised-bog cells), with the
+1,116 Norwegian raised-bog cells at their 2071--2100 climate (red). Dotted lines are the
+bands of panel B. Cells carrying the growing-season precipitation no-data code are omitted
+(TODO). (B) Observed prevalence of raised bog per band, with the number of raised-bog cells
+over the number of training cells, and the share of the future raised-bog cells that land
+in each band.](figures/fig_occupancy.png){#fig-occupancy}
+
+## Model fit and cross-validated skill
+
+On its own out-of-bag cells the production forest recovered 89% of raised bogs (one-vs-rest
+AUC 0.97), 85% of other peatland and 79% of non-peat, with a macro G-mean of 0.84. As
+expected for a balanced forest, the raised-bog class was over-called: 7,484 cells were
+predicted raised bog for 1,615 actual, a precision of 0.19.
+
+Held-out skill was lower and depended strongly on how much the training set resembled the
+production model (@tbl-cv). Leave-one-partition-out folds, with training sets of the
+production model's size, reached a macro AUC of 0.79 and a macro G-mean of 0.48, recovering
+78% of raised bogs; pairwise folds, trained on a fifth of the data, reached 0.73 and 0.37,
+recovering 54%. Most of the difference between these arms is the cost of the small training
+set rather than of extrapolating, so we quote the leave-one-partition-out arm as the
+estimate of production skill under climate transfer.
+
+Skill differed between the two data blocks in a specific way. Raised bogs were recovered
+about equally well on both (78% in Norway, 77% in Europe), but Norwegian other peatland was
+recovered at only 15% against 73% in Europe, with those Norwegian mires mostly called
+non-peat, and European non-peat at 19% against 56% in Norway (@tbl-cv, S3 Table TODO
+confusion by block). Slope is by far the most important predictor for the other peatland
+contrast (S1 Table), and European mapped peatland is flatter than Norway's: 74% of
+European other-peatland cells have a slope below 1° against 22% of Norwegian ones
+(TODO(JV): verify; from notebook 2026-08-24), so the forest has learned a "peat is flat"
+rule from the European block that it misapplies to Norwegian sloping mires. This weakness
+lies on the flat-versus-steep axis, not on the climatic axis the study turns on.
+
+Beyond the temperature range of the training bogs the model was asymmetric, and the
+asymmetry is the most informative single result of the cross-validation. When the warmest
+partition was held out (2,425 test cells warmer than every training bog, none of them a
+raised bog), the model called *all* of them raised bog: a false-positive rate of 1.00
+(pairwise arm 0.77). When the coldest partition was held out (17,961 cells colder than
+every training bog) it called none of them raised bog. So the forest, asked about a
+climate warmer than any raised bog it has seen, does not withdraw the raised-bog label; it
+extends it. The projected loss reported below is therefore not an artefact of a model that
+defaults to absence outside its training range. It is produced by the warm-flank labels
+that are present in the production training set.
+
+| Arm | Test cells | Folds | Median training cells | Macro AUC | Macro G-mean | Recall raised bog | Recall other peatland | Recall non-peat | FPR raised bog |
+|:--|:--|--:|--:|--:|--:|--:|--:|--:|--:|
+| Leave-one-out | all | 5 | 77,317 | 0.79 | 0.48 | 0.78 | 0.49 | 0.43 | 0.43 |
+| | Norway | 5 | 77,317 | 0.78 | 0.30 | 0.78 | 0.15 | 0.56 | 0.53 |
+| | Europe | 5 | 77,317 | 0.76 | 0.28 | 0.77 | 0.73 | 0.19 | 0.33 |
+| | warmer than all training bogs | 1 | 67,943 | 0.57 | -- | -- | 0.00 | 0.00 | 1.00 |
+| | colder than all training bogs | 1 | 23,430 | 0.76 | -- | -- | 0.10 | 0.99 | 0.00 |
+| Pairwise | all | 20 | 5,042 | 0.73 | 0.37 | 0.54 | 0.41 | 0.55 | 0.32 |
+| | Norway | 20 | 5,042 | 0.72 | 0.24 | 0.51 | 0.17 | 0.67 | 0.35 |
+| | Europe | 20 | 5,042 | 0.72 | 0.31 | 0.57 | 0.56 | 0.36 | 0.28 |
+| | warmer than all training bogs | 4 | 3,610 | 0.57 | -- | -- | 0.00 | 0.20 | 0.77 |
+| | colder than all training bogs | 4 | 3,610 | 0.62 | -- | -- | 0.00 | 0.96 | 0.04 |
+
+: **Cross-validated skill on partitions cut along warmest-quarter temperature,
+by arm and by subset of the test cells** (means over folds). Recall is the share of cells
+of a class predicted as that class; FPR is the share of cells not of the class predicted
+as it. The two envelope rows contain no raised bogs, so raised-bog recall and the G-mean
+are undefined there and the false-positive rate is the informative column. {#tbl-cv}
+
+## Skill against warming beyond the training bogs
+
+Along the signed temperature offset, discrimination and the operating point behaved
+differently (@fig-skill, @tbl-bins). The raised-bog AUC was 0.75--0.91 in the six bins
+within a degree of the typical training bog and 0.78 in the cold bin, and fell to 0.66 in
+the warm bin (+0.6 to +5.7 °C, median +1.7 °C), which is the bin fed by the fold that held
+out the warmest partition. The operating point moved more: at the typical training bog the
+balanced forest recovered 92--99% of raised bogs at the cost of calling 50--68% of
+non-bogs raised bog, in the cold bin it recovered 12% at a false-positive rate of 0.2%, and
+in the warm bin it recovered 79% at a false-positive rate of 55%. The cold-side behaviour
+is the forest withholding the label where it has learned that bogs stop; the warm-side
+behaviour is the forest extending it, consistent with the envelope result above.
+
+The 564 mapped raised bogs sit today at a median offset of -0.4 °C, inside the bins where
+the model recovers over 90% of raised bogs. Under the 2071--2100 climate they sit at a
+median offset of +3.2 °C (90th percentile +3.8 °C), inside the warm bin; 23% of the
+polygons (48% of their cells) lie beyond the warmest training bog (+3.5 °C), where the
+curve has no data at all.
+The skill the map can attach to them is the warm bin's: a recall of 0.79 and a
+false-positive rate of 0.55, from a single fold and without an interval.
+
+The same curves against the multivariate dissimilarity index are flat in discrimination
+(raised-bog AUC 0.78--0.84 across a hundred-fold range of novelty) while the operating
+point slides towards withholding the label (recall 0.96 to 0.47, false-positive rate 0.61
+to 0.10; S1 Fig). That axis is dominated by cold and seasonally unusual cells rather than
+warm ones, which is why it cannot carry the skill read for a warming projection; it is
+retained for the applicability mask.
+
+![**Cross-validated skill as a function of warming beyond the training raised
+bogs.** Held-out cells of the leave-one-partition-out arm, binned on their warmest-quarter
+temperature offset from the median of the raised bogs in that fold's training set (eight
+bins with equal numbers of raised-bog cells; points at bin medians). (A) Recall and
+false-positive rate for raised bog at the argmax operating point. (B) One-vs-rest AUC for
+raised bog and macro AUC. Ribbons are 95% cluster-bootstrap intervals over folds, shown
+only where a bin draws on at least two folds. Solid vertical line: the typical training
+bog; dashed: the warmest training bog. Rug: the 564 mapped raised bogs at their current
+and 2071--2100 offsets; the shaded band spans the 10th--90th percentile of their future
+offset.](figures/fig_skill_offset.png){#fig-skill}
+
+| Bin | Offset range (°C) | Cells | Raised bogs | Folds | Recall raised bog | FPR raised bog | AUC raised bog | Macro AUC |
+|--:|:--|--:|--:|--:|:--|:--|:--|:--|
+| 1 | -13.7 to -1.1 | 56,208 | 202 | 1 | 0.12 | 0.00 | 0.78 | 0.84 |
+| 2 | -1.1 to -0.7 | 4,387 | 202 | 2 | 0.53 (0.30--0.88) | 0.19 (0.04--0.42) | 0.77 (0.77--0.82) | 0.79 (0.78--0.82) |
+| 3 | -0.7 to -0.3 | 3,054 | 202 | 1 | 0.89 | 0.55 | 0.78 | 0.76 |
+| 4 | -0.3 to 0.0 | 1,603 | 202 | 2 | 0.92 (0.90--1.00) | 0.68 (0.67--0.73) | 0.75 (0.72--0.86) | 0.74 (0.73--0.80) |
+| 5 | 0.0 to +0.3 | 1,127 | 248 | 2 | 0.99 (0.99--1.00) | 0.64 (0.61--0.76) | 0.81 (0.76--0.87) | 0.78 (0.76--0.82) |
+| 6 | +0.3 to +0.4 | 804 | 179 | 1 | 0.98 | 0.50 | 0.91 | 0.85 |
+| 7 | +0.4 to +0.6 | 1,657 | 187 | 2 | 0.96 (0.95--0.98) | 0.38 (0.37--0.39) | 0.89 (0.88--0.92) | 0.83 (0.83--0.84) |
+| 8 | +0.6 to +5.7 | 13,519 | 193 | 1 | 0.79 | 0.55 | 0.66 | 0.69 |
+
+: **Held-out skill by bin of warmest-quarter temperature offset from the training
+raised bogs** (leave-one-partition-out arm). Intervals are 95% cluster-bootstrap intervals
+over folds and are reported only where a bin draws on two or more folds. {#tbl-bins}
+
+## Projected change at the mapped raised bogs
+
+Under current climate the model reproduces the mapped distribution: the raised-bog score
+averages 0.91 over the 564 polygons and 544 of them are predicted raised bog (@fig-projection (A, C);
+@fig-lyngstad (A)). Under the 2071--2100 climate the score averages 0.16, it falls at 99% of the
+polygons (median change -0.82; 5th and 95th percentiles -0.90 and -0.38), no polygon keeps
+a score above 0.5, and 543 of the 544 predicted raised bogs are predicted non-peat, one
+other peatland (@tbl-transitions; @fig-projection (B, D); @fig-lyngstad). The direction of the transition is the point
+of the three-class response: the mapped raised bogs are not projected to become other
+kinds of mire but to leave the peat-supporting climate altogether.
+
+Over mainland Norway as a whole, the share of 2 km cells whose majority class is raised
+bog falls from 3.3% to 0.2%, and other peatland from 22% to 10% (TODO(JV): these shares
+are computed on 2 km aggregates for plotting; recompute at 250 m if they are to be quoted).
+The few cells predicted raised bog in 2071--2100 lie in the far north-east and at scattered
+inland sites (@fig-projection (D)). TODO(JV): whether to report "newly suitable" area at all; notebook
+2026-06-05 frames the cold-flank transition (other peatland warming into the bog window)
+as a second question.
+
+| Predicted today | Predicted 2071--2100 | Polygons | Share |
+|:--|:--|--:|--:|
+| Raised bog | Non-peat | 543 | 96.3% |
+| Non-peat | Non-peat | 11 | 2.0% |
+| Other peatland | Non-peat | 9 | 1.6% |
+| Raised bog | Other peatland | 1 | 0.2% |
+
+: **Predicted class of the 564 mapped raised bogs under current and 2071--2100
+climate** (argmax of the polygon-mean class probabilities). {#tbl-transitions}
+
+![**Projected class probabilities over mainland Norway.** Raised-bog score under
+(A) 1981--2010 and (B) 2071--2100 climate, and the majority class under (C) 1981--2010 and
+(D) 2071--2100. Rasters aggregated to 2 km for display; outlines show the survey
+footprint.](figures/fig_projection.png){#fig-projection}
+
+![**Change at the 564 mapped raised bogs.** (A) Polygon-mean raised-bog score under
+current against future climate (dotted line: no change). (B) The polygons coloured by their
+2071--2100 raised-bog score.](figures/fig_lyngstad_change.png){#fig-lyngstad}
+
+## Reliability of the projection where it is read
+
+By the multivariate dissimilarity index the future projection domain is not extreme: its
+median dissimilarity (0.28) is below the median of the held-out cross-validation cells
+(0.47), its 90th percentile (0.63) is covered by the cross-validation's 90th percentile
+(1.23), and no future cell exceeds the applicability threshold (1.85). At the mapped raised
+bogs the future dissimilarity is 0.37, where the model still has many training neighbours.
+That reading is optimistic in a specific way: the index measures distance to any training
+cell, and the future climate of the bogs is close to European non-peat and other-peatland
+cells, not to raised bogs. On the signed temperature axis the same cells sit beyond the
+warmest training bog (@fig-reliability (A)). The two layers therefore say different things, and both are
+part of the answer: the projection is well supported by labelled data of the two other
+classes, and it is an extrapolation with respect to raised bogs specifically. The expected
+skill layer (@fig-reliability (C)) carries the warm bin's recall of 0.79 over most of southern Norway
+and the cold bins' much lower recall over the mountains and the north, where the model
+withholds the raised-bog label. At the mapped raised bogs the expected recall is 0.79
+under the future climate against 0.90 (0.77--0.97) today; the future value has no
+interval because the bin it is read from draws on a single fold.
+
+![**Reliability layers over the 2071--2100 projection domain.** (A) Warmest-quarter
+temperature offset from the production model's training raised bogs. (B) Dissimilarity
+index on the frozen ruler (applicability threshold 1.85; no cell exceeds it). (C)
+Expected recall of raised bog, read from the offset bins of @fig-skill. Rasters aggregated to
+2 km.](figures/fig_reliability.png){#fig-reliability}
+
+# Discussion
+
+TODO(JV): not drafted. Points the Results are written to support: (i) the model-free
+occupancy table carries the conclusion and the model adds the map; (ii) the envelope
+result (the forest extends the raised-bog label into warmer climates when the warm labels
+are withheld) is the reply to "the model just defaults to absence outside its range";
+(iii) formation versus persistence: occurrence-based evidence says which climates
+maintain raised bogs today, existing bogs are landforms with self-maintaining hydrology,
+so the projection is a loss of climatic suitability as currently expressed, not a
+disappearance date (notebook 2026-08-21; @joostenMiresPeatlandsEurope2017 p. 135); (iv)
+the warm evidence is European, southern and geographically clustered; (v) one scenario and
+one climate model; (vi) the other-peatland weakness in Norway is a terrain-source
+confound, not a climatic one.
+
+# Supporting information
+
+::: {.supp}
+## S1 Table. {#s1-table}
+
+Predictors.
+
+The 43 predictors with their source, whether they change under the scenario (and so enter
+the dissimilarity metric), the mean projected shift in standard deviations, and permutation
+importance in the production forest (all classes, and for the raised-bog class). Built by
+ms/make_figures.R as ms/tables/tblS_predictors.csv.
+:::
+
+::: {.supp}
+## S2 Table. {#s2-table}
+
+Partitions.
+
+Warmest-quarter temperature range and class composition of the five cross-validation
+partitions (ms/tables/tbl_partitions.csv).
+:::
+
+::: {.supp}
+## S1 Fig. {#s1-fig}
+
+Cross-validated skill against the dissimilarity index.
+
+Held-out cells of the leave-one-partition-out arm binned on the dissimilarity index
+(eight bins with equal numbers of raised-bog cells; log scale). Ribbons: 95%
+cluster-bootstrap intervals over folds. Dashed line: the applicability threshold. Shaded:
+the 10th--90th percentile of the 2071--2100 projection domain (grey) and of the mapped
+raised bogs under that climate (red).
+:::
+
+# Acknowledgments
+
+TODO(JV).

@@ -1,0 +1,7 @@
+scenario,class,mean_probability,majority_share
+current,nonpeat,0.6041,0.7521
+current,otherpeat,0.3222,0.2151
+current,bog,0.0737,0.0328
+future,nonpeat,0.5672,0.8967
+future,otherpeat,0.2772,0.1013
+future,bog,0.1555,0.002
