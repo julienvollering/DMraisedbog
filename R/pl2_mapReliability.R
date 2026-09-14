@@ -67,6 +67,21 @@ PROFILE_LAYERS <- c(
 
 ## Inputs ####
 
+# The profiles must postdate the predictions they were fitted on, and those the frame they
+# were scored on; a map read from stale curves is the failure this guards against.
+assert_fresher(
+  "output/pl2/error_profiles.rds",
+  "output/pl2/predictions_cv_topfeature.csv"
+)
+assert_fresher(
+  "output/pl2/predictions_cv_topfeature.csv",
+  "output/pl2/modeling_frame_regional_partitioned_topfeature.csv"
+)
+assert_fresher(
+  "output/pl2/di_ruler_production.rds",
+  "output/pl2/weights_feature_data_partitioning.csv"
+)
+
 ruler <- readRDS("output/pl2/di_ruler_production.rds")
 profiles_obj <- readRDS("output/pl2/error_profiles.rds")
 

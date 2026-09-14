@@ -140,6 +140,22 @@ MIN_FOLDS_FOR_CI <- 2
 
 ## Inputs ####
 
+# The predictions must postdate the frame they were scored on, and the ruler the weights it
+# was frozen from; otherwise the curves below describe a run that no longer exists (see
+# assert_fresher() in R/functions.R for the incident behind this).
+assert_fresher(
+  "output/pl2/predictions_cv_topfeature.csv",
+  "output/pl2/modeling_frame_regional_partitioned_topfeature.csv"
+)
+assert_fresher(
+  "output/pl2/predictions_cv_topfeature.csv",
+  "output/pl2/di_ruler_production.rds"
+)
+assert_fresher(
+  "output/pl2/di_ruler_production.rds",
+  "output/pl2/weights_feature_data_partitioning.csv"
+)
+
 # Both arms are read, because the reference arm is profiled too. They are split apart before
 # anything is pooled.
 preds <- read_csv(

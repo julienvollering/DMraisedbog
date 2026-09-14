@@ -1,5 +1,28 @@
 ## Functions ####
 
+# Input freshness ####
+
+# Stops a script that is about to read an input older than the file it was derived from.
+# On 2026-08-24 the two reliability scripts ran on a predictions file that predated the
+# partitioned frame it should have been computed from, and produced a full set of numbers
+# that read as results. A modification-time check is a crude dependency test, but it is
+# exactly the test that would have caught that: `newer` must have been written after
+# `older`. Both paths are named in the error so the fix (rerun the producer of `newer`)
+# is obvious.
+assert_fresher <- function(newer, older) {
+  stopifnot(file.exists(newer), file.exists(older))
+  t_new <- file.mtime(newer)
+  t_old <- file.mtime(older)
+  if (t_new < t_old) {
+    stop(
+      "Stale input: ", newer, " (", format(t_new, "%Y-%m-%d %H:%M:%S"), ") is older than ",
+      older, " (", format(t_old, "%Y-%m-%d %H:%M:%S"), "). Rerun the script that writes ",
+      basename(newer), " before this one."
+    )
+  }
+  invisible(TRUE)
+}
+
 # Land-use and water screen ####
 
 # ONE rule, stated once, applied to BOTH blocks and to ALL THREE classes -- the same
