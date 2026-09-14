@@ -99,6 +99,77 @@ scripts <- c(scripts_pl0, scripts_pl2)
 # Named rather than indexed so inserting a script upstream cannot silently repoint it.
 to_run <- scripts
 
+## Snapshot of the previous run's summaries ####
+
+# The small tables that carry the results are copied aside before anything runs and
+# diffed against the new ones at the end. Unchanged code should give an empty diff (the
+# fold fits are seeded); a changed number then points at exactly the script to re-read.
+SUMMARY_FILES <- c(
+  "output/pl0/no_block_summary.csv",
+  "output/pl0/eu_mask_summary.csv",
+  "output/pl0/eu_domain_summary.csv",
+  "output/pl2/modeling_frame_summary.csv",
+  "output/pl2/modeling_frame_predictor_ranges.csv",
+  "output/pl2/weights_feature_data_partitioning.csv",
+  "output/pl2/di_ruler_summary.csv",
+  "output/pl2/occupancy_grid.csv",
+  "output/pl2/metrics_cv_topfeature.csv",
+  "output/pl2/cv_novelty_coverage.csv",
+  "output/pl2/oob_metrics_production.csv",
+  "output/pl2/lyngstad_transitions.csv",
+  "output/pl2/error_profiles_by_bin.csv",
+  "output/pl2/error_profiles_ci.csv",
+  "output/pl2/reliability_summary.csv",
+  "output/pl2/reliability_at_lyngstad.csv"
+)
+PREVIOUS_DIR <- "output/_previous"
+dir.create(PREVIOUS_DIR, showWarnings = FALSE, recursive = TRUE)
+for (f in SUMMARY_FILES) {
+  if (file.exists(f)) {
+    file.copy(f, file.path(PREVIOUS_DIR, basename(f)), overwrite = TRUE)
+  }
+}
+
+# One line per summary file: how many cells changed, the largest absolute numeric change,
+# and which columns moved. Non-numeric columns count as changed on any inequality.
+diff_summary <- function(f, tol = 1e-9) {
+  prev <- file.path(PREVIOUS_DIR, basename(f))
+  if (!file.exists(f)) {
+    return(sprintf("%-52s not written by this run", f))
+  }
+  if (!file.exists(prev)) {
+    return(sprintf("%-52s no previous copy", f))
+  }
+  a <- read.csv(prev, stringsAsFactors = FALSE, check.names = FALSE)
+  b <- read.csv(f, stringsAsFactors = FALSE, check.names = FALSE)
+  if (!identical(names(a), names(b)) || nrow(a) != nrow(b)) {
+    return(sprintf(
+      "%-52s shape changed: %d x %d -> %d x %d", f, nrow(a), ncol(a), nrow(b), ncol(b)
+    ))
+  }
+  changed <- vapply(names(b), function(k) {
+    x <- a[[k]]
+    y <- b[[k]]
+    if (is.numeric(x) && is.numeric(y)) {
+      sum(xor(is.na(x), is.na(y)) | (!is.na(x) & !is.na(y) & abs(x - y) > tol))
+    } else {
+      sum(xor(is.na(x), is.na(y)) | (!is.na(x) & !is.na(y) & x != y))
+    }
+  }, integer(1))
+  max_abs <- max(c(0, unlist(lapply(names(b), function(k) {
+    x <- a[[k]]
+    y <- b[[k]]
+    if (is.numeric(x) && is.numeric(y)) abs(x - y)[!is.na(x) & !is.na(y)] else numeric(0)
+  }))))
+  if (sum(changed) == 0) {
+    return(sprintf("%-52s unchanged", f))
+  }
+  sprintf(
+    "%-52s %d cells changed, max |diff| %.4g, in: %s",
+    f, sum(changed), max_abs, paste(names(changed)[changed > 0], collapse = ", ")
+  )
+}
+
 ## Run manifest ####
 
 # One row per script per run: when it started and finished, how long it took, whether it
@@ -187,6 +258,12 @@ if (identical(to_run, scripts)) {
     cat(paste0("- ", untouched), sep = "\n")
   }
 }
+
+## Diff against the previous run ####
+
+cat("\nSummary tables against the previous run (output/_previous/):\n")
+cat(vapply(SUMMARY_FILES, diff_summary, character(1)), sep = "\n")
+cat("\n")
 
 ## Guard: nothing in R/ should be outside the pipeline ####
 
