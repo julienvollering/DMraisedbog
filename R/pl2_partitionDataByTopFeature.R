@@ -105,14 +105,14 @@ partitioning_result <- partition_by_presence_sorting(
 # Display results
 cat("\nPartition summary:\n")
 cat("  Partitions created:", partitioning_result$k, "\n")
-cat("  Feature used:", partitioning_result$feature_name, "\n")
-cat("  Observations dropped (in gaps):", partitioning_result$n_dropped, "\n\n")
+cat("  Feature used:", partitioning_result$feature_name, "\n\n")
+
+# The tiling is complete, so every row lands in exactly one partition unless the feature
+# itself is NA. A non-zero count here is therefore a real signal, and stops the run.
+stopifnot(partitioning_result$n_dropped == 0)
 
 cat("Rows per partition and class:\n")
 print(partitioning_result$n_by_class)
-
-cat("\nDropped rows (in gaps) by class:\n")
-print(partitioning_result$dropped_by_class)
 
 # Every partition has to carry all three classes, or a fold trained on it silently
 # becomes a two-class problem and the contrast the partition exists to test is absent.
@@ -224,27 +224,11 @@ mf_partitioned <- mf_current_with_coords |>
   select(scenario, partition, envelope_side, response, everything())
 
 output_csv <- "output/pl2/modeling_frame_regional_partitioned_topfeature.csv"
-output_tif <- "output/pl2/partition_topfeature.tif"
 
 write_csv(mf_partitioned, output_csv, append = FALSE)
 cat("Saved partitioned modeling frame to:", output_csv, "\n")
-
-writeRaster(raster, output_tif, overwrite = TRUE)
-cat("Saved partition raster to:", output_tif, "\n")
-
-cat("\nPartitioning complete!\n")
-cat("  Total observations:", nrow(mf_current), "\n")
-cat(
-  "  Observations in partitions:",
-  sum(!is.na(partitioning_result$partitions)),
-  "\n"
-)
-cat("  Observations dropped:", partitioning_result$n_dropped, "\n")
-cat(
-  "  Drop rate:",
-  round(100 * partitioning_result$n_dropped / nrow(mf_current), 2),
-  "%\n"
-)
+cat("  Rows partitioned:", sum(!is.na(partitioning_result$partitions)),
+    "of", nrow(mf_current), "\n")
 
 # sessionInfo ####
 

@@ -205,30 +205,6 @@ writeRaster(
   gdal = c("COMPRESS=LZW", "TILED=YES")
 )
 
-## 5 km version ####
-
-# Derived from the 250 m product rather than from a second pass over the source: a
-# second warp would double the read cost for a layer used only for domain-level
-# diagnostics and climate stratification. Majority-of-majorities is an approximation and
-# is not used for any label.
-grid_5km <- rast("output/predictors_global_5km_EUNorway_EPSG3035.tif")[[1]]
-target_5km <- crop(grid_5km, ext(map_cat_250m), snap = "out")
-
-map_cat_5km <- resample(map_cat_250m, target_5km, method = "mode")
-names(map_cat_5km) <- "map_cat"
-coverage_5km <- resample(coverage_250m, target_5km, method = "near")
-names(coverage_5km) <- "coverage"
-map_cat_5km <- mask(map_cat_5km, coverage_5km)
-
-writeRaster(
-  map_cat_5km, "output/pl0/epm_map_cat_5km.tif",
-  overwrite = TRUE, datatype = "INT1U", gdal = c("COMPRESS=LZW")
-)
-writeRaster(
-  coverage_5km, "output/pl0/epm_coverage_5km.tif",
-  overwrite = TRUE, datatype = "INT1U", gdal = c("COMPRESS=LZW")
-)
-
 ## Report ####
 
 label <- c("0" = "non-peat", "1" = "other-peat", "2" = "excluded (soil mosaic)")
@@ -246,16 +222,13 @@ summarise_grid <- function(r, res_label) {
   f |> mutate(share = cells / sum(cells))
 }
 
-epm_summary <- bind_rows(
-  summarise_grid(map_cat_250m, "250 m"),
-  summarise_grid(map_cat_5km, "5 km")
-)
+epm_summary <- summarise_grid(map_cat_250m, "250 m")
 print(as.data.frame(epm_summary))
 write_csv(epm_summary, "output/pl0/epm_map_cat_summary.csv", append = FALSE)
 
 plot(map_cat_250m, main = "EPM2025 map_cat, 250 m, EU domain")
 
-cat("Wrote output/pl0/epm_map_cat_{250m,5km}.tif and epm_coverage_{250m,5km}.tif\n")
+cat("Wrote output/pl0/epm_map_cat_250m.tif and epm_coverage_250m.tif\n")
 
 # sessionInfo ####
 

@@ -297,7 +297,6 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
             DI_mean = mean(DI_result$DI),
             DI_median = median(DI_result$DI),
             DI_max = max(DI_result$DI),
-            train_avg_dist = DI_result$train_avg_dist,
             n_train = nrow(train_fold)
         )
 
@@ -403,10 +402,8 @@ cat("Saved confusion matrices to:", confusion_file, "\n\n")
 # claim collapses. Both distributions are on the frozen ruler, so they are comparable by
 # construction.
 
-future_rows <- read_csv(input_file, show_col_types = FALSE) |>
-    filter(scenario == "future")
-train_rows <- read_csv(input_file, show_col_types = FALSE) |>
-    filter(scenario == "current")
+future_rows <- mf |> filter(scenario == "future")
+train_rows <- train_data
 
 ruled <- function(d) sweep(
     scale(
@@ -521,52 +518,9 @@ predictions_combined |>
     as.data.frame() |>
     print(row.names = FALSE)
 
-## Skill vs novelty ####
-
-# The fold-level view: one point per train-test pair.
-plot(
-    Gmean_macro ~ DI_mean,
-    data = filter(metrics_combined, slice == "all"),
-    xlab = "Mean Dissimilarity Index",
-    ylab = "Macro G-mean",
-    main = "Skill vs novelty, by fold"
-)
-
-# The per-row view, which is the one section 1.3 actually calls for: DI is a per-pixel
-# quantity, so skill can be binned over it as finely as the sample supports rather than
-# read off one point per fold. Counts are printed with it -- a bin's skill is not
-# interpretable without them, and the high-DI bins are the thin ones.
-skill_by_di_bin <- predictions_combined |>
-    group_by(arm) |>
-    mutate(
-        DI_bin = cut(DI, breaks = quantile(DI, probs = seq(0, 1, 0.05)),
-                     include.lowest = TRUE)
-    ) |>
-    ungroup() |>
-    group_by(arm, DI_bin) |>
-    summarise(
-        n = n(),
-        DI_mid = median(DI),
-        n_bog = sum(response == "bog"),
-        accuracy = mean(pred_class == response),
-        recall_bog = {
-            is_bog <- response == "bog"
-            if (any(is_bog)) mean(pred_class[is_bog] == "bog") else NA_real_
-        },
-        .groups = "drop"
-    )
-
-cat("Skill by DI ventile (per-row binning):\n")
-print(as.data.frame(skill_by_di_bin), row.names = FALSE)
-
-plot(
-    accuracy ~ DI_mid,
-    data = filter(skill_by_di_bin, arm == "lopo"),
-    type = "b",
-    xlab = "Dissimilarity Index (bin median)",
-    ylab = "Accuracy",
-    main = "Skill vs novelty, per-row binning"
-)
+# Skill as a function of novelty is NOT read here. pl2_fitErrorProfiles.R fits it from the
+# per-row predictions saved above, on the signed bio10 offset and on DI, with fold-level
+# intervals; the summaries below are per-fold means.
 
 ## Summary statistics ####
 
@@ -638,7 +592,6 @@ DI_summary <- metrics_combined |>
         sd_DI_mean = sd(DI_mean, na.rm = TRUE),
         mean_DI_median = mean(DI_median, na.rm = TRUE),
         mean_DI_max = mean(DI_max, na.rm = TRUE),
-        mean_train_avg_dist = mean(train_avg_dist, na.rm = TRUE),
         .groups = "drop"
     )
 

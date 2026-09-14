@@ -25,10 +25,11 @@
 #     would make these weights something other than the production fit's. The reps vary
 #     only the seed, so `sd` measures the forest's own bootstrap/mtry noise.
 #
-# Also emitted: the same weights from a Norway-only fit, as the ready-made sensitivity
-# ruler section 1.4 asks for (recompute the curve with Norway-only weights; distances
-# only, no refits). It is written into the same file under its own `method` label so the
-# existing `filter(method == ...)` consumers keep working unchanged.
+# Two cross-checks from other architectures (randomForest's balanced forest, a multinomial
+# elastic net) are fitted alongside and written under their own `method` labels. They set
+# no weight downstream -- every consumer filters on the production label -- but the rank
+# agreement between them and the production ruler is the evidence that the ruler is a
+# property of the data rather than of one implementation.
 
 library(readr)
 library(dplyr)
@@ -64,7 +65,6 @@ GLMNET_NLAMBDA <- 50
 # The production learner's label. Downstream scripts default to this string, so it must
 # stay attached to the fit whose VI is the frozen ruler.
 METHOD_PRODUCTION <- "Balanced Random Forest"
-METHOD_PRODUCTION_NO <- "Balanced Random Forest (Norway-only)"
 
 ## Read modeling frame ####
 
@@ -289,24 +289,6 @@ tictoc::toc()
 
 weights_glmnet <- summarise_importance(importance_glmnet)
 
-## Weights on the Norway block alone -- the section 1.4 sensitivity ruler ####
-
-# Not an alternative production ruler. It exists so the pl3 skill-vs-novelty curve can be
-# recomputed under weights that never saw an EU row, testing whether the curve's shape
-# survives the (acknowledged) fact that the production ruler's VI was fitted on data that
-# later serve as test rows at the cooler cuts.
-
-mf_current_no <- mf_current |> filter(dataset == "NO")
-
-tictoc::tic("BRF (rfsrc), Norway-only")
-importance_brf_rfsrc_no <- get_brf_rfsrc_importance(
-  mf_current_no$response,
-  mf_current_no[, predictor_names]
-)
-tictoc::toc()
-
-weights_brf_rfsrc_no <- summarise_importance(importance_brf_rfsrc_no)
-
 ## Which predictors can carry projection novelty at all ####
 
 # The distance metric these weights feed is used to measure how far future Norway sits
@@ -349,8 +331,7 @@ cat(
 weights_df <- bind_rows(
   weights_brf_rfsrc |> mutate(method = METHOD_PRODUCTION),
   weights_brf_rf |> mutate(method = "Balanced Random Forest (randomForest)"),
-  weights_glmnet |> mutate(method = "Penalized Regression (glmnet)"),
-  weights_brf_rfsrc_no |> mutate(method = METHOD_PRODUCTION_NO)
+  weights_glmnet |> mutate(method = "Penalized Regression (glmnet)")
 )
 
 ## Ruler agreement ####
@@ -414,7 +395,7 @@ weights_df |>
   facet_wrap(~method, scales = "free_x", ncol = 2) +
   labs(
     title = "Feature importance for the weighted distance metric",
-    subtitle = "Pooled EU + Norway frame, 3-class response; the Norway-only panel is the section 1.4 sensitivity ruler",
+    subtitle = "Pooled EU + Norway frame, 3-class response; the production ruler and two cross-implementation checks",
     x = "Feature",
     y = "Importance"
   ) +

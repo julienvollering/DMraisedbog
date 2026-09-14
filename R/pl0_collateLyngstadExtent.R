@@ -29,7 +29,7 @@ polygons <- gpkgfiles |>
 # We'll preserve the original values and create standardized versions for matching
 
 # First, clean the polygons dataset
-polygons_clean <- polygons %>%
+polygons_clean <- polygons |>
   mutate(
     # For regular numeric stripes, convert to character
     stripenummer_clean = case_when(
@@ -40,17 +40,8 @@ polygons_clean <- polygons %>%
     )
   )
 
-# Warning message:
-#   There was 1 warning in `stopifnot()`.
-# ℹ In argument: `stripenummer_clean = case_when(...)`.
-# Caused by warning:
-#   ! NAs introduced by coercion
-
-# filter(polygons_clean, is.na(stripenummer_clean))
-# Ignore warning
-
 # Next, clean the lyngstad dataset
-lyngstad_clean <- lyngstad %>%
+lyngstad_clean <- lyngstad |>
   mutate(
     # Standardize stripe numbers similarly to polygons
     stripe_clean = case_when(
@@ -61,40 +52,31 @@ lyngstad_clean <- lyngstad %>%
     is_range = str_detect(number, "-")
   )
 
-# Warning message:
-#   There was 1 warning in `stopifnot()`.
-# ℹ In argument: `stripe_clean = case_when(...)`.
-# Caused by warning:
-#   ! NAs introduced by coercion
-
-# filter(lyngstad_clean, is.na(stripe_clean))
-# Ignore warning
-
 # Function to expand ranges
 expand_number_ranges <- function(df) {
   # Extract special "alle" cases - these will be handled separately
-  alle_cases <- df %>%
-    filter(number == "alle") %>%
+  alle_cases <- df |>
+    filter(number == "alle") |>
     mutate(is_alle = TRUE, bildenummer = "match_all") # Placeholder value
 
   # For non-ranges (and not "alle"), keep as is
-  non_ranges <- df %>%
-    filter(!is_range & number != "alle") %>%
+  non_ranges <- df |>
+    filter(!is_range & number != "alle") |>
     mutate(bildenummer = number, is_alle = FALSE)
 
   # For ranges, expand into individual numbers
-  ranges <- df %>%
-    filter(is_range & number != "alle") %>%
+  ranges <- df |>
+    filter(is_range & number != "alle") |>
     mutate(
       start_num = as.numeric(str_extract(number, "^\\d+")),
       end_num = as.numeric(str_extract(number, "\\d+$"))
-    ) %>%
-    rowwise() %>%
+    ) |>
+    rowwise() |>
     mutate(
       expanded = list(seq(start_num, end_num))
-    ) %>%
-    unnest(expanded) %>%
-    mutate(bildenummer = as.character(expanded), is_alle = FALSE) %>%
+    ) |>
+    unnest(expanded) |>
+    mutate(bildenummer = as.character(expanded), is_alle = FALSE) |>
     select(-expanded)
 
   # Combine the datasets
@@ -105,14 +87,14 @@ lyngstad_expanded <- expand_number_ranges(lyngstad_clean)
 
 # Filter the original polygons to match the reference data ####
 # Split reference data into "alle" records and specific records
-lyngstad_specific <- lyngstad_expanded %>%
-  filter(is_alle == FALSE) %>%
-  select(nib_project_id, stripe_clean, bildenummer) %>%
+lyngstad_specific <- lyngstad_expanded |>
+  filter(is_alle == FALSE) |>
+  select(nib_project_id, stripe_clean, bildenummer) |>
   # Convert bildenummer to character to ensure matching
   mutate(bildenummer = as.character(bildenummer))
 
-lyngstad_alle <- lyngstad_expanded %>%
-  filter(is_alle == TRUE, stripe_clean != "alle") %>%
+lyngstad_alle <- lyngstad_expanded |>
+  filter(is_alle == TRUE, stripe_clean != "alle") |>
   select(nib_project_id, stripe_clean)
 
 lyngstad_alle_alle <- lyngstad_expanded |>
@@ -120,7 +102,7 @@ lyngstad_alle_alle <- lyngstad_expanded |>
   select(nib_project_id, stripe_clean)
 
 # Process specific matches (join on project, stripe, number)
-matches_specific <- polygons_clean %>%
+matches_specific <- polygons_clean |>
   semi_join(
     lyngstad_specific,
     by = c(
@@ -131,7 +113,7 @@ matches_specific <- polygons_clean %>%
   )
 
 # Process "alle" matches (join on project and stripe only)
-matches_alle <- polygons_clean %>%
+matches_alle <- polygons_clean |>
   semi_join(
     lyngstad_alle,
     by = c(
@@ -141,7 +123,7 @@ matches_alle <- polygons_clean %>%
   )
 
 # Additionally, include all stripes for projects where "alle" is specified
-matches_alle_alle <- polygons_clean %>%
+matches_alle_alle <- polygons_clean |>
   semi_join(
     lyngstad_alle_alle,
     by = c(
@@ -154,9 +136,9 @@ polygons_filtered <- bind_rows(
   matches_specific,
   matches_alle,
   matches_alle_alle
-) %>%
+) |>
   # Remove duplicates that might occur if a row matches both criteria
-  distinct(nib_project_id, stripenummer, bildenummer, .keep_all = TRUE) %>%
+  distinct(nib_project_id, stripenummer, bildenummer, .keep_all = TRUE) |>
   # Remove temporary columns used for matching
   select(
     nib_project_id,
@@ -193,21 +175,6 @@ polygons_filtered <- bind_rows(
 tail(polygons_filtered)
 
 # Plot the geometries ####
-
-# polygons_filtered %>%
-#   st_union() %>%
-#   st_cast("POLYGON") %>%  # Cast to individual polygons
-#   st_combine() %>%        # Recombine to a geometry collection
-#   plot()
-# Above approach doesn't resolve internal boundaries/overlaps, maybe because invalid geometry?
-
-# polygons_filtered %>%
-#   st_make_valid() %>%     # Ensure geometries are valid
-#   st_buffer(0) %>%        # Minor buffer to fix tiny gaps/overlaps
-#   st_union(is_coverage = TRUE)  |>
-#   st_geometry() |>
-#   plot()
-# Above approach maintains overlaps but not differentiated by project
 
 footprint_projects <- polygons_filtered |>
   select(nib_project_id, prosjektnavn) |>

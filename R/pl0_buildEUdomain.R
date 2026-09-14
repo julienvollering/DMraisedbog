@@ -160,12 +160,6 @@ domain_mask_5km <- rasterize(
   field = 1L, touches = TRUE
 )
 names(domain_mask_5km) <- "eu_domain"
-writeRaster(
-  domain_mask_5km,
-  "output/pl0/eu_domain_5km.tif",
-  overwrite = TRUE,
-  datatype = "INT1U"
-)
 
 bio10 <- grid_5km[["bio10"]]
 bio10_domain <- as.numeric(values(mask(bio10, domain_mask_5km), na.rm = TRUE))
@@ -206,7 +200,6 @@ domain_summary <- tibble(
     "Norway future bio10 min/med/q95/q99/max (250 m grid)",
     "warm-flank threshold (Norway current max bio10)",
     "warm-flank cells in domain",
-    "warm-flank cells above the legacy 17.0 threshold",
     "Norway future cells inside domain bio10 range (%)",
     "Norway future cells above domain bio10 q99 (%)"
   ),
@@ -218,7 +211,6 @@ domain_summary <- tibble(
     envelope(bio10_norway_fut),
     sprintf("%.1f", warm_threshold),
     format(sum(bio10_domain > warm_threshold)),
-    format(sum(bio10_domain > 17.0)),
     sprintf("%.1f", 100 * mean(
       bio10_norway_fut >= min(bio10_domain) & bio10_norway_fut <= max(bio10_domain)
     )),
@@ -281,7 +273,6 @@ st_write(
 )
 
 cat("Wrote data/DMraisedbog.gpkg layers EU_domain, EPM_coverage\n")
-cat("Wrote output/pl0/eu_domain_5km.tif\n")
 
 # sessionInfo ####
 
