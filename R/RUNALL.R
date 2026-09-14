@@ -9,7 +9,7 @@
 #        blocks (Norway and Europe) that the pooled frame is built from.
 #   pl2  everything else — pooled 3-class modelling frame, the frozen DI ruler, feature
 #        weights, partitioning, cross-validation, production fit, projection,
-#        interpretation, and (to come) reliability mapping.
+#        interpretation, and reliability mapping.
 #
 # WHY THERE IS NO pl1. The pl1 scripts were the hierarchical two-scale cascade, in which
 # a global EU model's prediction entered the local model as the `rf_global` covariate.
