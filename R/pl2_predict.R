@@ -119,6 +119,19 @@ oob_metrics <- calculate_multiclass_metrics(
 print(oob_metrics$confusion)
 cat("\n")
 print(as.data.frame(oob_metrics$by_class), row.names = FALSE)
+
+# Saved, not only printed: the production fit's own skill is quoted in the manuscript and
+# compared against the cross-validation, so it has to exist as a file, not as knit output.
+oob_metrics$by_class |>
+  mutate(
+    accuracy = oob_metrics$summary$accuracy,
+    Gmean_macro = oob_metrics$summary$Gmean_macro,
+    macro_auc = oob_metrics$summary$macro_auc
+  ) |>
+  write_csv("output/pl2/oob_metrics_production.csv", append = FALSE)
+oob_metrics$confusion |>
+  as.data.frame() |>
+  write_csv("output/pl2/oob_confusion_production.csv", append = FALSE)
 cat("\nOOB macro G-mean:", round(oob_metrics$summary$Gmean_macro, 4), "\n\n")
 
 ## Generate spatial predictions ####

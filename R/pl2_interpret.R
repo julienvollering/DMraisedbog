@@ -131,12 +131,12 @@ table(
   print()
 
 cat("\nTransitions (of", n_classified, "classified polygons):\n")
-change |>
+transitions <- change |>
   filter(!is.na(transition)) |>
-  count(transition, sort = TRUE) |>
-  mutate(prop = round(n / n_classified, 4)) |>
-  as.data.frame() |>
-  print(row.names = FALSE)
+  count(class_current, class_future, transition, sort = TRUE) |>
+  mutate(prop = round(n / n_classified, 4))
+print(as.data.frame(transitions), row.names = FALSE)
+write_csv(transitions, "output/pl2/lyngstad_transitions.csv", append = FALSE)
 
 cat("\nChange in P(bog):\n")
 change |>

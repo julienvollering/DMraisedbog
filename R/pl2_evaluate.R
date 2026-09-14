@@ -313,10 +313,26 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label, seed) 
             .before = 1
         )
 
+    # What each fold trained and tested on, by block and class. The tables printed at the
+    # top of every fold end up only in the knit; the size gap between the arms (median
+    # 5,042 vs 77,317 training rows) is the argument behind which arm calibrates, so it
+    # must exist as a file.
+    composition_test <- bind_rows(
+        train_fold |> count(dataset, response, name = "n") |> mutate(role = "train"),
+        test_fold |> count(dataset, response, name = "n") |> mutate(role = "test")
+    ) |>
+        mutate(
+            arm = arm,
+            train_partition = train_label,
+            test_partition = test_label,
+            .before = 1
+        )
+
     list(
         predictions = predictions_test,
         metrics = metrics_test,
-        confusion = confusion_test
+        confusion = confusion_test,
+        composition = composition_test
     )
 }
 
@@ -324,11 +340,13 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label, seed) 
 predictions_all <- list()
 metrics_all <- list()
 confusion_all <- list()
+composition_all <- list()
 
 collect <- function(res) {
     predictions_all[[length(predictions_all) + 1]] <<- res$predictions
     metrics_all[[length(metrics_all) + 1]] <<- res$metrics
     confusion_all[[length(confusion_all) + 1]] <<- res$confusion
+    composition_all[[length(composition_all) + 1]] <<- res$composition
 }
 
 ## Arm 1: pairwise ####
@@ -413,6 +431,11 @@ cat("  Rows:", nrow(metrics_combined), "\n\n")
 confusion_file <- "output/pl2/confusion_cv_topfeature.csv"
 write_csv(confusion_combined, confusion_file)
 cat("Saved confusion matrices to:", confusion_file, "\n\n")
+
+# Save fold composition
+composition_file <- "output/pl2/cv_fold_composition.csv"
+write_csv(bind_rows(composition_all), composition_file)
+cat("Saved fold composition to:", composition_file, "\n\n")
 
 ## Does this cross-validation actually reach the projection? ####
 
