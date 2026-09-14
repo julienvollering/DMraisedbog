@@ -368,9 +368,11 @@ Two cross-validation arms were run on these partitions with the same learner. Th
 pairs); it is the harder extrapolation test but trains on a median of 5,042 cells against
 the production model's 82,359, so its skill confounds extrapolation with data starvation.
 The *leave-one-partition-out* arm trained on four partitions and tested on the fifth (5
-folds, median 77,317 training cells); it is the arm that resembles the production model and
-the one used for the reliability curves below. Reading the two together separates the cost
-of extrapolating from the cost of a small training set.
+folds, median 77,317 training cells); it is the arm that resembles the production model.
+Reading the two together separates the cost of extrapolating from the cost of a small
+training set. The leave-one-partition-out arm is quoted as the estimate of production
+skill; the pairwise arm is the one the reliability curves are fitted on, for reasons given
+in the next section.
 
 Skill was summarised per fold as the 3 x 3 confusion matrix, per-class recall
 (sensitivity), per-class one-vs-rest AUC, the macro AUC (mean over classes) and the macro
@@ -388,21 +390,38 @@ at a specific place in climate space: about 3 °C warmer than the bogs the model
 from. What matters is the model's skill *there*. Following the logic of pixel-wise
 accuracy estimation [@meyerPredictingUnknownSpace2021;
 @ludwigAssessingImprovingTransferability2023], we used the held-out predictions of the
-leave-one-partition-out arm as a calibration dataset and expressed each held-out cell's
+pairwise arm as a calibration dataset and expressed each held-out cell's
 position as its signed offset in warmest-quarter temperature from the median bio10 of the
 raised bogs in that fold's training set. A cell at +2 °C was, for the model that scored it,
 2 °C warmer than the typical raised bog it had seen. The signed offset was preferred to a
 multivariate distance because the model treats warm-side and cold-side novelty
 oppositely, and an unsigned distance pools the two.
 
+The pairwise arm was used for this calibration, rather than the leave-one-partition-out
+arm quoted for production skill, for two reasons. It reproduces the extrapolation the
+projection makes: a model trained on one partition and tested on a distant one scores
+held-out raised bogs far from the bogs it learned from, whereas a model trained on four
+partitions has a close analogue for nearly every held-out bog and so places few raised-bog
+cells at the offsets where the projection is read. Within the 10th--90th percentile band
+of the mapped raised bogs' 2071--2100 offset (+1.7 to +3.8 °C), the pairwise arm holds
+366 held-out raised-bog cells scored by four models; the leave-one-partition-out arm holds
+32, scored by one. And it replicates: every bin of the axis is scored by four to six
+independently fitted models, which is what a fold-level interval requires, whereas with
+partitions cut on the same axis a leave-one-partition-out bin and a fold are nearly the
+same object, and four of its eight bins are fed by a single model. The price is that the
+curves describe models trained on a median of 5,042 cells, not the production model's
+82,359, so the expected skill read from them is a floor on the production model's rather
+than an estimate of it. The leave-one-partition-out point estimates are drawn alongside
+for reference.
+
 Held-out cells were binned into eight bins with equal numbers of raised-bog cells (about
-200 each), so that the warm end of the axis, where the projection sits, is not resting on
-a handful of presences, and skill was computed per bin. Because cells within a fold share
-one model, uncertainty was estimated by resampling folds, not cells (cluster bootstrap,
-500 resamples). With partitions cut on the same axis, a bin and a fold are nearly the same
-thing: four of the eight bins are fed by a single fold, and for those no interval can be
-estimated and none is reported. The bins fed by two folds carry intervals that should be
-read as coarse.
+800 each; every raised-bog cell is scored once by each of the four models that did not
+train on it), so that the warm end of the axis, where the projection sits, is not resting
+on a handful of presences, and skill was computed per bin. Because cells within a fold
+share one model, uncertainty was estimated by resampling the 20 folds, not cells (cluster
+bootstrap, 500 resamples). Every bin draws on four to six folds, so an interval is reported
+for every bin; the intervals on the operating-point metrics are wide, and should be read
+as such.
 
 ### Multivariate novelty and area of applicability
 
@@ -418,7 +437,7 @@ predictors only: terrain and palaeoclimate are identical in both scenarios, cann
 any projected change, and would only dilute the distance (they carry 58% of the
 unrestricted importance mass, slope alone 43%). And the area of applicability threshold
 was derived from held-out cross-validation distances (the Tukey upper fence of the
-leave-one-partition-out distances), as in the original method, rather than from
+pairwise arm's held-out distances), as in the original method, rather than from
 within-training distances, which with 82,000 densely packed cells measure training density
 rather than attainable novelty. The dissimilarity index was used for the applicability
 mask and as a second, retained axis for the skill curves; the map's expected skill was
@@ -599,56 +618,63 @@ are undefined there and the false-positive rate is the informative column. {#tbl
 ## Skill against warming beyond the training bogs
 
 Along the signed temperature offset, discrimination and the operating point behaved
-differently (@fig-skill, @tbl-bins). The raised-bog AUC was 0.75--0.91 in the six bins
-within a degree of the typical training bog and 0.78 in the cold bin, and fell to 0.66 in
-the warm bin (+0.6 to +5.7 °C, median +1.7 °C), which is the bin fed by the fold that held
-out the warmest partition. The operating point moved more: at the typical training bog the
-balanced forest recovered 92--99% of raised bogs at the cost of calling 50--68% of
-non-bogs raised bog, in the cold bin it recovered 12% at a false-positive rate of 0.2%, and
-in the warm bin it recovered 79% at a false-positive rate of 55%. The cold-side behaviour
-is the forest withholding the label where it has learned that bogs stop; the warm-side
-behaviour is the forest extending it, consistent with the envelope result above.
+differently (@fig-skill, @tbl-bins). The raised-bog AUC was 0.70--0.83 in the seven bins
+up to +1.4 °C and fell to 0.64 (0.56--0.78) in the warm bin (+1.4 to +6.8 °C, median
++2.5 °C), which draws on the six folds whose test partition lay warmer than their training
+partition. The operating point moved the other way. In the cold bin and within a degree of
+the typical training bog the pairwise models recovered 43--53% of raised bogs at
+false-positive rates of 0.10--0.16; from +0.4 °C upward recall rose through 0.47 and 0.74
+to 0.81 (0.62--0.93) in the warm bin, and the false-positive rate through 0.22 and 0.28 to
+0.48 (0.41--0.55). The leave-one-partition-out reference, whose models saw four
+partitions, is sharper in the same direction: it recovered 12% of raised bogs in the cold
+bin at a false-positive rate of 0.002, 89--99% between -0.7 and +0.6 °C, and 79% in its
+warm bin at a false-positive rate of 0.55. On both arms, then, the forest asked about a
+climate warmer than its training bogs extends the raised-bog label rather than withholding
+it, consistent with the envelope result above; the production-sized model does so more
+strongly, and withholds the label more strongly on the cold side, where it has learned
+that bogs stop.
 
-The 564 mapped raised bogs sit today at a median offset of -0.4 °C, inside the bins where
-the model recovers over 90% of raised bogs. Under the 2071--2100 climate they sit at a
-median offset of +3.2 °C (90th percentile +3.8 °C), inside the warm bin; 23% of the
-polygons (48% of their cells) lie beyond the warmest training bog (+3.5 °C), where the
-curve has no data at all.
-The skill the map can attach to them is the warm bin's: a recall of 0.79 and a
-false-positive rate of 0.55, from a single fold and without an interval.
+The 564 mapped raised bogs sit today at a median offset of -0.4 °C, in the bins where the
+pairwise models recover about half of the raised bogs and the production-sized reference
+over 90%. Under the 2071--2100 climate they sit at a median offset of +3.2 °C (90th
+percentile +3.8 °C), inside the warm bin; 23% of the polygons (48% of their cells) lie
+beyond the warmest raised bog in the production training set (+3.5 °C). The skill the map
+can attach to them is the warm bin's: a recall of 0.81 (0.62--0.93) and a false-positive
+rate of 0.48 (0.41--0.55), from six folds.
 
 The same curves against the multivariate dissimilarity index are flat in discrimination
-(raised-bog AUC 0.78--0.84 across a hundred-fold range of novelty) while the operating
-point slides towards withholding the label (recall 0.96 to 0.47, false-positive rate 0.61
-to 0.10; S1 Fig). That axis is dominated by cold and seasonally unusual cells rather than
+(raised-bog AUC 0.69--0.77 across a forty-fold range of novelty) while the false-positive
+rate slides from 0.30 to 0.17 and recall varies between 0.41 and 0.66 without trend
+(S1 Fig). That axis is dominated by cold and seasonally unusual cells rather than
 warm ones, which is why it cannot carry the skill read for a warming projection; it is
 retained for the applicability mask.
 
 ![**Cross-validated skill as a function of warming beyond the training raised
-bogs.** Held-out cells of the leave-one-partition-out arm, binned on their warmest-quarter
+bogs.** Held-out cells of the pairwise arm, binned on their warmest-quarter
 temperature offset from the median of the raised bogs in that fold's training set (eight
 bins with equal numbers of raised-bog cells; points at bin medians). (A) Recall and
 false-positive rate for raised bog at the argmax operating point. (B) One-vs-rest AUC for
-raised bog and macro AUC. Ribbons are 95% cluster-bootstrap intervals over folds, shown
-only where a bin draws on at least two folds. Solid vertical line: the typical training
+raised bog and macro AUC. Ribbons are 95% cluster-bootstrap intervals over the 20 folds.
+Thin dashed lines: point estimates of the leave-one-partition-out arm, whose training sets
+are the production model's size, for reference. Solid vertical line: the typical training
 bog; dashed: the warmest training bog. Rug: the 564 mapped raised bogs at their current
 and 2071--2100 offsets; the shaded band spans the 10th--90th percentile of their future
 offset.](figures/fig_skill_offset.png){#fig-skill}
 
 | Bin | Offset range (°C) | Cells | Raised bogs | Folds | Recall raised bog | FPR raised bog | AUC raised bog | Macro AUC |
 |--:|:--|--:|--:|--:|:--|:--|:--|:--|
-| 1 | -13.7 to -1.1 | 56,208 | 202 | 1 | 0.12 | 0.00 | 0.78 | 0.84 |
-| 2 | -1.1 to -0.7 | 4,387 | 202 | 2 | 0.53 (0.30--0.88) | 0.19 (0.04--0.42) | 0.77 (0.77--0.82) | 0.79 (0.78--0.82) |
-| 3 | -0.7 to -0.3 | 3,054 | 202 | 1 | 0.89 | 0.55 | 0.78 | 0.76 |
-| 4 | -0.3 to 0.0 | 1,603 | 202 | 2 | 0.92 (0.90--1.00) | 0.68 (0.67--0.73) | 0.75 (0.72--0.86) | 0.74 (0.73--0.80) |
-| 5 | 0.0 to +0.3 | 1,127 | 248 | 2 | 0.99 (0.99--1.00) | 0.64 (0.61--0.76) | 0.81 (0.76--0.87) | 0.78 (0.76--0.82) |
-| 6 | +0.3 to +0.4 | 804 | 179 | 1 | 0.98 | 0.50 | 0.91 | 0.85 |
-| 7 | +0.4 to +0.6 | 1,657 | 187 | 2 | 0.96 (0.95--0.98) | 0.38 (0.37--0.39) | 0.89 (0.88--0.92) | 0.83 (0.83--0.84) |
-| 8 | +0.6 to +5.7 | 13,519 | 193 | 1 | 0.79 | 0.55 | 0.66 | 0.69 |
+| 1 | -14.2 to -1.2 | 220,702 | 808 | 5 | 0.43 (0.05--0.88) | 0.12 (0.00--0.44) | 0.74 (0.70--0.80) | 0.72 (0.69--0.79) |
+| 2 | -1.2 to -0.7 | 18,623 | 812 | 6 | 0.43 (0.08--0.76) | 0.16 (0.00--0.48) | 0.70 (0.63--0.77) | 0.75 (0.69--0.81) |
+| 3 | -0.7 to -0.4 | 10,244 | 803 | 6 | 0.53 (0.11--0.84) | 0.13 (0.02--0.42) | 0.76 (0.64--0.85) | 0.77 (0.70--0.83) |
+| 4 | -0.4 to -0.1 | 7,422 | 807 | 5 | 0.48 (0.26--0.82) | 0.14 (0.07--0.28) | 0.76 (0.71--0.87) | 0.79 (0.75--0.83) |
+| 5 | +0.1 to +0.4 | 6,490 | 808 | 4 | 0.43 (0.14--0.59) | 0.10 (0.03--0.31) | 0.83 (0.73--0.88) | 0.84 (0.77--0.87) |
+| 6 | +0.4 to +0.8 | 10,929 | 808 | 6 | 0.47 (0.33--0.75) | 0.22 (0.02--0.61) | 0.71 (0.54--0.82) | 0.77 (0.65--0.84) |
+| 7 | +0.8 to +1.4 | 14,881 | 809 | 5 | 0.74 (0.29--0.89) | 0.28 (0.01--0.82) | 0.78 (0.61--0.84) | 0.74 (0.66--0.81) |
+| 8 | +1.4 to +6.8 | 40,145 | 805 | 6 | 0.81 (0.62--0.93) | 0.48 (0.41--0.55) | 0.64 (0.56--0.78) | 0.66 (0.59--0.78) |
 
 : **Held-out skill by bin of warmest-quarter temperature offset from the training
-raised bogs** (leave-one-partition-out arm). Intervals are 95% cluster-bootstrap intervals
-over folds and are reported only where a bin draws on two or more folds. {#tbl-bins}
+raised bogs** (pairwise arm). Intervals are 95% cluster-bootstrap intervals over the 20
+folds. {#tbl-bins}
 
 ## Projected change at the mapped raised bogs
 
@@ -692,8 +718,8 @@ current against future climate (dotted line: no change). (B) The polygons colour
 
 By the multivariate dissimilarity index the future projection domain is not extreme: its
 median dissimilarity (0.28) is below the median of the held-out cross-validation cells
-(0.47), its 90th percentile (0.63) is covered by the cross-validation's 90th percentile
-(1.23), and no future cell exceeds the applicability threshold (1.85). At the mapped raised
+(0.55), its 90th percentile (0.63) is covered by the cross-validation's 90th percentile
+(1.33), and no future cell exceeds the applicability threshold (1.97). At the mapped raised
 bogs the future dissimilarity is 0.37, where the model still has many training neighbours.
 That reading is optimistic in a specific way: the index measures distance to any training
 cell, and the future climate of the bogs is close to European non-peat and other-peatland
@@ -701,15 +727,18 @@ cells, not to raised bogs. On the signed temperature axis the same cells sit bey
 warmest training bog (@fig-reliability (A)). The two layers therefore say different things, and both are
 part of the answer: the projection is well supported by labelled data of the two other
 classes, and it is an extrapolation with respect to raised bogs specifically. The expected
-skill layer (@fig-reliability (C)) carries the warm bin's recall of 0.79 over most of southern Norway
-and the cold bins' much lower recall over the mountains and the north, where the model
-withholds the raised-bog label. At the mapped raised bogs the expected recall is 0.79
-under the future climate against 0.90 (0.77--0.97) today; the future value has no
-interval because the bin it is read from draws on a single fold.
+skill layer (@fig-reliability (C)) carries the warm bin's recall of 0.81 over most of southern Norway
+and the interior bins' recall of about 0.43--0.53 over the mountains and the north, so
+that the median expected recall over the domain is 0.43. At the mapped raised bogs the
+expected recall is 0.81 (0.62--0.93) under the future climate against 0.46 (0.16--0.78)
+today, and the expected false-positive rate 0.48 against 0.13: the operating point the
+projection is read at favours calling raised bog, which makes the non-peat verdict at
+these polygons stronger evidence than the same verdict from a neutral operating point
+would be.
 
 ![**Reliability layers over the 2071--2100 projection domain.** (A) Warmest-quarter
 temperature offset from the production model's training raised bogs. (B) Dissimilarity
-index on the frozen ruler (applicability threshold 1.85; no cell exceeds it). (C)
+index on the frozen ruler (applicability threshold 1.97; no cell exceeds it). (C)
 Expected recall of raised bog, read from the offset bins of @fig-skill. Rasters aggregated to
 2 km.](figures/fig_reliability.png){#fig-reliability}
 
@@ -754,9 +783,9 @@ partitions (ms/tables/tbl_partitions.csv).
 
 Cross-validated skill against the dissimilarity index.
 
-Held-out cells of the leave-one-partition-out arm binned on the dissimilarity index
+Held-out cells of the pairwise arm binned on the dissimilarity index
 (eight bins with equal numbers of raised-bog cells; log scale). Ribbons: 95%
-cluster-bootstrap intervals over folds. Dashed line: the applicability threshold. Shaded:
+cluster-bootstrap intervals over the 20 folds. Dashed line: the applicability threshold. Shaded:
 the 10th--90th percentile of the 2071--2100 projection domain (grey) and of the mapped
 raised bogs under that climate (red).
 :::
