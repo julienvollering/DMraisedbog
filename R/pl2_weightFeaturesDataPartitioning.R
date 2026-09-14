@@ -3,8 +3,8 @@
 # PURPOSE: Fits the production balanced 3-class forest to derive the feature weights used by every weighted distance downstream, flagged dynamic/material.
 
 # Produces the feature weights used by every weighted feature-space distance
-# downstream: W_sample (pl2_exploreFeatureSpaceDistances.R), the partitioning feature
-# (pl2_partitionDataByTopFeature.R), and the DI ruler (pl2_dissimilarityindex.R, pl3).
+# downstream: the partitioning feature (pl2_partitionDataByTopFeature.R) and the DI ruler
+# (pl2_freezeDIRuler.R).
 #
 # Three things changed with the EU integration (plan_EUintegration.md):
 #

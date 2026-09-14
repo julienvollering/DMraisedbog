@@ -48,10 +48,10 @@ dir.create("output/pl2", showWarnings = FALSE, recursive = TRUE)
 seed <- 42
 set.seed(seed)
 
-# Future rows exist for the DI and feature-distance diagnostics, not for fitting. They
-# must cover the block's own coordinates exactly, because
-# pl2_exploreFeatureSpaceDistances.R joins future conditions onto presence locations by
-# (x, y); a purely random sample would miss them and silently produce NAs.
+# Future rows exist for the DI and projected-shift diagnostics, not for fitting. They must
+# cover the block's own coordinates exactly, because pl2_exploreOccupancy.R joins future
+# conditions onto the Norwegian bog cells by (x, y); a purely random sample would miss
+# them and silently produce NAs.
 n_future_sample <- 200000
 
 ## Predictors ####

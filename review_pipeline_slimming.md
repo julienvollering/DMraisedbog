@@ -2,7 +2,8 @@
 
 Scope: every script listed in `R/RUNALL.R` (13 pl0 + 12 pl2), `R/functions.R`, and what
 `ms/make_figures.R` and `ms/ms.qmd` actually consume. Nothing in `R/archive/` was reviewed.
-Recommendations only; no code was changed on this branch.
+Status: section 0 resolved (manuscript moved to the pairwise arm, notebook 2026-09-14);
+A1 and A2 implemented on this branch. The rest are recommendations.
 
 Two aims, as asked: (A) what to remove so the codebase is slimmer, and (B) what to add so a
 fresh RUNALL is easier to review.

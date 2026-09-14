@@ -81,8 +81,6 @@ scripts_pl2 <- c(
   "R/pl2_weightFeaturesDataPartitioning.R",# feature weights for every weighted distance
   "R/pl2_freezeDIRuler.R",                 # freeze weights + scaling + normalising constant
   "R/pl2_exploreOccupancy.R",              # model-free: where the future goes, what is observed there
-  "R/pl2_exploreFeatureSpaceDistances.R",  # diagnostic: which predictors shift, and how far
-  "R/pl2_exploreWeightedPCA.R",            # diagnostic: training vs prediction domain geometry
   "R/pl2_partitionDataByTopFeature.R",     # cut CV partitions along the top shifting feature
   "R/pl2_evaluate.R",                      # pairwise CV: skill, confusion, per-row DI
   "R/pl2_predict.R",                       # production fit and projection

@@ -1,4 +1,7 @@
 # Weighted-PCA exploration of training vs prediction domains ####
+# ARCHIVED 2026-09-14: no consumer and not in the manuscript; the training-vs-projection
+# novelty question is answered on the frozen ruler by the DI coverage check in
+# pl2_evaluate.R (cv_novelty_coverage.png). Still runnable from the repository root.
 
 # PURPOSE: Diagnostic: weighted-PCA view of training versus prediction domains, to see the extrapolation geometry directly.
 
