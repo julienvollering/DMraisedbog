@@ -216,6 +216,62 @@ frame_summary <- mf |>
   count(scenario, dataset, response, name = "rows")
 write_csv(frame_summary, "output/pl2/modeling_frame_summary.csv", append = FALSE)
 
+## Predictor ranges by block and scenario ####
+
+# Written every run so a corrupt or mis-scaled layer is visible in the first table a
+# reviewer opens rather than three scripts later. The gsp no-data sentinel (4.29e8 mm in
+# 8,987 training rows, notebook 2026-09-12) would have shown here as a q99 in the hundreds
+# of millions on the first run. The check warns when a predictor's Norwegian and European
+# CURRENT ranges do not overlap at all: the two blocks share a climate source, so disjoint
+# ranges mean a units or scaling fault in one of them, never a real contrast.
+predictor_ranges <- mf |>
+  group_by(scenario, dataset) |>
+  summarise(
+    n = n(),
+    across(
+      all_of(feat),
+      list(
+        min = ~ min(.x), q01 = ~ unname(quantile(.x, 0.01)), median = ~ median(.x),
+        q99 = ~ unname(quantile(.x, 0.99)), max = ~ max(.x)
+      ),
+      .names = "{.col}__{.fn}"
+    ),
+    .groups = "drop"
+  ) |>
+  pivot_longer(
+    -c(scenario, dataset, n),
+    names_to = c("predictor", "stat"), names_sep = "__"
+  ) |>
+  pivot_wider(names_from = stat, values_from = value) |>
+  arrange(predictor, scenario, dataset)
+write_csv(
+  predictor_ranges, "output/pl2/modeling_frame_predictor_ranges.csv", append = FALSE
+)
+
+cat("\nPredictor ranges, current scenario, by block:\n")
+predictor_ranges |>
+  filter(scenario == "current") |>
+  transmute(
+    predictor, dataset,
+    min = signif(min, 4), median = signif(median, 4), max = signif(max, 4)
+  ) |>
+  as.data.frame() |>
+  print(row.names = FALSE)
+
+disjoint <- predictor_ranges |>
+  filter(scenario == "current") |>
+  select(predictor, dataset, min, max) |>
+  pivot_wider(names_from = dataset, values_from = c(min, max)) |>
+  filter(max_NO < min_EU | max_EU < min_NO)
+if (nrow(disjoint) > 0) {
+  warning(
+    "Norwegian and European current ranges do not overlap for: ",
+    paste(disjoint$predictor, collapse = ", ")
+  )
+} else {
+  cat("\nNorwegian and European current ranges overlap for every predictor\n")
+}
+
 write_csv(mf, "output/pl2/modeling_frame_regional.csv", append = FALSE)
 
 cat(
