@@ -131,7 +131,7 @@ n_partitions <- length(unique_partitions)
 # One fold, whichever arm it belongs to. Everything that defines the learner and the
 # metric lives here, so the two arms cannot drift apart: same NTREE, same balanced recipe,
 # same frozen ruler, same argmax rule.
-run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
+run_fold <- function(train_fold, test_fold, arm, train_label, test_label, seed) {
     cat(paste(rep("=", 80), collapse = ""), "\n")
     cat("[", arm, "] train:", train_label, "| test:", test_label, "\n")
     cat(paste(rep("=", 80), collapse = ""), "\n\n")
@@ -173,13 +173,17 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
         as.data.frame()
     fold_train_df$response <- droplevels(fold_train_df$response)
 
+    # Seeded per fold (rfsrc takes a negative integer), so two runs of unchanged code give
+    # identical CV numbers and the run-to-run diff in RUNALL separates code changes from
+    # forest noise.
     model_brf <- rfsrc(
         formula = response ~ .,
         data = fold_train_df,
         ntree = NTREE,
         case.wt = randomForestSRC:::make.wt(fold_train_df$response),
         sampsize = randomForestSRC:::make.size(fold_train_df$response),
-        importance = FALSE
+        importance = FALSE,
+        seed = seed
     )
 
     cat("  Per-tree balanced sample size:", model_brf$sampsize, "\n")
@@ -348,7 +352,8 @@ for (i in seq_len(nrow(pairwise_combinations))) {
         test_fold = train_data |> filter(partition == test_partition),
         arm = "pairwise",
         train_label = as.character(train_partition),
-        test_label = as.character(test_partition)
+        test_label = as.character(test_partition),
+        seed = -(1000L + i)
     ))
 }
 
@@ -363,7 +368,8 @@ for (p in unique_partitions) {
         test_fold = train_data |> filter(partition == p),
         arm = "lopo",
         train_label = paste0("all-but-", p),
-        test_label = as.character(p)
+        test_label = as.character(p),
+        seed = -(2000L + as.integer(p))
     ))
 }
 
