@@ -230,6 +230,13 @@ cat("Saved partitioned modeling frame to:", output_csv, "\n")
 cat("  Rows partitioned:", sum(!is.na(partitioning_result$partitions)),
     "of", nrow(mf_current), "\n")
 
+# Row accounting: the partitioned frame is the modelling frame with two columns added --
+# no row gained, none lost -- and every current row carries a partition.
+stopifnot(
+  nrow(mf_partitioned) == nrow(mf),
+  sum(!is.na(partitioning_result$partitions)) == nrow(mf_current)
+)
+
 # sessionInfo ####
 
 sessioninfo::session_info()

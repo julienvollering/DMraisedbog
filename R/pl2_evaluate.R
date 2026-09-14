@@ -383,6 +383,20 @@ predictions_combined <- bind_rows(predictions_all)
 metrics_combined <- bind_rows(metrics_all)
 confusion_combined <- bind_rows(confusion_all)
 
+# Row accounting. LOPO scores every training row exactly once; pairwise scores every row
+# once per training partition other than its own, i.e. k - 1 times. A row missing from
+# either arm means a partition was silently dropped somewhere upstream.
+scored <- predictions_combined |>
+    count(arm, x, y, dataset, response, name = "times")
+stopifnot(
+    sum(scored$arm == "lopo") == nrow(train_data),
+    all(scored$times[scored$arm == "lopo"] == 1L),
+    sum(scored$arm == "pairwise") == nrow(train_data),
+    all(scored$times[scored$arm == "pairwise"] == n_partitions - 1L)
+)
+cat("Row accounting: every training row scored once under LOPO and",
+    n_partitions - 1L, "times under pairwise\n\n")
+
 # Save predictions
 predictions_file <- "output/pl2/predictions_cv_topfeature.csv"
 write_csv(predictions_combined, predictions_file)

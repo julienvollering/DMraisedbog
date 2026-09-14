@@ -164,6 +164,15 @@ current <- bind_rows(df_no, df_eu) |>
 
 stopifnot(!any(is.na(current$response)))
 
+# Row accounting: the pooled frame holds exactly the complete rows of each block, and the
+# two blocks do not share a row key (the one cell both blocks contain is distinguished by
+# `dataset`, which is part of every downstream join key).
+stopifnot(
+  sum(current$dataset == "NO") == nrow(df_no),
+  sum(current$dataset == "EU") == nrow(df_eu),
+  !any(duplicated(current[, c("x", "y", "dataset", "response")]))
+)
+
 cat("\nPooled current frame:\n")
 print(as.data.frame(count(current, dataset, response)))
 
@@ -198,6 +207,15 @@ future <- bind_rows(as_tibble(fut_block), as_tibble(fut_sample)) |>
 
 cat("Future rows:", nrow(future),
     "( block coords +", n_future_sample, "sampled, deduplicated )\n")
+
+# Every Norwegian bog cell must have a future row, because pl2_exploreOccupancy.R and
+# pl2_evaluate.R join future conditions onto exactly those cells by (x, y). A bog cell
+# with no future row would drop out of both silently.
+bog_without_future <- current |>
+  filter(response == "bog", dataset == "NO") |>
+  select(x, y) |>
+  anti_join(future, by = c("x", "y"))
+stopifnot(nrow(bog_without_future) == 0)
 
 rm(fut_block, fut_sample)
 gc()

@@ -214,6 +214,10 @@ fold_ref <- preds |>
     ~ median(bog_axis$value[bog_axis$partition %in% train_partitions(.x)])
   ))
 
+# A fold whose training set held no bog rows would get an NA reference and every offset
+# it scored would vanish from the bins without a word. Every fold has one by design.
+stopifnot(all(is.finite(fold_ref$ref)))
+
 # The production reference, for pl2_mapReliability.R: the median over ALL training bogs,
 # which is what the production fit saw. Frozen here so CV and map offsets share an origin.
 axis_ref_production <- median(bog_axis$value)
