@@ -24,11 +24,17 @@ library(randomForestSRC)
 library(terra)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 NTREE <- 1000
+
+record_settings(
+  "R/pl2_predict.R",
+  ntree = NTREE,
+  seed = -42
+)
 
 ## Load data ####
 

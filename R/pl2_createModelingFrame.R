@@ -42,6 +42,7 @@ library(terra)
 library(sf)
 
 source("R/functions.R")
+source("R/config.R")
 
 dir.create("output/pl2", showWarnings = FALSE, recursive = TRUE)
 
@@ -53,6 +54,12 @@ set.seed(seed)
 # conditions onto the Norwegian bog cells by (x, y); a purely random sample would miss
 # them and silently produce NAs.
 n_future_sample <- 200000
+
+record_settings(
+  "R/pl2_createModelingFrame.R",
+  seed = seed,
+  n_future_sample = n_future_sample
+)
 
 ## Predictors ####
 
@@ -153,7 +160,7 @@ cat("EU rows:", nrow(df_eu), "of", nrow(eu_block), "after dropping incomplete\n"
 
 ## Current scenario ####
 
-response_levels <- c("nonpeat", "otherpeat", "bog")
+response_levels <- RESPONSE_LEVELS # R/config.R
 
 current <- bind_rows(df_no, df_eu) |>
   mutate(

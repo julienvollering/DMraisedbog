@@ -27,11 +27,20 @@ library(tibble)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 dir.create("output/pl0", showWarnings = FALSE, recursive = TRUE)
 
 seed <- 42
 set.seed(seed)
+
+record_settings(
+  "R/pl0_sampleEUabsences.R",
+  seed = seed,
+  absences_per_bog_per_class = ABSENCES_PER_BOG_PER_CLASS,
+  landuse_max_human_pct = LANDUSE_MAX_HUMAN_PCT,
+  landuse_max_nonland_pct = LANDUSE_MAX_NONLAND_PCT
+)
 
 ## Inputs ####
 

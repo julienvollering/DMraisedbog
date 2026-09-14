@@ -31,6 +31,8 @@ library(dplyr)
 library(readr)
 library(ggplot2)
 
+source("R/config.R")
+
 dir.create("output/pl0", showWarnings = FALSE, recursive = TRUE)
 
 crs_3035 <- "EPSG:3035"
@@ -239,6 +241,16 @@ epm_layers <- c(
 # values, and every bog-like one contains the substring (inventory in
 # R/archive/scratch_exploreEPM2025.R; the full scan takes too long to repeat here).
 bog_where <- "peatl_type LIKE '%bog%'"
+
+record_settings(
+  "R/pl0_collateEuropeanRaisedBog.R",
+  plot_buffer_m = plot_buffer_m,
+  domain_buffer_m = domain_buffer_m,
+  natura_presence_codes = c("7110", "7120"),
+  natura_mask_codes = c("7110", "7120", "7130"),
+  large_polygon_km2 = 1,
+  epm_bog_predicate = bog_where
+)
 
 # One output file per layer, combined once at the end. Two constraints force this shape:
 #   - gdal_rasterize requires -te/-tr here and then CREATES the target, so successive

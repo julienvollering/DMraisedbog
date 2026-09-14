@@ -51,6 +51,7 @@ library(sf)
 library(terra)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
@@ -274,6 +275,13 @@ lyngstad <- st_read("data/DMraisedbog.gpkg", layer = "lyngstad-MTYPE_A", quiet =
 # lower = 0.92 against a point estimate of 0.79. So coverage is measured cell-by-cell first,
 # and the band is reported only if most cells actually have one.
 MIN_BAND_COVERAGE <- 0.5
+
+record_settings(
+  "R/pl2_mapReliability.R",
+  min_band_coverage = MIN_BAND_COVERAGE,
+  beyond_last_bin = "clamped to the terminal bin (rule = 2)",
+  profile_layers = names(PROFILE_LAYERS)
+)
 
 band_coverage <- function(r) {
   z <- terra::extract(r[[c("offset", "exp_recall_bog_lo")]], lyngstad)

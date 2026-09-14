@@ -40,9 +40,9 @@ library(purrr)
 library(ggplot2)
 library(sf)
 
-## Configuration ####
+source("R/config.R")
 
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
+## Configuration ####
 
 # Predictors shown in part 1, taken as the most strongly shifting.
 N_TOP_SHIFT <- 15
@@ -53,6 +53,15 @@ TEMP_VAR <- "bio10"
 TEMP_BREAKS <- c(-Inf, 14, 16, 18, Inf)
 MOIST_VAR <- "gsp"
 MOIST_BREAKS <- c(-Inf, 500, 650, Inf)
+
+record_settings(
+  "R/pl2_exploreOccupancy.R",
+  n_top_shift = N_TOP_SHIFT,
+  temp_var = TEMP_VAR,
+  temp_breaks = TEMP_BREAKS,
+  moist_var = MOIST_VAR,
+  moist_breaks = MOIST_BREAKS
+)
 
 ## Inputs ####
 

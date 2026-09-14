@@ -34,11 +34,18 @@ library(purrr)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 NTREE <- 1000
+
+record_settings(
+    "R/pl2_evaluate.R",
+    ntree = NTREE,
+    arms = c("pairwise", "lopo"),
+    seed_rule = "pairwise -(1000 + i); lopo -(2000 + p)"
+)
 
 ## Load data ####
 

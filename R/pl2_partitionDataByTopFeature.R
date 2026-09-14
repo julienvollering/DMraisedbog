@@ -17,6 +17,7 @@ library(ggplot2)
 library(sf)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
@@ -32,6 +33,15 @@ presence_level <- "bog"
 
 # Random seed for reproducibility
 partition_seed <- 42
+
+record_settings(
+  "R/pl2_partitionDataByTopFeature.R",
+  k_partitions = k_partitions,
+  min_presences = min_presences,
+  presence_level = presence_level,
+  seed = partition_seed,
+  axis_rule = "top-VI predictor among material shifters (>= 0.5 SD)"
+)
 
 ## Read modeling frame ####
 mf <- read_csv("output/pl2/modeling_frame_regional.csv")

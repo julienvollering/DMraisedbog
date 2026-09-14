@@ -7,6 +7,8 @@ library(sf)
 library(rnaturalearth)
 library(tidyverse)
 
+source("R/config.R")
+
 # Clean up old terra temporary files from previous runs
 terra::tmpFiles(remove = TRUE)
 
@@ -70,10 +72,10 @@ names(chelsa_past_stack) <- stringr::str_extract(
 # CHELSA CMIP6 scenario; must match files downloaded by pl0_downloadCHELSA.R.
 # Filtering by scenario means leftover files from other scenarios (e.g. ssp585)
 # in the same directory will not be stacked.
-future_scenario <- "ssp370"
+future_scenario <- FUTURE_SCENARIO # R/config.R, shared with pl0_downloadCHELSA.R
 chelsa_future_files <- list.files(
   "data/CHELSA/2071-2100",
-  pattern = paste0("CHELSA_gfdl-esm4_", future_scenario, "_.*\\.tif$"),
+  pattern = paste0("CHELSA_", tolower(FUTURE_GCM), "_", future_scenario, "_.*\\.tif$"),
   full.names = TRUE
 ) %>%
   sort()
@@ -81,7 +83,7 @@ chelsa_future_files <- list.files(
 chelsa_future_stack <- rast(chelsa_future_files)
 names(chelsa_future_stack) <- stringr::str_extract(
   names(chelsa_future_stack),
-  paste0("(?<=CHELSA_gfdl-esm4_", future_scenario, "_).+(?=_2071)")
+  paste0("(?<=CHELSA_", tolower(FUTURE_GCM), "_", future_scenario, "_).+(?=_2071)")
 )
 
 ### Paleo-derived predictors ####
@@ -532,6 +534,15 @@ stopifnot(nlyr(predictors_current) == nlyr(predictors_future))
 # asymmetry is inherited from the two separate implementations this replaces and is kept
 # as it was rather than resolved here.
 THRESHOLD_VARS_REGIONAL <- c("gdd10", "gdd5", "gst", "swe", "gsp")
+
+record_settings(
+  "R/pl0_collatePredictors.R",
+  future_scenario = future_scenario,
+  future_gcm = FUTURE_GCM,
+  threshold_vars_global = THRESHOLD_VARS_GLOBAL,
+  threshold_vars_regional = THRESHOLD_VARS_REGIONAL,
+  gsp_sentinel_bound_mm = MAX_PLAUSIBLE[["gsp"]]
+)
 predictors_current <- fill_threshold_na(
   predictors_current, THRESHOLD_VARS_REGIONAL, "regional model - current"
 )

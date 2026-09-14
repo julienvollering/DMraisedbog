@@ -5,6 +5,8 @@
 library(tidyverse)
 library(terra)
 
+source("R/config.R")
+
 # Download CHELSA Climate Data
 #
 # Objective: Download CHELSA climate data for raised bog distribution modeling
@@ -34,7 +36,7 @@ future_period <- "2071-2100"
 ### Climate scenarios ####
 
 # Climate scenario for future projections (CHELSA CMIP6: ssp126, ssp370, ssp585)
-scenario <- "ssp370"
+scenario <- FUTURE_SCENARIO # R/config.R, shared with pl0_collatePredictors.R
 ssp_scenarios <- c(scenario)
 
 ### Spatial extent ####
@@ -69,7 +71,7 @@ future_bioclim_url <- file.path(chelsa_base_url, "chelsa/global/bioclim")
 
 # For future scenarios, we need model-specific paths
 # Common GCMs available: GFDL-ESM4, IPSL-CM6A-LR, MPI-ESM1-2-HR, MRI-ESM2-0, UKESM1-0-LL
-gcm_model <- "GFDL-ESM4" # Choose one Global Climate Model
+gcm_model <- FUTURE_GCM # R/config.R, shared with pl0_collatePredictors.R
 
 ### Automatic variable discovery ####
 
@@ -313,6 +315,17 @@ paleo_bioclim_vars <- c(
 #### Download loop ####
 
 # Base URL for CHELSA-TRACE (note: different server than CHELSA v2!)
+record_settings(
+  "R/pl0_downloadCHELSA.R",
+  scenario = scenario,
+  gcm_model = gcm_model,
+  current_period = current_period,
+  future_period = future_period,
+  paleo_interval_years = interval_years,
+  paleo_slices_hundreds = range(paleo_time_slices_hundreds),
+  paleo_bioclim_vars = paleo_bioclim_vars
+)
+
 trace_base_url <- "https://os.zhdk.cloud.switch.ch/chelsa01/chelsa_trace21k/global/bioclim"
 
 # Helper function to format time values for CHELSA-TRACE

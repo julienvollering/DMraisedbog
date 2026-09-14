@@ -43,6 +43,7 @@ library(tibble)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 dir.create("output/pl0", showWarnings = FALSE, recursive = TRUE)
 
@@ -52,6 +53,17 @@ set.seed(seed)
 # Band edges for artype_60, the fractional peatland cover layer.
 otherpeat_min <- 0.5
 nonpeat_max <- 0.1
+
+record_settings(
+  "R/pl0_labelNorwayBlock.R",
+  seed = seed,
+  otherpeat_min_artype60 = otherpeat_min,
+  nonpeat_max_artype60 = nonpeat_max,
+  absences_per_bog_per_class = ABSENCES_PER_BOG_PER_CLASS,
+  bio10_stratum_width = unique(diff(BIO10_BREAKS)),
+  landuse_max_human_pct = LANDUSE_MAX_HUMAN_PCT,
+  landuse_max_nonland_pct = LANDUSE_MAX_NONLAND_PCT
+)
 
 ## Inputs ####
 

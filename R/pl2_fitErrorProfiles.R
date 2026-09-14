@@ -109,10 +109,9 @@ library(purrr)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
-
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 
 # The CV arm the curves are fitted on, and the arm drawn alongside it for reference. See
 # WHICH ARM CALIBRATES above.
@@ -137,6 +136,19 @@ SEED <- 42
 # A fold-level bootstrap needs at least two folds in a bin to say anything. Below this the
 # interval is suppressed rather than reported as zero width. See the header.
 MIN_FOLDS_FOR_CI <- 2
+
+record_settings(
+  "R/pl2_fitErrorProfiles.R",
+  cv_arm = CV_ARM,
+  compare_arm = COMPARE_ARM,
+  profile_axis = PROFILE_AXIS,
+  axis_feature = AXIS_FEATURE,
+  n_bins = N_BINS,
+  n_boot = N_BOOT,
+  seed = SEED,
+  min_folds_for_ci = MIN_FOLDS_FOR_CI,
+  aoa_rule = "Tukey upper fence of held-out DI"
+)
 
 ## Inputs ####
 

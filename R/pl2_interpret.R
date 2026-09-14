@@ -22,9 +22,7 @@ library(tidyr)
 library(sf)
 library(terra)
 
-## Configuration ####
-
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
+source("R/config.R") # RESPONSE_LEVELS
 
 ## Load spatial data ####
 

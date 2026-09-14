@@ -41,10 +41,10 @@ library(randomForest)
 library(glmnet)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 NTREE <- 500
 
 # Reps vary the seed only, so they measure the forest's own bootstrap/mtry noise -- not
@@ -61,6 +61,16 @@ N_REPS_RF <- 3
 N_REPS_GLMNET <- 3
 GLMNET_NFOLDS <- 5
 GLMNET_NLAMBDA <- 50
+
+record_settings(
+  "R/pl2_weightFeaturesDataPartitioning.R",
+  ntree = NTREE,
+  n_reps_rfsrc = N_REPS,
+  n_reps_randomForest = N_REPS_RF,
+  n_reps_glmnet = N_REPS_GLMNET,
+  glmnet_nfolds = GLMNET_NFOLDS,
+  glmnet_nlambda = GLMNET_NLAMBDA
+)
 
 # The production learner's label. Downstream scripts default to this string, so it must
 # stay attached to the fit whose VI is the frozen ruler.

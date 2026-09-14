@@ -36,6 +36,8 @@
 #
 # R/functions.R holds the shared helpers (stratified absence draw, land-use screen,
 # weighted DI, multiclass metrics) and is sourced by the scripts that need it.
+# R/config.R holds the constants more than one script must agree on (future scenario and
+# GCM, response levels) and the settings registry every script reports its constants to.
 
 library(rmarkdown)
 
@@ -259,6 +261,16 @@ if (identical(to_run, scripts)) {
   }
 }
 
+## Settings of this run ####
+
+# Every script with design constants registers them through record_settings() in
+# R/config.R; this is the one table that says how the run was configured.
+if (file.exists("output/pipeline_settings.csv")) {
+  settings <- read.csv("output/pipeline_settings.csv", stringsAsFactors = FALSE)
+  cat("\nPipeline settings (output/pipeline_settings.csv):\n")
+  print(settings[order(settings$script), ], row.names = FALSE, right = FALSE)
+}
+
 ## Diff against the previous run ####
 
 cat("\nSummary tables against the previous run (output/_previous/):\n")
@@ -271,7 +283,9 @@ cat("\n")
 # Anything else showing up here is either a new script that has not been wired in, or one
 # that should have been archived.
 all_r_scripts <- list.files("R", pattern = "[.]R$", full.names = TRUE)
-unused_scripts <- setdiff(all_r_scripts, c(scripts, "R/RUNALL.R", "R/functions.R"))
+unused_scripts <- setdiff(
+  all_r_scripts, c(scripts, "R/RUNALL.R", "R/functions.R", "R/config.R")
+)
 
 if (length(unused_scripts) > 0) {
   cat("Scripts in R/ that are not part of any stage:\n")
