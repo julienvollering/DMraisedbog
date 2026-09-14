@@ -2,10 +2,12 @@
 
 Scope: every script listed in `R/RUNALL.R` (13 pl0 + 12 pl2), `R/functions.R`, and what
 `ms/make_figures.R` and `ms/ms.qmd` actually consume. Nothing in `R/archive/` was reviewed.
-Status: section 0 resolved (manuscript moved to the pairwise arm, notebook 2026-09-14);
-A1, A2 and A3 implemented on this branch, with two deliberate departures from A3: the
-randomForest and glmnet cross-check rulers and the FOP plots in the weights script are
-retained (JV, 2026-09-14). The rest are recommendations.
+Status: section 0 resolved (manuscript moved to the pairwise arm, notebook 2026-09-14).
+Implemented on this branch, one commit each: A1, A2, A3 (with two deliberate departures:
+the randomForest and glmnet cross-check rulers and the FOP plots in the weights script are
+retained, JV 2026-09-14), A5, B1--B8. Not implemented: A4 beyond what A3 removed (the
+remaining small summary CSVs stay as the review trail), A6 (estimate only), B9. The gdd5
+asymmetry noted under A3 is preserved and stated in `pl0_collatePredictors.R`.
 
 Two aims, as asked: (A) what to remove so the codebase is slimmer, and (B) what to add so a
 fresh RUNALL is easier to review.
