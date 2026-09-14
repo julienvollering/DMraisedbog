@@ -99,7 +99,46 @@ scripts <- c(scripts_pl0, scripts_pl2)
 # Named rather than indexed so inserting a script upstream cannot silently repoint it.
 to_run <- scripts
 
-# Every render() runs in THIS R process, so all 25 scripts share one tempdir and one
+## Run manifest ####
+
+# One row per script per run: when it started and finished, how long it took, whether it
+# succeeded, and every file under output/ whose modification time falls inside that
+# window -- which is what the script produced. Appended after every script, so a run that
+# crashes still leaves the manifest of everything before the crash. It is the map from
+# script to output file that otherwise needs grepping, and the end-of-run report below
+# uses it to list files under output/ that nothing in the run wrote.
+MANIFEST_PATH <- "output/run_manifest.csv"
+run_id <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+
+output_files <- function() {
+  f <- list.files("output", recursive = TRUE, full.names = TRUE)
+  f <- f[!grepl("^output/(_previous/|run_manifest)", f)]
+  data.frame(path = sub("^output/", "", f), mtime = file.mtime(f), stringsAsFactors = FALSE)
+}
+
+record_run <- function(script, t0, t1, status) {
+  files <- output_files()
+  touched <- files$path[files$mtime >= t0 & files$mtime <= t1]
+  row <- data.frame(
+    run = run_id,
+    script = script,
+    start = format(t0, "%Y-%m-%d %H:%M:%S"),
+    end = format(t1, "%Y-%m-%d %H:%M:%S"),
+    minutes = round(as.numeric(difftime(t1, t0, units = "mins")), 2),
+    status = status,
+    n_files = length(touched),
+    files = paste(touched, collapse = ";"),
+    stringsAsFactors = FALSE
+  )
+  new_file <- !file.exists(MANIFEST_PATH)
+  write.table(
+    row, MANIFEST_PATH,
+    sep = ",", row.names = FALSE, col.names = new_file, append = !new_file
+  )
+  cat(sprintf("  %.1f min, %d output files touched\n", row$minutes, row$n_files))
+}
+
+# Every render() runs in THIS R process, so all the scripts share one tempdir and one
 # terra scratch pool. terra only clears its spill files when a session ends, so across a
 # full run they accumulate instead of turning over: on 2026-08-21 pl0_collatePredictors.R
 # alone reached 15 GB of `spat_*.tif` and filled the disk mid-pipeline. Clearing after
@@ -107,16 +146,14 @@ to_run <- scripts
 # sum over all of them. `tmpFiles()` only ever removes terra's own scratch files, and only
 # those orphaned by this process -- outputs already written are untouched.
 for (script in to_run) {
-  cat("Executing:", script, format(Sys.time(), "%H:%M:%S"), "\n")
-  tryCatch(
+  t0 <- Sys.time()
+  cat("Executing:", script, format(t0, "%H:%M:%S"), "\n")
+  err <- tryCatch(
     {
       render(script, output_format = "html_document", knit_root_dir = "../")
-      cat("✓ Completed:", script, format(Sys.time(), "%H:%M:%S"), "\n\n")
+      NULL
     },
-    error = function(e) {
-      cat("✗ ERROR in", script, ":\n", e$message, "\n\n")
-      stop("Script execution failed at: ", script)
-    },
+    error = function(e) e,
     finally = {
       # gc() first so SpatRasters left behind by the render environment are finalised
       # and release their files; only then are the scratch files safe to delete.
@@ -124,6 +161,31 @@ for (script in to_run) {
       terra::tmpFiles(current = TRUE, orphan = TRUE, remove = TRUE)
     }
   )
+  t1 <- Sys.time()
+  record_run(script, t0, t1, if (is.null(err)) "ok" else "error")
+  if (!is.null(err)) {
+    cat("✗ ERROR in", script, ":\n", conditionMessage(err), "\n\n")
+    stop("Script execution failed at: ", script)
+  }
+  cat("✓ Completed:", script, format(t1, "%H:%M:%S"), "\n\n")
+}
+
+## Manifest report: what this run did not write ####
+
+# Only meaningful after a full run. The cached warp tiles (*_parts/) are skipped on
+# purpose: they are rebuilt only when force_rebuild is set in their scripts, so an
+# untouched part is expected. Anything else listed here is either stale (written by a
+# script that no longer exists or no longer writes it) or written outside the pipeline.
+if (identical(to_run, scripts)) {
+  manifest <- read.csv(MANIFEST_PATH, stringsAsFactors = FALSE)
+  manifest <- manifest[manifest$run == run_id, ]
+  claimed <- unique(unlist(strsplit(manifest$files[manifest$files != ""], ";")))
+  untouched <- setdiff(output_files()$path, claimed)
+  untouched <- untouched[!grepl("_parts/", untouched)]
+  cat("Files under output/ that no script of this run wrote:", length(untouched), "\n")
+  if (length(untouched) > 0) {
+    cat(paste0("- ", untouched), sep = "\n")
+  }
 }
 
 ## Guard: nothing in R/ should be outside the pipeline ####
