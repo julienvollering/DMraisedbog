@@ -67,7 +67,11 @@ DRAFTING NOTES (delete before submission)
   bog row in Norway is affected and the warm columns of the occupancy table are untouched,
   but the cold-wet cell of that table is inflated, gsp's contribution to the DI ruler is
   effectively nil (its scaling SD is dominated by the code), and the model has seen the code
-  as a feature value. Fixing it means rerunning from pl0_collatePredictors.R. See TODOs.
+  as a feature value. FIXED in R/pl0_collatePredictors.R on 2026-09-14 (sentinel masked
+  before projection, gsp added to the NA-to-zero step, plausibility guard); the pipeline
+  has NOT yet been rerun, so every number and figure in this draft still reflects the
+  affected frame. Rerun R/RUNALL.R from pl0_collatePredictors.R onward, then
+  ms/make_figures.R, then re-check every number marked TODO(gsp).
 -->
 
 # Introduction
@@ -289,11 +293,11 @@ Climate and palaeoclimate layers were projected from their native 30 arc-second 
 the 250 m grid for Norway and to a 5 km grid for Europe (no 250 m European stack was built;
 both are resamples of the same source). Growing-degree, growing-season-temperature and
 snow variables that CHELSA leaves undefined where the threshold is never crossed were set
-to zero where all other layers had data. TODO(JV): growing-season precipitation (gsp) is
-not on that list, and its no-data code was carried into 8,987 training cells (see the
-drafting note at the top of this file). Decide whether to fix and rerun before submission;
-the affected cells are all cold (bio10 <= 12.5 °C), so the warm-edge results do not
-depend on them.
+to zero where all other layers had data. Growing-season precipitation is stored without
+a no-data tag, so its no-data code was masked explicitly before resampling and then
+treated the same way. TODO(gsp): the results below were produced before that step was
+added and 8,987 training cells (all cold, bio10 <= 12.5 °C) carry the code; rerun the
+pipeline and refresh every number marked TODO(gsp).
 
 ## Model-free description of the projection problem
 
@@ -502,8 +506,9 @@ the Bohemian belt), with 60% of them in three squares, at elevations of 160--870
 on temperature and precipitation does not match day length or evaporative demand, and the
 effective sample size is far below the cell count. And the cold-wet cell of the grid
 (< 14 °C, > 650 mm) is inflated by the 8,987 cells carrying the growing-season
-precipitation no-data code (Methods); its prevalence with those cells removed is about
-0.9%. Neither caveat touches the warm columns.
+precipitation no-data code (Methods; TODO(gsp): remove this sentence after the rerun);
+its prevalence with those cells removed is about 0.9%. Neither caveat touches the warm
+columns.
 
 | bio10 (°C) | gsp (mm) | Cells | Raised bog | Prevalence | Share from Europe | Future raised-bog cells |
 |:--|:--|--:|--:|--:|--:|--:|
@@ -531,7 +536,7 @@ cells in the space of warmest-quarter temperature and growing-season precipitati
 (15,000 cells drawn at random from each absence class; all 1,615 raised-bog cells), with the
 1,116 Norwegian raised-bog cells at their 2071--2100 climate (red). Dotted lines are the
 bands of panel B. Cells carrying the growing-season precipitation no-data code are omitted
-(TODO). (B) Observed prevalence of raised bog per band, with the number of raised-bog cells
+(TODO(gsp): drop this sentence after the rerun). (B) Observed prevalence of raised bog per band, with the number of raised-bog cells
 over the number of training cells, and the share of the future raised-bog cells that land
 in each band.](figures/fig_occupancy.png){#fig-occupancy}
 

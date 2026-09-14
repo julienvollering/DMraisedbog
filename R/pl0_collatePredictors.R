@@ -118,6 +118,43 @@ plot(chelsa_past_stack[[checkvars]], ext = norway_extent)
 plot(chelsa_future_stack[[checkvars]], ext = norway_extent)
 # No variables appear to have different scaling
 
+### Unflagged no-data in CHELSA integer layers ####
+
+# gsp is stored as an unsigned 32-bit integer with a 0.1 scale factor and NO NoData tag,
+# so where the growing season has zero length the sentinel 4294967295 is read as a real
+# value and scaled to 4.29e8 mm. The gdd/gst/swe layers carry a NoData tag and arrive as
+# NA, which the NA-to-zero step below handles; gsp did not, and the sentinel reached the
+# modelling frame in 8,987 training rows (notebook 2026-09-12). It is masked HERE, on the
+# cropped native grid and before project(), because bilinear resampling blends a sentinel
+# into its neighbours and those blends cannot be recognised afterwards. Once NA, gsp goes
+# through the same NA-to-zero step as gdd/gst/swe: no growing season, no growing-season
+# precipitation.
+SENTINEL_VARS <- c("gsp")
+MAX_PLAUSIBLE <- c(gsp = 1e5) # mm; the wettest cells in the frame are ~7,000
+
+mask_sentinels <- function(s) {
+  for (nm in intersect(SENTINEL_VARS, names(s))) {
+    s[[nm]] <- classify(s[[nm]], cbind(MAX_PLAUSIBLE[[nm]], Inf, NA))
+  }
+  s
+}
+
+# Fail loudly if any CHELSA layer still carries a value no climate variable can take, so
+# a sentinel in another layer or another CHELSA release cannot slip through silently again.
+assert_plausible <- function(s, label, bound = 1e5) {
+  mx <- global(s, "max", na.rm = TRUE)$max
+  names(mx) <- names(s)
+  bad <- names(mx)[is.finite(mx) & mx > bound]
+  if (length(bad) > 0) {
+    stop(
+      label, ": implausible maxima in ", paste(bad, collapse = ", "),
+      " (", paste(signif(mx[bad], 3), collapse = ", "), ")"
+    )
+  }
+  cat(label, "- layer maxima all below", bound, "\n")
+  invisible(mx)
+}
+
 ## Create EU + Norway mask ####
 
 # Get European countries
@@ -188,8 +225,11 @@ template_5km <- rast(europe_ext_3035, resolution = 5000, crs = "EPSG:3035")
 # Approximate bounding box covering EU + Norway in WGS84
 europe_ext_wgs84 <- ext(c(xmin = -10, xmax = 35, ymin = 35, ymax = 72))
 
-# Crop to European extent first (in WGS84) to reduce memory requirements
-chelsa_cropped_wgs84 <- crop(chelsa_past_stack, europe_ext_wgs84)
+# Crop to European extent first (in WGS84) to reduce memory requirements, then mask the
+# unflagged no-data sentinel before any resampling (see above).
+chelsa_cropped_wgs84 <- crop(chelsa_past_stack, europe_ext_wgs84) |>
+  mask_sentinels()
+assert_plausible(chelsa_cropped_wgs84, "CHELSA current, Europe crop")
 
 # Project CHELSA data from WGS84 to EPSG:3035 at 5000m resolution
 chelsa_3035 <- project(
@@ -246,10 +286,12 @@ if (any(reduced_coverage)) {
 }
 
 # Variables like gdd5, gdd10, swe, gst are truncated to positive values,
-# creating NAs in cold regions where they should logically be 0.
+# creating NAs in cold regions where they should logically be 0. gsp joins them because
+# its no-data sentinel was turned into NA above (no growing season, no growing-season
+# precipitation).
 # Convert NA to 0 only in cells where all other layers have valid data.
 
-threshold_vars <- c("gdd10", "gst", "swe")
+threshold_vars <- c("gdd10", "gst", "swe", "gsp")
 vars_present <- names(chelsa_masked)[names(chelsa_masked) %in% threshold_vars]
 
 if (length(vars_present) > 0) {
@@ -451,8 +493,11 @@ norway_ext_wgs84 <- project(
   to = "EPSG:4326"
 ) # Transform to WGS84
 
-# Crop to Norway extent first (in WGS84) to reduce memory requirements
-chelsa_past_cropped_wgs84 <- crop(chelsa_past_stack, norway_ext_wgs84)
+# Crop to Norway extent first (in WGS84) to reduce memory requirements, then mask the
+# unflagged no-data sentinel before any resampling (see the global model section).
+chelsa_past_cropped_wgs84 <- crop(chelsa_past_stack, norway_ext_wgs84) |>
+  mask_sentinels()
+assert_plausible(chelsa_past_cropped_wgs84, "CHELSA current, Norway crop")
 
 # Then transform to EPSG:3035 and resample to 250m
 chelsa_past_3035 <- project(
@@ -464,8 +509,11 @@ chelsa_past_3035 <- project(
 # Final mask to Norway boundaries using raster mask
 chelsa_past_masked <- mask(chelsa_past_3035, land_mask_ar50)
 
-# Crop to Norway extent first (in WGS84) to reduce memory requirements
-chelsa_future_cropped_wgs84 <- crop(chelsa_future_stack, norway_ext_wgs84)
+# Crop to Norway extent first (in WGS84) to reduce memory requirements, then mask the
+# unflagged no-data sentinel before any resampling.
+chelsa_future_cropped_wgs84 <- crop(chelsa_future_stack, norway_ext_wgs84) |>
+  mask_sentinels()
+assert_plausible(chelsa_future_cropped_wgs84, "CHELSA future, Norway crop")
 
 # Then transform to EPSG:3035 and resample to 250m
 chelsa_future_3035 <- project(
@@ -569,10 +617,12 @@ if (any(reduced_coverage_future)) {
 }
 
 # Variables like gdd5, gdd10, swe, gst are truncated to positive values,
-# creating NAs in cold regions where they should logically be 0.
+# creating NAs in cold regions where they should logically be 0. gsp joins them because
+# its no-data sentinel was turned into NA above (no growing season, no growing-season
+# precipitation).
 # Convert NA to 0 only in cells where all other layers have valid data.
 
-threshold_vars <- c("gdd10", "gdd5", "gst", "swe")
+threshold_vars <- c("gdd10", "gdd5", "gst", "swe", "gsp")
 
 # Process current scenario
 vars_present_current <- names(predictors_current)[

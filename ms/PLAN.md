@@ -75,8 +75,13 @@ written so a reader can follow the *reasoning* for each design choice without re
 - The knitted HTML for `pl2_fitErrorProfiles.R` and `pl2_mapReliability.R` predates the
   offset axis; the CSV/RDS outputs dated 2026-09-12 are current and are what the manuscript
   uses.
-- DATA QUALITY: growing-season precipitation (gsp) carries CHELSA's no-data code in 8,987
-  training rows (cold, high-elevation non-peat) because `pl0_collatePredictors.R` does not
-  include gsp in its NA-to-zero list. See the drafting note at the top of `ms.qmd`. A fix
-  requires rerunning from `pl0_collatePredictors.R`; the pipeline's own outputs are reported
-  as they stand and the affected numbers are marked TODO.
+- DATA QUALITY: growing-season precipitation (gsp) carried CHELSA's no-data code in 8,987
+  training rows (cold, high-elevation non-peat): the gsp GeoTIFFs are unsigned 32-bit with
+  no NoData tag, so the sentinel 4294967295 read as 4.29e8 and bilinear resampling blended
+  it into neighbours. FIXED 2026-09-14 in `R/pl0_collatePredictors.R` (sentinel masked on
+  the cropped native grid before `project()`, gsp added to both NA-to-zero lists, an
+  `assert_plausible()` guard on every CHELSA crop). PIPELINE NOT YET RERUN: run
+  `R/RUNALL.R` from `pl0_collatePredictors.R` onward (the block draws are seeded and read
+  only bio10, so training cells stay the same; the DI ruler, AOA threshold and the
+  cold-wet occupancy cell will move), then `ms/make_figures.R`, then clear every
+  `TODO(gsp)` in `ms.qmd`.
