@@ -9,10 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 R-based research project modelling the distribution of raised bogs in Norway under
-climate-change scenarios. It combines spatial data analysis with species distribution
-modelling in a two-scale nested approach (Random Forest / Quantile Random Forest),
-with a focus on spatial data partitioning, probability calibration, and extrapolation
-(area-of-applicability) analysis.
+climate-change scenarios. One balanced 3-class random forest is trained on pooled
+Norwegian and European data and projected over Norway, with a focus on feature-space
+data partitioning for honest cross-validation, skill-versus-novelty reliability curves,
+and extrapolation (area-of-applicability) analysis.
 
 ## Development Environment
 
@@ -23,16 +23,17 @@ with a focus on spatial data partitioning, probability calibration, and extrapol
 
 ## Key Dependencies
 
-- **Spatial analysis**: `sf`, `terra`, `rnaturalearth`
-- **Data manipulation**: `tidyverse`, `foreign`
-- **Machine learning**: `randomForestSRC`, `randomForest`, `ranger`
-- **Model evaluation**: `probably`, `yardstick`, `rsample`, `pROC`, `ROCR`
-- **Clustering and partitioning**: `cluster`, `dbscan`, `RANN`
-- **Spatial extrapolation**: `CAST`
-- **Spatial thinning**: `GeoThinneR`
+- **Spatial analysis**: `sf`, `terra`, `rnaturalearth`, `units`
+- **Data manipulation**: `tidyverse` (readr, dplyr, tidyr, purrr, tibble, stringr, forcats), `foreign`
+- **Learner**: `randomForestSRC` (production); `randomForest` and `glmnet` only as
+  cross-implementation checks on the variable-importance ruler; `MIAmaxent` for FOP plots
+- **Distances**: `FNN` (nearest neighbours behind the dissimilarity index; the metric
+  itself is implemented in `R/functions.R`, not taken from `CAST`)
 - **Elevation (outside Norway)**: `elevatr`
-- **Visualization**: `ggplot2`, `patchwork`
-- **Legacy (no longer used, archived)**: `sabinaNSDM`, `biomod2`
+- **Visualization**: `ggplot2`, `ggrepel`, `scales`, `patchwork` (manuscript figures only)
+- **Run infrastructure**: `rmarkdown` (RUNALL knits), `sessioninfo`, `tictoc`
+- **Retired (scripts in `R/archive/`)**: `sabinaNSDM`, `biomod2`, `GeoThinneR`, `cluster`,
+  `dbscan`, `RANN`, `ROCR`, `twosamples`, `furrr`
 
 ## Data Architecture
 
@@ -120,9 +121,10 @@ predictor. The hierarchical `rf_global` covariate was retired — see
 - Handle CRS mismatches explicitly
 - Check for spatial overlaps and duplicates in polygon datasets
 - Apply appropriate quality filters (e.g. `DATAQUALITY == "G"` for Natura 2000)
-- **Spatial thinning**: balance sampling effort between comprehensive surveys (Lyngstad)
-  and opportunistic data (EU) using `GeoThinneR`, with median nearest-neighbour distance
-  as the threshold
+- **Absence sampling**: both blocks draw absences by the same climate-stratified rule
+  (`draw_stratified_absences()` in `R/functions.R`) and pass the same land-use / water
+  screen; presences are one row per 250 m cell. Spatial thinning was retired with the
+  archived `pl0_spatiallyThinCells.R`.
 
 ## File Patterns to Recognize
 

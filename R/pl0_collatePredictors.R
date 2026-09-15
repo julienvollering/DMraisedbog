@@ -7,18 +7,41 @@ library(sf)
 library(rnaturalearth)
 library(tidyverse)
 
+source("R/config.R")
+
 # Clean up old terra temporary files from previous runs
 terra::tmpFiles(remove = TRUE)
 
-# Function to get memory usage of all objects
-memory_usage <- function() {
-  obj_names <- ls(envir = .GlobalEnv)
-  obj_sizes <- sapply(obj_names, function(x) {
-    object.size(get(x, envir = .GlobalEnv))
-  })
-  # Convert to MB and sort
-  obj_sizes_mb <- round(obj_sizes / 1024^2, 2)
-  sort(obj_sizes_mb, decreasing = TRUE)
+# Threshold variables (gdd*, gst, swe, and gsp once its sentinel is masked) are truncated
+# to positive values, so a cold cell where the quantity is really 0 arrives as NA. This
+# sets NA to 0 only where every OTHER layer of the stack has data, so a genuine no-data
+# cell stays NA. One implementation for the global stack and both regional scenarios;
+# it reports per-layer coverage before the fix and the cells changed per variable.
+fill_threshold_na <- function(s, vars, label) {
+  cat("\nChecking coverage before correction (", label, "):\n", sep = "")
+  counts <- global(s, "notNA")$notNA
+  ref <- max(counts)
+  cat("  Reference coverage (maximum across layers):", ref, "cells\n")
+  for (i in which(counts < ref)) {
+    cat(sprintf(
+      "    - %s: %d cells (%d cells missing)\n", names(s)[i], counts[i], ref - counts[i]
+    ))
+  }
+  present <- intersect(vars, names(s))
+  if (length(present) == 0) {
+    return(s)
+  }
+  all_valid <- all(!is.na(s[[setdiff(names(s), vars)]]))
+  cat("  Converting NA to 0 where every non-threshold layer has data:\n")
+  for (v in present) {
+    fix <- is.na(s[[v]]) & all_valid
+    n_changed <- global(fix, "sum", na.rm = TRUE)$sum
+    if (n_changed > 0) {
+      s[[v]] <- ifel(fix, 0, s[[v]])
+    }
+    cat(sprintf("    - %s: %d cells\n", v, n_changed))
+  }
+  s
 }
 
 # Global model ####
@@ -49,10 +72,10 @@ names(chelsa_past_stack) <- stringr::str_extract(
 # CHELSA CMIP6 scenario; must match files downloaded by pl0_downloadCHELSA.R.
 # Filtering by scenario means leftover files from other scenarios (e.g. ssp585)
 # in the same directory will not be stacked.
-future_scenario <- "ssp370"
+future_scenario <- FUTURE_SCENARIO # R/config.R, shared with pl0_downloadCHELSA.R
 chelsa_future_files <- list.files(
   "data/CHELSA/2071-2100",
-  pattern = paste0("CHELSA_gfdl-esm4_", future_scenario, "_.*\\.tif$"),
+  pattern = paste0("CHELSA_", tolower(FUTURE_GCM), "_", future_scenario, "_.*\\.tif$"),
   full.names = TRUE
 ) %>%
   sort()
@@ -60,7 +83,7 @@ chelsa_future_files <- list.files(
 chelsa_future_stack <- rast(chelsa_future_files)
 names(chelsa_future_stack) <- stringr::str_extract(
   names(chelsa_future_stack),
-  paste0("(?<=CHELSA_gfdl-esm4_", future_scenario, "_).+(?=_2071)")
+  paste0("(?<=CHELSA_", tolower(FUTURE_GCM), "_", future_scenario, "_).+(?=_2071)")
 )
 
 ### Paleo-derived predictors ####
@@ -106,17 +129,14 @@ checkvars <- left_join(
   filter(median_ratio > 5 | median_ratio < 0.2) |> # Identify variables with possible scaling differences (factor >5)
   pull(variable)
 
-# Approximate Norway bounding box in WGS84
-norway_extent <- ext(c(
-  xmin = 4,
-  xmax = 32,
-  ymin = 57,
-  ymax = 72
-))
-
-plot(chelsa_past_stack[[checkvars]], ext = norway_extent)
-plot(chelsa_future_stack[[checkvars]], ext = norway_extent)
-# No variables appear to have different scaling
+# A layer whose future median is more than five times its current one (or less than a
+# fifth) has almost certainly been stored with a different scale factor between the two
+# CHELSA releases. None has so far; stop rather than stack it if one ever does.
+if (length(checkvars) > 0) {
+  stop("Possible scaling mismatch between current and future CHELSA layers: ",
+       paste(checkvars, collapse = ", "))
+}
+cat("Current and future CHELSA medians agree to within a factor of 5 for every layer\n")
 
 ### Unflagged no-data in CHELSA integer layers ####
 
@@ -265,60 +285,10 @@ cat("Combined predictor stack has", nlyr(chelsa_masked), "layers\n")
 
 ## Fix threshold-based variables with truncated ranges ####
 
-# Pre-correction coverage check
-cat("\nChecking coverage before correction (global model):\n")
-all_counts <- global(chelsa_masked, "notNA")
-reference_count <- max(all_counts$notNA)
-cat("  Reference coverage (maximum across layers):", reference_count, "cells\n")
-
-reduced_coverage <- all_counts$notNA < reference_count
-if (any(reduced_coverage)) {
-  cat("  Variables with reduced coverage compared to maximum:\n")
-  for (i in which(reduced_coverage)) {
-    missing <- reference_count - all_counts$notNA[i]
-    cat(sprintf(
-      "    - %s: %d cells (%d cells missing)\n",
-      names(chelsa_masked)[i],
-      all_counts$notNA[i],
-      missing
-    ))
-  }
-}
-
-# Variables like gdd5, gdd10, swe, gst are truncated to positive values,
-# creating NAs in cold regions where they should logically be 0. gsp joins them because
-# its no-data sentinel was turned into NA above (no growing season, no growing-season
-# precipitation).
-# Convert NA to 0 only in cells where all other layers have valid data.
-
-threshold_vars <- c("gdd10", "gst", "swe", "gsp")
-vars_present <- names(chelsa_masked)[names(chelsa_masked) %in% threshold_vars]
-
-if (length(vars_present) > 0) {
-  # Create reference mask: cells where ALL non-threshold layers have data
-  non_threshold_idx <- which(!names(chelsa_masked) %in% threshold_vars)
-  reference_layers <- chelsa_masked[[non_threshold_idx]]
-  all_valid_mask <- all(!is.na(reference_layers))
-
-  # Convert NA to 0 for threshold variables where reference layers have data
-  cat(
-    "\nConverting NA to 0 for threshold variables where reference layers have data...\n"
-  )
-  for (var in vars_present) {
-    var_layer <- chelsa_masked[[var]]
-    na_mask <- is.na(var_layer)
-    cells_to_fix <- na_mask & all_valid_mask
-    n_changed <- global(cells_to_fix, "sum", na.rm = TRUE)$sum
-
-    if (n_changed > 0) {
-      chelsa_masked[[var]] <- ifel(cells_to_fix, 0, var_layer)
-      cat(sprintf("  - %s: %d cells converted from NA to 0\n", var, n_changed))
-    } else {
-      cat(sprintf("  - %s: no cells needed conversion\n", var))
-    }
-  }
-  cat("\n")
-}
+# See fill_threshold_na() at the top. gsp is in the list because its no-data sentinel
+# was turned into NA above (no growing season, no growing-season precipitation).
+THRESHOLD_VARS_GLOBAL <- c("gdd10", "gst", "swe", "gsp")
+chelsa_masked <- fill_threshold_na(chelsa_masked, THRESHOLD_VARS_GLOBAL, "global model")
 
 ## Write output ####
 writeRaster(
@@ -445,14 +415,6 @@ land_mask_ar50 <- rast("output/ar50_250m_land_EPSG3035.tif")
 # Apply land mask to AR50 stack: keep 0's on land, set non-land to NA
 ar50_250m_stack <- mask(ar50_250m_stack, land_mask_ar50)
 
-# Write multiband AR50 output
-writeRaster(
-  ar50_250m_stack,
-  filename = "output/ar50_250m_cover_EPSG3035.tif",
-  overwrite = TRUE,
-  names = names(ar50_250m_stack)
-)
-
 cat("Processed AR50 artype 60 layer\n")
 
 ## Process terrain variables ####
@@ -568,123 +530,25 @@ stopifnot(nlyr(predictors_current) == nlyr(predictors_future))
 
 ## Fix threshold-based variables with truncated ranges ####
 
-# Pre-correction coverage check - current scenario
-cat("\nChecking coverage before correction (regional model - current):\n")
-all_counts_current <- global(predictors_current, "notNA")
-reference_count_current <- max(all_counts_current$notNA)
-cat(
-  "  Reference coverage (maximum across layers):",
-  reference_count_current,
-  "cells\n"
+# See fill_threshold_na() at the top. gdd5 is in this list and NOT in the global one; the
+# asymmetry is inherited from the two separate implementations this replaces and is kept
+# as it was rather than resolved here.
+THRESHOLD_VARS_REGIONAL <- c("gdd10", "gdd5", "gst", "swe", "gsp")
+
+record_settings(
+  "R/pl0_collatePredictors.R",
+  future_scenario = future_scenario,
+  future_gcm = FUTURE_GCM,
+  threshold_vars_global = THRESHOLD_VARS_GLOBAL,
+  threshold_vars_regional = THRESHOLD_VARS_REGIONAL,
+  gsp_sentinel_bound_mm = MAX_PLAUSIBLE[["gsp"]]
 )
-
-reduced_coverage_current <- all_counts_current$notNA < reference_count_current
-if (any(reduced_coverage_current)) {
-  cat("  Variables with reduced coverage compared to maximum:\n")
-  for (i in which(reduced_coverage_current)) {
-    missing <- reference_count_current - all_counts_current$notNA[i]
-    cat(sprintf(
-      "    - %s: %d cells (%d cells missing)\n",
-      names(predictors_current)[i],
-      all_counts_current$notNA[i],
-      missing
-    ))
-  }
-}
-
-# Pre-correction coverage check - future scenario
-cat("\nChecking coverage before correction (regional model - future):\n")
-all_counts_future <- global(predictors_future, "notNA")
-reference_count_future <- max(all_counts_future$notNA)
-cat(
-  "  Reference coverage (maximum across layers):",
-  reference_count_future,
-  "cells\n"
+predictors_current <- fill_threshold_na(
+  predictors_current, THRESHOLD_VARS_REGIONAL, "regional model - current"
 )
-
-reduced_coverage_future <- all_counts_future$notNA < reference_count_future
-if (any(reduced_coverage_future)) {
-  cat("  Variables with reduced coverage comparied to maximum:\n")
-  for (i in which(reduced_coverage_future)) {
-    missing <- reference_count_future - all_counts_future$notNA[i]
-    cat(sprintf(
-      "    - %s: %d cells (%d cells missing)\n",
-      names(predictors_future)[i],
-      all_counts_future$notNA[i],
-      missing
-    ))
-  }
-}
-
-# Variables like gdd5, gdd10, swe, gst are truncated to positive values,
-# creating NAs in cold regions where they should logically be 0. gsp joins them because
-# its no-data sentinel was turned into NA above (no growing season, no growing-season
-# precipitation).
-# Convert NA to 0 only in cells where all other layers have valid data.
-
-threshold_vars <- c("gdd10", "gdd5", "gst", "swe", "gsp")
-
-# Process current scenario
-vars_present_current <- names(predictors_current)[
-  names(predictors_current) %in% threshold_vars
-]
-
-if (length(vars_present_current) > 0) {
-  # Create reference mask: cells where ALL non-threshold layers have data
-  non_threshold_idx <- which(!names(predictors_current) %in% threshold_vars)
-  reference_layers <- predictors_current[[non_threshold_idx]]
-  all_valid_mask <- all(!is.na(reference_layers))
-
-  # Convert NA to 0 for threshold variables where reference layers have data
-  cat(
-    "\nConverting NA to 0 for threshold variables where reference layers have data (current)...\n"
-  )
-  for (var in vars_present_current) {
-    var_layer <- predictors_current[[var]]
-    na_mask <- is.na(var_layer)
-    cells_to_fix <- na_mask & all_valid_mask
-    n_changed <- global(cells_to_fix, "sum", na.rm = TRUE)$sum
-
-    if (n_changed > 0) {
-      predictors_current[[var]] <- ifel(cells_to_fix, 0, var_layer)
-      cat(sprintf("  - %s: %d cells converted from NA to 0\n", var, n_changed))
-    } else {
-      cat(sprintf("  - %s: no cells needed conversion\n", var))
-    }
-  }
-  cat("\n")
-}
-
-# Process future scenario
-vars_present_future <- names(predictors_future)[
-  names(predictors_future) %in% threshold_vars
-]
-
-if (length(vars_present_future) > 0) {
-  # Create reference mask: cells where ALL non-threshold layers have data
-  non_threshold_idx <- which(!names(predictors_future) %in% threshold_vars)
-  reference_layers <- predictors_future[[non_threshold_idx]]
-  all_valid_mask <- all(!is.na(reference_layers))
-
-  # Convert NA to 0 for threshold variables where reference layers have data
-  cat(
-    "\nConverting NA to 0 for threshold variables where reference layers have data (future)...\n"
-  )
-  for (var in vars_present_future) {
-    var_layer <- predictors_future[[var]]
-    na_mask <- is.na(var_layer)
-    cells_to_fix <- na_mask & all_valid_mask
-    n_changed <- global(cells_to_fix, "sum", na.rm = TRUE)$sum
-
-    if (n_changed > 0) {
-      predictors_future[[var]] <- ifel(cells_to_fix, 0, var_layer)
-      cat(sprintf("  - %s: %d cells converted from NA to 0\n", var, n_changed))
-    } else {
-      cat(sprintf("  - %s: no cells needed conversion\n", var))
-    }
-  }
-  cat("\n")
-}
+predictors_future <- fill_threshold_na(
+  predictors_future, THRESHOLD_VARS_REGIONAL, "regional model - future"
+)
 
 ## Write outputs ####
 writeRaster(

@@ -43,6 +43,7 @@ library(dplyr)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
@@ -51,6 +52,14 @@ source("R/functions.R")
 # pairs costs hours and buys a decimal place nothing downstream can see.
 NORM_SAMPLE <- 2000
 SEED <- 42
+
+record_settings(
+  "R/pl2_freezeDIRuler.R",
+  norm_sample = NORM_SAMPLE,
+  seed = SEED,
+  weights_method = "Balanced Random Forest",
+  metric_predictors = "projection-dynamic only"
+)
 
 ## Inputs ####
 

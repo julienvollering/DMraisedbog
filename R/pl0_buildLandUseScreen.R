@@ -46,6 +46,8 @@ library(terra)
 library(dplyr)
 library(readr)
 
+source("R/config.R")
+
 dir.create("output/pl0/landuse_parts", showWarnings = FALSE, recursive = TRUE)
 dir.create("data/ESA_WorldCover", showWarnings = FALSE, recursive = TRUE)
 
@@ -57,6 +59,13 @@ force_rebuild <- FALSE
 
 wc_version <- "v200"
 wc_year <- "2021"
+
+record_settings(
+  "R/pl0_buildLandUseScreen.R",
+  target_res_m = target_res,
+  worldcover_version = wc_version,
+  worldcover_year = wc_year
+)
 wc_base <- sprintf(
   "https://esa-worldcover.s3.eu-central-1.amazonaws.com/%s/%s/map",
   wc_version, wc_year

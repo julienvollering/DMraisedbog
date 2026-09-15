@@ -20,7 +20,6 @@ library(terra)
 ## Setup ####
 
 dir.create("output/pl0", showWarnings = FALSE, recursive = TRUE)
-dir.create("output/pl0/chelsa_trace", showWarnings = FALSE, recursive = TRUE)
 
 # WGS84 extent for cropping CHELSA data
 # Matches extent used in pl0_collatePredictors.R
@@ -314,7 +313,9 @@ if (
     names = "paleo_years_icefreeland"
   )
 
-  # Number of consecutive ice-free time slices
+  # Number of consecutive ice-free time slices. Written for the record only: with evenly
+  # spaced slices it is collinear with years_icefreeland, and pl0_collatePredictors.R
+  # excludes it from the predictor stacks.
   writeRaster(
     n_consecutive_icefree,
     n_consecutive_icefree_file,
@@ -333,95 +334,42 @@ if (
 #   - Sum: cumulative energy/water across all time slices
 # Total: 8 derived paleoclimate variables (2 vars × 2 periods x 2 stats)
 
-# Function to calculate mean during consecutive ice-free period (matrix version for app)
-calc_mean_consecutive_rows <- function(x) {
-  # x: matrix where rows=cells, columns=layers
-  # Last column is n_consecutive, other columns are climate time slices
-  # Return: vector of mean values (one per cell/row)
-
-  n_consecutive <- x[, ncol(x)] # Extract count column
-  climate_data <- x[, 1:(ncol(x) - 1)] # All climate columns
-  n_times <- ncol(climate_data)
-
-  # Process each row (cell)
-  result <- sapply(1:nrow(x), function(i) {
-    n <- n_consecutive[i]
-
-    # If n_consecutive is NA, return NA
-    if (is.na(n)) {
-      return(NA_real_)
+# One builder for all eight statistics, so mean and sum, ice-free and whole-period, are
+# the same code with two switches. `stat` is mean or sum. With `consecutive = TRUE` the
+# LAST column of the matrix terra::app() passes is the per-cell count of consecutive
+# ice-free slices (NA -> NA, 0 -> 0) and the statistic runs over only the most recent
+# that many slices; with `consecutive = FALSE` it runs over every slice, NA only where
+# all slices are NA. Works whether app() hands over a matrix (cells as rows) or a vector.
+calc_paleo <- function(stat, consecutive) {
+  function(x) {
+    if (!is.matrix(x)) {
+      x <- matrix(x, nrow = 1)
     }
-    # If n_consecutive is 0, return 0
-    if (n == 0) {
-      return(0)
+    if (!consecutive) {
+      return(apply(x, 1, function(v) {
+        if (all(is.na(v))) NA_real_ else stat(v, na.rm = TRUE)
+      }))
     }
-
-    # Extract the most recent n_consecutive slices for this cell
-    start_idx <- n_times - n + 1
-    consecutive_climate <- climate_data[i, start_idx:n_times]
-
-    return(mean(consecutive_climate, na.rm = TRUE))
-  })
-
-  return(result)
-}
-
-# Function to calculate sum during consecutive ice-free period (matrix version for app)
-calc_sum_consecutive_rows <- function(x) {
-  # x: matrix where rows=cells, columns=layers
-  # Last column is n_consecutive, other columns are climate time slices
-  # Return: vector of sum values (one per cell/row)
-
-  n_consecutive <- x[, ncol(x)] # Extract count column
-  climate_data <- x[, 1:(ncol(x) - 1)] # All climate columns
-  n_times <- ncol(climate_data)
-
-  # Process each row (cell)
-  result <- sapply(1:nrow(x), function(i) {
-    n <- n_consecutive[i]
-
-    # If n_consecutive is NA, return NA
-    if (is.na(n)) {
-      return(NA_real_)
-    }
-    # If n_consecutive is 0, return 0
-    if (n == 0) {
-      return(0)
-    }
-
-    # Extract the most recent n_consecutive slices for this cell
-    start_idx <- n_times - n + 1
-    consecutive_climate <- climate_data[i, start_idx:n_times]
-
-    return(sum(consecutive_climate, na.rm = TRUE))
-  })
-
-  return(result)
-}
-
-# Function to calculate mean across all time slices
-calc_mean_all <- function(climate_values) {
-  # climate_values: vector of climate values
-  # Return: mean across all time slices (no ice-free filter)
-
-  if (all(is.na(climate_values))) {
-    return(NA_real_)
+    n_consecutive <- x[, ncol(x)]
+    climate <- x[, -ncol(x), drop = FALSE]
+    n_times <- ncol(climate)
+    vapply(seq_len(nrow(x)), function(i) {
+      n <- n_consecutive[i]
+      if (is.na(n)) {
+        return(NA_real_)
+      }
+      if (n == 0) {
+        return(0)
+      }
+      stat(climate[i, (n_times - n + 1):n_times], na.rm = TRUE)
+    }, numeric(1))
   }
-
-  return(mean(climate_values, na.rm = TRUE))
 }
 
-# Function to calculate sum across all time slices
-calc_sum_all <- function(climate_values) {
-  # climate_values: vector of climate values
-  # Return: sum across all time slices (no ice-free filter)
-
-  if (all(is.na(climate_values))) {
-    return(NA_real_)
-  }
-
-  return(sum(climate_values, na.rm = TRUE))
-}
+calc_mean_consecutive_rows <- calc_paleo(mean, consecutive = TRUE)
+calc_sum_consecutive_rows <- calc_paleo(sum, consecutive = TRUE)
+calc_mean_all <- calc_paleo(mean, consecutive = FALSE)
+calc_sum_all <- calc_paleo(sum, consecutive = FALSE)
 
 ## During consecutive ice-free land period ####
 

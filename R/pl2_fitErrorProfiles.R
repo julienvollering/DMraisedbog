@@ -109,10 +109,9 @@ library(purrr)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
-
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 
 # The CV arm the curves are fitted on, and the arm drawn alongside it for reference. See
 # WHICH ARM CALIBRATES above.
@@ -138,7 +137,36 @@ SEED <- 42
 # interval is suppressed rather than reported as zero width. See the header.
 MIN_FOLDS_FOR_CI <- 2
 
+record_settings(
+  "R/pl2_fitErrorProfiles.R",
+  cv_arm = CV_ARM,
+  compare_arm = COMPARE_ARM,
+  profile_axis = PROFILE_AXIS,
+  axis_feature = AXIS_FEATURE,
+  n_bins = N_BINS,
+  n_boot = N_BOOT,
+  seed = SEED,
+  min_folds_for_ci = MIN_FOLDS_FOR_CI,
+  aoa_rule = "Tukey upper fence of held-out DI"
+)
+
 ## Inputs ####
+
+# The predictions must postdate the frame they were scored on, and the ruler the weights it
+# was frozen from; otherwise the curves below describe a run that no longer exists (see
+# assert_fresher() in R/functions.R for the incident behind this).
+assert_fresher(
+  "output/pl2/predictions_cv_topfeature.csv",
+  "output/pl2/modeling_frame_regional_partitioned_topfeature.csv"
+)
+assert_fresher(
+  "output/pl2/predictions_cv_topfeature.csv",
+  "output/pl2/di_ruler_production.rds"
+)
+assert_fresher(
+  "output/pl2/di_ruler_production.rds",
+  "output/pl2/weights_feature_data_partitioning.csv"
+)
 
 # Both arms are read, because the reference arm is profiled too. They are split apart before
 # anything is pooled.
@@ -197,6 +225,10 @@ fold_ref <- preds |>
     train_partition,
     ~ median(bog_axis$value[bog_axis$partition %in% train_partitions(.x)])
   ))
+
+# A fold whose training set held no bog rows would get an NA reference and every offset
+# it scored would vanish from the bins without a word. Every fold has one by design.
+stopifnot(all(is.finite(fold_ref$ref)))
 
 # The production reference, for pl2_mapReliability.R: the median over ALL training bogs,
 # which is what the production fit saw. Frozen here so CV and map offsets share an origin.

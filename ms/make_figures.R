@@ -280,8 +280,19 @@ rug_df <- bind_rows(
   tibble(offset = lyng_off_fut, when = "2071-2100")
 )
 
+# The reference arm (leave-one-partition-out, production-sized training sets), point
+# estimates only: drawn as thin dashed lines so the gap between the small-model curve the
+# map reads and a production-sized model stays visible.
+stopifnot(ep$cv_arm == "pairwise", ep$compare_arm == "lopo")
+compare_long <- ep$profiles_compare |>
+  select(axis_median, all_of(names(metric_lab))) |>
+  pivot_longer(-axis_median, names_to = "metric", values_to = "estimate")
+
 offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
   d <- ci |>
+    filter(metric %in% metrics) |>
+    mutate(metric = factor(metric_lab[metric], levels = metric_lab[metrics]))
+  d_cmp <- compare_long |>
     filter(metric %in% metrics) |>
     mutate(metric = factor(metric_lab[metric], levels = metric_lab[metrics]))
   ggplot(d, aes(axis_median, estimate, colour = metric, fill = metric)) +
@@ -293,6 +304,7 @@ offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
     geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, colour = NA) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 1.6) +
+    geom_line(data = d_cmp, linetype = 2, linewidth = 0.4) +
     geom_vline(xintercept = 0, colour = "grey30") +
     geom_vline(xintercept = bog_edge, linetype = 2, colour = "grey30") +
     geom_rug(

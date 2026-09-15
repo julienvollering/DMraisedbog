@@ -7,8 +7,8 @@
 # Norwegian methodology in pl0_collatePredictors.R: aggregate the DEM to ~250 m by mean,
 # then terra::terrain() slope in degrees.
 #
-# WHY A RASTER RATHER THAN PER-POINT. pl3_extractEUpredictors.R fetches a small DEM patch
-# around each EU presence -- fine for ~700 points, hopeless for the ~35k absences the EU
+# WHY A RASTER RATHER THAN PER-POINT. The archived R/archive/pl3_extractEUpredictors.R
+# fetched a small DEM patch around each EU presence -- fine for ~700 points, hopeless for the ~35k absences the EU
 # block now carries, since every point is a separate network round-trip. Fetching the
 # domain once and reading both blocks off it is the same methodology at a workable cost,
 # and it makes the terrain reproducible instead of re-downloaded per script.

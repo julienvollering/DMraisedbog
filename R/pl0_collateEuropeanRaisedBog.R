@@ -31,6 +31,8 @@ library(dplyr)
 library(readr)
 library(ggplot2)
 
+source("R/config.R")
+
 dir.create("output/pl0", showWarnings = FALSE, recursive = TRUE)
 
 crs_3035 <- "EPSG:3035"
@@ -220,7 +222,7 @@ mask_rast <- rasterize(vect(mask_vector), grid_250m, field = 1L, touches = TRUE)
 #
 # Rasterized straight out of the FileGDB by GDAL: the bog-like classes run to millions
 # of polygons and materializing their geometry in R would take hours (see
-# scratch_exploreEPM2025.R). Note st_layers() on this gdb is itself very slow, so the
+# R/archive/scratch_exploreEPM2025.R). Note st_layers() on this gdb is itself very slow, so the
 # layer names are constructed rather than listed; Finland ships three, and Austria ships
 # none.
 Sys.setenv(OGR_ORGANIZE_POLYGONS = "SKIP")
@@ -235,17 +237,20 @@ epm_layers <- c(
   paste0("FIN_peat_", c("d", "e", "u"))
 )
 
-# One SQL predicate, reported rather than hidden: peatl_type carries 60+ unharmonised
-# values, and every bog-like one contains the substring.
+# One SQL predicate, stated rather than hidden: peatl_type carries 60+ unharmonised
+# values, and every bog-like one contains the substring (inventory in
+# R/archive/scratch_exploreEPM2025.R; the full scan takes too long to repeat here).
 bog_where <- "peatl_type LIKE '%bog%'"
-type_inventory <- "output/pl3/epm_peatl_type_total.csv"
-if (file.exists(type_inventory)) {
-  matched <- read_csv(type_inventory, show_col_types = FALSE) |>
-    filter(grepl("bog", peatl_type, ignore.case = TRUE)) |>
-    arrange(desc(n))
-  cat("EPM peatl_type values matched by", bog_where, ":\n")
-  print(as.data.frame(matched))
-}
+
+record_settings(
+  "R/pl0_collateEuropeanRaisedBog.R",
+  plot_buffer_m = plot_buffer_m,
+  domain_buffer_m = domain_buffer_m,
+  natura_presence_codes = c("7110", "7120"),
+  natura_mask_codes = c("7110", "7120", "7130"),
+  large_polygon_km2 = 1,
+  epm_bog_predicate = bog_where
+)
 
 # One output file per layer, combined once at the end. Two constraints force this shape:
 #   - gdal_rasterize requires -te/-tr here and then CREATES the target, so successive

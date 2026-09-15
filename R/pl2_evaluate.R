@@ -34,11 +34,18 @@ library(purrr)
 library(ggplot2)
 
 source("R/functions.R")
+source("R/config.R")
 
 ## Configuration ####
 
-RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 NTREE <- 1000
+
+record_settings(
+    "R/pl2_evaluate.R",
+    ntree = NTREE,
+    arms = c("pairwise", "lopo"),
+    seed_rule = "pairwise -(1000 + i); lopo -(2000 + p)"
+)
 
 ## Load data ####
 
@@ -131,7 +138,7 @@ n_partitions <- length(unique_partitions)
 # One fold, whichever arm it belongs to. Everything that defines the learner and the
 # metric lives here, so the two arms cannot drift apart: same NTREE, same balanced recipe,
 # same frozen ruler, same argmax rule.
-run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
+run_fold <- function(train_fold, test_fold, arm, train_label, test_label, seed) {
     cat(paste(rep("=", 80), collapse = ""), "\n")
     cat("[", arm, "] train:", train_label, "| test:", test_label, "\n")
     cat(paste(rep("=", 80), collapse = ""), "\n\n")
@@ -173,13 +180,17 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
         as.data.frame()
     fold_train_df$response <- droplevels(fold_train_df$response)
 
+    # Seeded per fold (rfsrc takes a negative integer), so two runs of unchanged code give
+    # identical CV numbers and the run-to-run diff in RUNALL separates code changes from
+    # forest noise.
     model_brf <- rfsrc(
         formula = response ~ .,
         data = fold_train_df,
         ntree = NTREE,
         case.wt = randomForestSRC:::make.wt(fold_train_df$response),
         sampsize = randomForestSRC:::make.size(fold_train_df$response),
-        importance = FALSE
+        importance = FALSE,
+        seed = seed
     )
 
     cat("  Per-tree balanced sample size:", model_brf$sampsize, "\n")
@@ -297,7 +308,6 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
             DI_mean = mean(DI_result$DI),
             DI_median = median(DI_result$DI),
             DI_max = max(DI_result$DI),
-            train_avg_dist = DI_result$train_avg_dist,
             n_train = nrow(train_fold)
         )
 
@@ -310,10 +320,26 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
             .before = 1
         )
 
+    # What each fold trained and tested on, by block and class. The tables printed at the
+    # top of every fold end up only in the knit; the size gap between the arms (median
+    # 5,042 vs 77,317 training rows) is the argument behind which arm calibrates, so it
+    # must exist as a file.
+    composition_test <- bind_rows(
+        train_fold |> count(dataset, response, name = "n") |> mutate(role = "train"),
+        test_fold |> count(dataset, response, name = "n") |> mutate(role = "test")
+    ) |>
+        mutate(
+            arm = arm,
+            train_partition = train_label,
+            test_partition = test_label,
+            .before = 1
+        )
+
     list(
         predictions = predictions_test,
         metrics = metrics_test,
-        confusion = confusion_test
+        confusion = confusion_test,
+        composition = composition_test
     )
 }
 
@@ -321,11 +347,13 @@ run_fold <- function(train_fold, test_fold, arm, train_label, test_label) {
 predictions_all <- list()
 metrics_all <- list()
 confusion_all <- list()
+composition_all <- list()
 
 collect <- function(res) {
     predictions_all[[length(predictions_all) + 1]] <<- res$predictions
     metrics_all[[length(metrics_all) + 1]] <<- res$metrics
     confusion_all[[length(confusion_all) + 1]] <<- res$confusion
+    composition_all[[length(composition_all) + 1]] <<- res$composition
 }
 
 ## Arm 1: pairwise ####
@@ -349,7 +377,8 @@ for (i in seq_len(nrow(pairwise_combinations))) {
         test_fold = train_data |> filter(partition == test_partition),
         arm = "pairwise",
         train_label = as.character(train_partition),
-        test_label = as.character(test_partition)
+        test_label = as.character(test_partition),
+        seed = -(1000L + i)
     ))
 }
 
@@ -364,7 +393,8 @@ for (p in unique_partitions) {
         test_fold = train_data |> filter(partition == p),
         arm = "lopo",
         train_label = paste0("all-but-", p),
-        test_label = as.character(p)
+        test_label = as.character(p),
+        seed = -(2000L + as.integer(p))
     ))
 }
 
@@ -377,6 +407,20 @@ cat(paste(rep("=", 80), collapse = ""), "\n\n")
 predictions_combined <- bind_rows(predictions_all)
 metrics_combined <- bind_rows(metrics_all)
 confusion_combined <- bind_rows(confusion_all)
+
+# Row accounting. LOPO scores every training row exactly once; pairwise scores every row
+# once per training partition other than its own, i.e. k - 1 times. A row missing from
+# either arm means a partition was silently dropped somewhere upstream.
+scored <- predictions_combined |>
+    count(arm, x, y, dataset, response, name = "times")
+stopifnot(
+    sum(scored$arm == "lopo") == nrow(train_data),
+    all(scored$times[scored$arm == "lopo"] == 1L),
+    sum(scored$arm == "pairwise") == nrow(train_data),
+    all(scored$times[scored$arm == "pairwise"] == n_partitions - 1L)
+)
+cat("Row accounting: every training row scored once under LOPO and",
+    n_partitions - 1L, "times under pairwise\n\n")
 
 # Save predictions
 predictions_file <- "output/pl2/predictions_cv_topfeature.csv"
@@ -395,6 +439,11 @@ confusion_file <- "output/pl2/confusion_cv_topfeature.csv"
 write_csv(confusion_combined, confusion_file)
 cat("Saved confusion matrices to:", confusion_file, "\n\n")
 
+# Save fold composition
+composition_file <- "output/pl2/cv_fold_composition.csv"
+write_csv(bind_rows(composition_all), composition_file)
+cat("Saved fold composition to:", composition_file, "\n\n")
+
 ## Does this cross-validation actually reach the projection? ####
 
 # The load-bearing check for the whole architecture. A separate pl3 cross-validation was
@@ -403,10 +452,8 @@ cat("Saved confusion matrices to:", confusion_file, "\n\n")
 # claim collapses. Both distributions are on the frozen ruler, so they are comparable by
 # construction.
 
-future_rows <- read_csv(input_file, show_col_types = FALSE) |>
-    filter(scenario == "future")
-train_rows <- read_csv(input_file, show_col_types = FALSE) |>
-    filter(scenario == "current")
+future_rows <- mf |> filter(scenario == "future")
+train_rows <- train_data
 
 ruled <- function(d) sweep(
     scale(
@@ -521,52 +568,9 @@ predictions_combined |>
     as.data.frame() |>
     print(row.names = FALSE)
 
-## Skill vs novelty ####
-
-# The fold-level view: one point per train-test pair.
-plot(
-    Gmean_macro ~ DI_mean,
-    data = filter(metrics_combined, slice == "all"),
-    xlab = "Mean Dissimilarity Index",
-    ylab = "Macro G-mean",
-    main = "Skill vs novelty, by fold"
-)
-
-# The per-row view, which is the one section 1.3 actually calls for: DI is a per-pixel
-# quantity, so skill can be binned over it as finely as the sample supports rather than
-# read off one point per fold. Counts are printed with it -- a bin's skill is not
-# interpretable without them, and the high-DI bins are the thin ones.
-skill_by_di_bin <- predictions_combined |>
-    group_by(arm) |>
-    mutate(
-        DI_bin = cut(DI, breaks = quantile(DI, probs = seq(0, 1, 0.05)),
-                     include.lowest = TRUE)
-    ) |>
-    ungroup() |>
-    group_by(arm, DI_bin) |>
-    summarise(
-        n = n(),
-        DI_mid = median(DI),
-        n_bog = sum(response == "bog"),
-        accuracy = mean(pred_class == response),
-        recall_bog = {
-            is_bog <- response == "bog"
-            if (any(is_bog)) mean(pred_class[is_bog] == "bog") else NA_real_
-        },
-        .groups = "drop"
-    )
-
-cat("Skill by DI ventile (per-row binning):\n")
-print(as.data.frame(skill_by_di_bin), row.names = FALSE)
-
-plot(
-    accuracy ~ DI_mid,
-    data = filter(skill_by_di_bin, arm == "lopo"),
-    type = "b",
-    xlab = "Dissimilarity Index (bin median)",
-    ylab = "Accuracy",
-    main = "Skill vs novelty, per-row binning"
-)
+# Skill as a function of novelty is NOT read here. pl2_fitErrorProfiles.R fits it from the
+# per-row predictions saved above, on the signed bio10 offset and on DI, with fold-level
+# intervals; the summaries below are per-fold means.
 
 ## Summary statistics ####
 
@@ -638,7 +642,6 @@ DI_summary <- metrics_combined |>
         sd_DI_mean = sd(DI_mean, na.rm = TRUE),
         mean_DI_median = mean(DI_median, na.rm = TRUE),
         mean_DI_max = mean(DI_max, na.rm = TRUE),
-        mean_train_avg_dist = mean(train_avg_dist, na.rm = TRUE),
         .groups = "drop"
     )
 

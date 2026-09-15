@@ -1,4 +1,8 @@
 # Explore Feature Space Distances Between Current and Future Conditions ####
+# ARCHIVED 2026-09-14: superseded by the `shift_sd` column that identify_dynamic_predictors()
+# writes into weights_feature_data_partitioning.csv and by ruler_importance_vs_shift.png in
+# pl2_freezeDIRuler.R. featuredist() was removed from R/functions.R with it; to rerun this
+# script, recover it from git history (R/functions.R before commit "Remove dead helpers").
 
 # PURPOSE: Diagnostic: per-feature W_sample, comparing sample-to-sample against prediction-to-sample distances to show which predictors shift most under the scenario.
 
