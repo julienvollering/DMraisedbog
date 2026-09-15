@@ -29,13 +29,10 @@
 #    bookkeeping for the section 1.5 dataset-blocked comparison and must never enter a
 #    model as a predictor; every downstream script excludes it explicitly.
 #
-# ONE ASYMMETRY TO STATE RATHER THAN HIDE: Norway's climate comes from the 250 m regional
-# stack, Europe's from the global 5 km stack, because no 250 m EU climate stack exists.
-# CHELSA is 30 arcsec native, so both are resamples of the same source and neither is
-# "the" native resolution -- but the EU rows are the coarser of the two, and any feature
-# that lives on fine topographic gradients is smoother on the EU side. Terrain is not
-# affected: pl0_buildEUterrain.R builds EU elevation and slope at 250 m by the same
-# aggregate-then-slope recipe used for DTM50.
+# All predictors (climate, paleo, terrain) are now at unified 250 m resolution over EU + Norway,
+# built by pl0_collatePredictors.R. This eliminates the scale mismatch for slope (25x
+# difference) and resolves NA-to-zero inconsistencies that existed when blocks used
+# separate stacks. Elevation is sourced from elevatr uniformly across the domain.
 
 library(tidyverse)
 library(terra)
@@ -63,24 +60,25 @@ record_settings(
 
 ## Predictors ####
 
-preds_no_cur <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")
-preds_no_fut <- rast("output/predictors_regional_250m_Norway_future_EPSG3035.tif")
+# Load unified predictor stack (EU + Norway, 250m, EPSG:3035)
+preds_cur <- rast("output/predictors_unified_250m_EUNorway_current_EPSG3035.tif")
+preds_fut <- rast("output/predictors_unified_250m_EUNorway_future_EPSG3035.tif")
 
 # artype_60 is the Norway label source; keeping it as a predictor would leak the response.
-preds_no_cur <- preds_no_cur[[!grepl("artype", names(preds_no_cur))]]
-preds_no_fut <- preds_no_fut[[!grepl("artype", names(preds_no_fut))]]
+preds_cur <- preds_cur[[!grepl("artype", names(preds_cur))]]
+preds_fut <- preds_fut[[!grepl("artype", names(preds_fut))]]
 
-feat <- names(preds_no_cur)
+feat <- names(preds_cur)
 cat("Predictors:", length(feat), "\n")
 
-writeRaster(preds_no_cur, "output/pl2/scenario_current.tif", overwrite = TRUE)
-writeRaster(preds_no_fut, "output/pl2/scenario_future.tif", overwrite = TRUE)
+writeRaster(preds_cur, "output/pl2/scenario_current.tif", overwrite = TRUE)
+writeRaster(preds_fut, "output/pl2/scenario_future.tif", overwrite = TRUE)
 
 ## Norway block ####
 
 no_block <- read_csv("output/pl0/no_block_coords.csv", show_col_types = FALSE)
 
-df_no <- terra::extract(preds_no_cur, no_block[c("x", "y")], ID = FALSE) |>
+df_no <- terra::extract(preds_cur, no_block[c("x", "y")], ID = FALSE) |>
   bind_cols(no_block |> select(x, y, response, dataset)) |>
   drop_na() |>
   as_tibble()
@@ -130,14 +128,10 @@ cat(
   sep = ""
 )
 
-# 41 climate and paleo features from the global stack, terrain from the EU 250 m build.
-global_5km <- rast("output/predictors_global_5km_EUNorway_EPSG3035.tif")
-eu_terrain <- rast("output/pl0/eu_terrain_250m.tif")
-
+# Extract predictors from the unified stack for EU coordinates
 df_eu <- bind_cols(
   eu_block |> select(x, y, response, dataset),
-  terra::extract(global_5km, eu_block[c("x", "y")], ID = FALSE),
-  terra::extract(eu_terrain, eu_block[c("x", "y")], ID = FALSE)
+  terra::extract(preds_cur, eu_block[c("x", "y")], ID = FALSE)
 ) |>
   as_tibble()
 
@@ -189,18 +183,18 @@ print(as.data.frame(count(current, dataset, response)))
 # the wider projection domain, so the DI histogram still describes where Norway is going
 # rather than only where the block happens to have drawn.
 fut_block <- terra::extract(
-  preds_no_fut, no_block[c("x", "y")],
+  preds_fut, no_block[c("x", "y")],
   xy = TRUE, ID = FALSE
 )
 # Sample cells off ONE layer, then extract the stack at those coordinates. Sampling the
-# 43-layer stack directly makes terra carry every layer through the rejection sampling
+# full stack directly makes terra carry every layer through the rejection sampling
 # that na.rm implies, which is what turns this step from seconds into many minutes.
 fut_xy <- spatSample(
-  preds_no_fut[[1]],
+  preds_fut[[1]],
   size = n_future_sample, method = "random", na.rm = TRUE, xy = TRUE
 ) |>
   select(x, y)
-fut_sample <- terra::extract(preds_no_fut, fut_xy, xy = TRUE, ID = FALSE)
+fut_sample <- terra::extract(preds_fut, fut_xy, xy = TRUE, ID = FALSE)
 
 future <- bind_rows(as_tibble(fut_block), as_tibble(fut_sample)) |>
   distinct(x, y, .keep_all = TRUE) |>
