@@ -53,22 +53,22 @@ library(rmarkdown)
 #    bio10 its *training* data reach) against which the EU draw is defined.
 scripts_pl0 <- c(
   # Survey data
-  "R/pl0_collateLyngstad.R",            # merge the raw Lyngstad raised-bog polygons
-  "R/pl0_collateLyngstadExtent.R",      # reconstruct the area actually surveyed
+  "R/pl0_collateLyngstad.R", # merge the raw Lyngstad raised-bog polygons
+  "R/pl0_collateLyngstadExtent.R", # reconstruct the area actually surveyed
   # Climate and paleo predictors
-  "R/pl0_downloadCHELSA.R",             # fetch CHELSA current + future bioclim
-  "R/pl0_prepareCHELSATrace.R",         # derive paleo_* predictors from TraCE21k
-  "R/pl0_collatePredictors.R",          # assemble the 5 km EU and 250 m Norway stacks
+  "R/pl0_downloadCHELSA.R", # fetch CHELSA current + future bioclim
+  "R/pl0_prepareCHELSATrace.R", # derive paleo_* predictors from TraCE21k
+  "R/pl0_collatePredictors.R", # assemble the full predictor stack
   # EU domain and its layers
-  "R/pl0_buildEUdomain.R",              # delimit the EU absence domain
-  "R/pl0_buildEPMmask.R",               # EPM2025 map_cat -> EU absence label split
-  "R/pl0_buildEUterrain.R",             # EU elevation and slope at 250 m (elevatr)
-  "R/pl0_buildLandUseScreen.R",         # WorldCover human/water screen, both blocks
-  "R/pl0_collateEuropeanRaisedBog.R",   # EU presences + exclusion mask M
+  "R/pl0_buildEUdomain.R", # delimit the EU absence domain
+  "R/pl0_buildEPMmask.R", # EPM2025 map_cat -> EU absence label split
+  "R/pl0_buildEUterrain.R", # EU elevation and slope at 250 m (elevatr)
+  "R/pl0_buildLandUseScreen.R", # WorldCover human/water screen, both blocks
+  "R/pl0_collateEuropeanRaisedBog.R", # EU presences + exclusion mask M
   # Presence/absence cells and the two training blocks
-  "R/pl0_rasterizePresenceAbsence.R",   # bog polygons -> presence/absence cells
-  "R/pl0_labelNorwayBlock.R",           # Norway 3-class labels + stratified absence draw
-  "R/pl0_sampleEUabsences.R"            # EU absence draw, same shared rule
+  "R/pl0_rasterizePresenceAbsence.R", # bog polygons -> presence/absence cells
+  "R/pl0_labelNorwayBlock.R", # Norway 3-class labels + stratified absence draw
+  "R/pl0_sampleEUabsences.R" # EU absence draw, same shared rule
 )
 
 ## Stage pl2 — production pipeline ####
@@ -79,18 +79,18 @@ scripts_pl0 <- c(
 # normalising each fold by its own constant. Those differ by a factor of 1.75, which is
 # what previously made CV DI incomparable with the DI of the future map.
 scripts_pl2 <- c(
-  "R/pl2_createModelingFrame.R",           # pool the two blocks; write scenario stacks
-  "R/pl2_weightFeaturesDataPartitioning.R",# feature weights for every weighted distance
-  "R/pl2_freezeDIRuler.R",                 # freeze weights + scaling + normalising constant
-  "R/pl2_exploreOccupancy.R",              # model-free: where the future goes, what is observed there
-  "R/pl2_partitionDataByTopFeature.R",     # cut CV partitions along the top shifting feature
-  "R/pl2_evaluate.R",                      # pairwise CV: skill, confusion, per-row DI
-  "R/pl2_predict.R",                       # production fit and projection
-  "R/pl2_interpret.R",                     # Lyngstad class transitions and change in P(bog)
+  "R/pl2_createModelingFrame.R", # pool the two blocks; write scenario stacks
+  "R/pl2_weightFeaturesDataPartitioning.R", # feature weights for every weighted distance
+  "R/pl2_freezeDIRuler.R", # freeze weights + scaling + normalising constant
+  "R/pl2_exploreOccupancy.R", # model-free: where the future goes, what is observed there
+  "R/pl2_partitionDataByTopFeature.R", # cut CV partitions along the top shifting feature
+  "R/pl2_evaluate.R", # pairwise CV: skill, confusion, per-row DI
+  "R/pl2_predict.R", # production fit and projection
+  "R/pl2_interpret.R", # Lyngstad class transitions and change in P(bog)
   # Reliability mapping. Both read the CV output above rather than generating their own,
   # which is the whole reason pl3 collapsed into this stage.
-  "R/pl2_fitErrorProfiles.R",              # skill vs DI, cluster-bootstrap CIs, AOA cut
-  "R/pl2_mapReliability.R"                 # apply those curves to the projection domain
+  "R/pl2_fitErrorProfiles.R", # skill vs DI, cluster-bootstrap CIs, AOA cut
+  "R/pl2_mapReliability.R" # apply those curves to the projection domain
 )
 
 scripts <- c(scripts_pl0, scripts_pl2)
@@ -146,29 +146,50 @@ diff_summary <- function(f, tol = 1e-9) {
   b <- read.csv(f, stringsAsFactors = FALSE, check.names = FALSE)
   if (!identical(names(a), names(b)) || nrow(a) != nrow(b)) {
     return(sprintf(
-      "%-52s shape changed: %d x %d -> %d x %d", f, nrow(a), ncol(a), nrow(b), ncol(b)
+      "%-52s shape changed: %d x %d -> %d x %d",
+      f,
+      nrow(a),
+      ncol(a),
+      nrow(b),
+      ncol(b)
     ))
   }
-  changed <- vapply(names(b), function(k) {
-    x <- a[[k]]
-    y <- b[[k]]
-    if (is.numeric(x) && is.numeric(y)) {
-      sum(xor(is.na(x), is.na(y)) | (!is.na(x) & !is.na(y) & abs(x - y) > tol))
-    } else {
-      sum(xor(is.na(x), is.na(y)) | (!is.na(x) & !is.na(y) & x != y))
-    }
-  }, integer(1))
-  max_abs <- max(c(0, unlist(lapply(names(b), function(k) {
-    x <- a[[k]]
-    y <- b[[k]]
-    if (is.numeric(x) && is.numeric(y)) abs(x - y)[!is.na(x) & !is.na(y)] else numeric(0)
-  }))))
+  changed <- vapply(
+    names(b),
+    function(k) {
+      x <- a[[k]]
+      y <- b[[k]]
+      if (is.numeric(x) && is.numeric(y)) {
+        sum(
+          xor(is.na(x), is.na(y)) | (!is.na(x) & !is.na(y) & abs(x - y) > tol)
+        )
+      } else {
+        sum(xor(is.na(x), is.na(y)) | (!is.na(x) & !is.na(y) & x != y))
+      }
+    },
+    integer(1)
+  )
+  max_abs <- max(c(
+    0,
+    unlist(lapply(names(b), function(k) {
+      x <- a[[k]]
+      y <- b[[k]]
+      if (is.numeric(x) && is.numeric(y)) {
+        abs(x - y)[!is.na(x) & !is.na(y)]
+      } else {
+        numeric(0)
+      }
+    }))
+  ))
   if (sum(changed) == 0) {
     return(sprintf("%-52s unchanged", f))
   }
   sprintf(
     "%-52s %d cells changed, max |diff| %.4g, in: %s",
-    f, sum(changed), max_abs, paste(names(changed)[changed > 0], collapse = ", ")
+    f,
+    sum(changed),
+    max_abs,
+    paste(names(changed)[changed > 0], collapse = ", ")
   )
 }
 
@@ -186,7 +207,11 @@ run_id <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
 output_files <- function() {
   f <- list.files("output", recursive = TRUE, full.names = TRUE)
   f <- f[!grepl("^output/(_previous/|run_manifest)", f)]
-  data.frame(path = sub("^output/", "", f), mtime = file.mtime(f), stringsAsFactors = FALSE)
+  data.frame(
+    path = sub("^output/", "", f),
+    mtime = file.mtime(f),
+    stringsAsFactors = FALSE
+  )
 }
 
 record_run <- function(script, t0, t1, status) {
@@ -205,10 +230,18 @@ record_run <- function(script, t0, t1, status) {
   )
   new_file <- !file.exists(MANIFEST_PATH)
   write.table(
-    row, MANIFEST_PATH,
-    sep = ",", row.names = FALSE, col.names = new_file, append = !new_file
+    row,
+    MANIFEST_PATH,
+    sep = ",",
+    row.names = FALSE,
+    col.names = new_file,
+    append = !new_file
   )
-  cat(sprintf("  %.1f min, %d output files touched\n", row$minutes, row$n_files))
+  cat(sprintf(
+    "  %.1f min, %d output files touched\n",
+    row$minutes,
+    row$n_files
+  ))
 }
 
 # Every render() runs in THIS R process, so all the scripts share one tempdir and one
@@ -255,7 +288,11 @@ if (identical(to_run, scripts)) {
   claimed <- unique(unlist(strsplit(manifest$files[manifest$files != ""], ";")))
   untouched <- setdiff(output_files()$path, claimed)
   untouched <- untouched[!grepl("_parts/", untouched)]
-  cat("Files under output/ that no script of this run wrote:", length(untouched), "\n")
+  cat(
+    "Files under output/ that no script of this run wrote:",
+    length(untouched),
+    "\n"
+  )
   if (length(untouched) > 0) {
     cat(paste0("- ", untouched), sep = "\n")
   }
@@ -284,7 +321,8 @@ cat("\n")
 # that should have been archived.
 all_r_scripts <- list.files("R", pattern = "[.]R$", full.names = TRUE)
 unused_scripts <- setdiff(
-  all_r_scripts, c(scripts, "R/RUNALL.R", "R/functions.R", "R/config.R")
+  all_r_scripts,
+  c(scripts, "R/RUNALL.R", "R/functions.R", "R/config.R")
 )
 
 if (length(unused_scripts) > 0) {
