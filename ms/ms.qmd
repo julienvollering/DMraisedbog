@@ -8,6 +8,10 @@ format:
       id: plosone
       # TODO(JV): target journal. Notebook 2025-05-14 mentions Global Change Biology; the
       # PLOS template is kept until that is decided.
+    # The .bib is a Better BibLaTeX export (date/journaltitle/\mkbibemph), which the
+    # extension's default natbib + plos2015.bst route cannot read. Let citeproc parse
+    # it and format with the PLOS CSL the extension already sets.
+    cite-method: citeproc
     include-in-header:
       text: |
         % \usepackage{setspace}
