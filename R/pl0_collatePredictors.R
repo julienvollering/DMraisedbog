@@ -167,34 +167,39 @@ names(paleo_stack) <- paleo_names
 
 ### Check scaling across variables ####
 
-# Compare scaling between past and future climate stacks
-past_stats <- chelsa_past_stack[1e7 + 1:1e6] |>
-  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
-  group_by(variable) |>
-  summarise(median = median(value, na.rm = TRUE), .groups = "drop")
-future_stats <- chelsa_future_stack[1e7 + 1:1e6] |>
-  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
-  group_by(variable) |>
-  summarise(median = median(value, na.rm = TRUE), .groups = "drop")
-checkvars <- left_join(
-  past_stats,
-  future_stats,
-  by = "variable",
-  suffix = c("_past", "_future")
-) |>
-  mutate(median_ratio = abs(median_future / median_past)) |>
-  filter(median_ratio > 5 | median_ratio < 0.2) |>
-  pull(variable)
-
-if (length(checkvars) > 0) {
+# Compare the scale factor and offset stored in each current and future CHELSA file.
+# This replaces a comparison of medians over a fixed block of global cells: that block
+# lay at ~84 N, where values near zero turned real warming (bio10, gdd0, gsl) and the
+# unmasked gsp sentinel into false alarms. terra applies scoff on read, so matching
+# metadata means the two stacks are in the same units.
+if (!setequal(names(chelsa_past_stack), names(chelsa_future_stack))) {
   stop(
-    "Possible scaling mismatch between current and future CHELSA layers: ",
-    paste(checkvars, collapse = ", ")
+    "Current and future CHELSA stacks hold different layers: ",
+    paste(
+      setdiff(
+        union(names(chelsa_past_stack), names(chelsa_future_stack)),
+        intersect(names(chelsa_past_stack), names(chelsa_future_stack))
+      ),
+      collapse = ", "
+    )
   )
 }
-cat(
-  "Current and future CHELSA medians agree to within a factor of 5 for every layer\n"
-)
+scoff_past <- scoff(chelsa_past_stack)
+rownames(scoff_past) <- names(chelsa_past_stack)
+scoff_future <- scoff(chelsa_future_stack)
+rownames(scoff_future) <- names(chelsa_future_stack)
+scoff_future <- scoff_future[rownames(scoff_past), , drop = FALSE]
+
+mismatch <- rownames(scoff_past)[
+  rowSums(abs(scoff_past - scoff_future) > 1e-9) > 0
+]
+if (length(mismatch) > 0) {
+  stop(
+    "Scale/offset mismatch between current and future CHELSA layers: ",
+    paste(mismatch, collapse = ", ")
+  )
+}
+cat("Current and future CHELSA layers share scale factor and offset for every layer\n")
 
 # Create unified extent and template grid ####
 
