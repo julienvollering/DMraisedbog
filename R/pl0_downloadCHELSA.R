@@ -418,7 +418,22 @@ cat("\n")
 
 ## File integrity check ####
 
-# Get list of all CHELSA files
+# READ THE WINDOW THE PIPELINE ACTUALLY USES. This check previously read a 21 x 21 block
+# at the centre of each global raster -- which is 0 N, 0 E, in the Atlantic off Africa,
+# roughly 5,000 km from the study area and 441 cells out of ~900 million. Every file
+# passed it. Three future files (bio19, gdd0, gdd5) were nonetheless truncated mid-tile
+# over Europe by an interrupted download, and the failure surfaced 130 minutes into
+# pl0_collatePredictors.R instead of here (notebook 2026-09-16).
+#
+# Forcing a full read of the European window is the only test that finds that class of
+# corruption, because a partial download leaves a valid header and valid tiles everywhere
+# it did finish. It costs a couple of minutes against the hours a late failure costs.
+#
+# This STOPS rather than repairing: deleting a data file is the user's call, and the
+# download loops above skip any file that already exists, so removing the named files and
+# re-running this script is the repair.
+check_ext <- ext(-10, 35, 35, 72) # the crop pl0_collatePredictors.R applies
+
 chelsa_files <- list.files(
   "data/CHELSA/",
   recursive = TRUE,
@@ -426,34 +441,40 @@ chelsa_files <- list.files(
   full.names = TRUE
 )
 
-# Test each file and collect issues
+cat("\nIntegrity check: reading the European window of", length(chelsa_files), "files\n")
+
 issues <- list()
 for (file_path in chelsa_files) {
   result <- tryCatch(
     {
       r <- rast(file_path)
-      test_vals <- r[nrow(r) / 2 + (-10:10), ncol(r) / 2 + (-10:10)]
-      rm(r)
+      # Paleo TraCE files are regional and may not span the window; intersect first.
+      win <- intersect(ext(r), check_ext)
+      if (!is.null(win)) {
+        invisible(global(crop(r, win), "max", na.rm = TRUE))
+      }
       NULL
     },
-    error = function(e) list(type = "ERROR", msg = e$message),
-    warning = function(w) list(type = "WARNING", msg = w$message)
+    error = function(e) list(type = "ERROR", msg = conditionMessage(e)),
+    warning = function(w) list(type = "WARNING", msg = conditionMessage(w))
   )
   if (!is.null(result)) {
     issues[[basename(file_path)]] <- result
   }
 }
 
-# Report issues if any
 if (length(issues) > 0) {
   cat("\nFile integrity issues found:\n")
   for (fname in names(issues)) {
     cat("  ", issues[[fname]]$type, ": ", fname, "\n", sep = "")
     cat("    Message: ", issues[[fname]]$msg, "\n", sep = "")
   }
-} else {
-  cat("\nAll files passed integrity check\n")
+  stop(
+    "Corrupt CHELSA file(s): ", paste(names(issues), collapse = ", "),
+    ". Delete them from data/CHELSA/ and re-run this script to re-download."
+  )
 }
+cat("All files passed integrity check over the European window\n")
 
 # Cleanup
 gc()
