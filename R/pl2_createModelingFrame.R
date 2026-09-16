@@ -29,10 +29,28 @@
 #    bookkeeping for the section 1.5 dataset-blocked comparison and must never enter a
 #    model as a predictor; every downstream script excludes it explicitly.
 #
-# All predictors (climate, paleo, terrain) are now at unified 250 m resolution over EU + Norway,
-# built by pl0_collatePredictors.R. This eliminates the scale mismatch for slope (25x
-# difference) and resolves NA-to-zero inconsistencies that existed when blocks used
-# separate stacks. Elevation is sourced from elevatr uniformly across the domain.
+# WHERE EACH BLOCK'S PREDICTORS COME FROM. Both blocks are read at 250 m grain, but only
+# Norway needs a 250 m SURFACE -- it is the projection domain, and scenario_*.tif below is
+# written from it. The EU block needs values at ~36k coordinates and nothing more, so it
+# is point-extracted:
+#
+#   Norway  climate + paleo + terrain   250 m stack, pl0_collatePredictors.R
+#   EU      climate + paleo             native grid, extract_native_predictors()
+#           terrain                     eu_terrain_250m.tif, pl0_buildEUterrain.R
+#
+# Both are therefore bilinear samples of the same native ~1 km CHELSA field taken at a
+# 250 m cell centre -- see the rationale on extract_native_predictors() in R/functions.R.
+# This is what closes notebook open issue 2 (2026-09-14): EU rows previously came off the
+# 5 km working grid, a 25x-smoothed field, while Norwegian rows came off 250 m.
+#
+# It replaces the unified 250 m EU+Norway stack tried on 2026-09-15, which filled the disk
+# (115 GB across two scenarios, plus another 115 GB when this script copied both to
+# scenario_*.tif, against 57 GB free). Nothing downstream ever wanted EU cells as a
+# surface; see the header of pl0_collatePredictors.R.
+#
+# The NA-to-zero correction runs per block, from the one THRESHOLD_VARS list in
+# R/config.R: on the raster in pl0_collatePredictors.R for Norway, on the extracted rows
+# here for the EU. Same rule, same variables, which is notebook open issue 1 closed.
 
 library(tidyverse)
 library(terra)
@@ -60,9 +78,10 @@ record_settings(
 
 ## Predictors ####
 
-# Load unified predictor stack (EU + Norway, 250m, EPSG:3035)
-preds_cur <- rast("output/predictors_unified_250m_EUNorway_current_EPSG3035.tif")
-preds_fut <- rast("output/predictors_unified_250m_EUNorway_future_EPSG3035.tif")
+# The Norway 250 m stack. It is both the Norwegian block's predictor source and the
+# projection domain, which is why it alone is materialised as a surface.
+preds_cur <- rast("output/predictors_regional_250m_Norway_current_EPSG3035.tif")
+preds_fut <- rast("output/predictors_regional_250m_Norway_future_EPSG3035.tif")
 
 # artype_60 is the Norway label source; keeping it as a predictor would leak the response.
 preds_cur <- preds_cur[[!grepl("artype", names(preds_cur))]]
@@ -71,8 +90,13 @@ preds_fut <- preds_fut[[!grepl("artype", names(preds_fut))]]
 feat <- names(preds_cur)
 cat("Predictors:", length(feat), "\n")
 
-writeRaster(preds_cur, "output/pl2/scenario_current.tif", overwrite = TRUE)
-writeRaster(preds_fut, "output/pl2/scenario_future.tif", overwrite = TRUE)
+gdal_opts <- c("COMPRESS=LZW", "TILED=YES")
+writeRaster(preds_cur, "output/pl2/scenario_current.tif",
+  overwrite = TRUE, gdal = gdal_opts
+)
+writeRaster(preds_fut, "output/pl2/scenario_future.tif",
+  overwrite = TRUE, gdal = gdal_opts
+)
 
 ## Norway block ####
 
@@ -128,10 +152,21 @@ cat(
   sep = ""
 )
 
-# Extract predictors from the unified stack for EU coordinates
+# Climate and paleo off the native grid, terrain off the EU 250 m raster. The terrain
+# split is not new: DTM50 is Norway-only, so EU elevation and slope have always come from
+# elevatr via pl0_buildEUterrain.R, at the same 250 m and by the same aggregate-then-slope
+# order.
+eu_terrain <- rast("output/pl0/eu_terrain_250m.tif")
+
+eu_predictors <- bind_cols(
+  extract_native_predictors(eu_block, grid_250m, scenario = "current", label = "EU block"),
+  terra::extract(eu_terrain, eu_block[c("x", "y")], ID = FALSE)
+) |>
+  fill_threshold_na_rows(THRESHOLD_VARS, "EU block")
+
 df_eu <- bind_cols(
   eu_block |> select(x, y, response, dataset),
-  terra::extract(preds_cur, eu_block[c("x", "y")], ID = FALSE)
+  eu_predictors
 ) |>
   as_tibble()
 

@@ -23,6 +23,205 @@ assert_fresher <- function(newer, older) {
   invisible(TRUE)
 }
 
+# Native predictor sources ####
+
+# The CHELSA and paleo files, opened and named in ONE place. Two callers now need them:
+# pl0_collatePredictors.R, which projects them onto a raster grid, and
+# extract_native_predictors() below, which samples them at points. Having each caller do
+# its own list.files()/str_extract() is how the two paths would drift apart on layer
+# naming or on which paleo file is excluded -- so they share these.
+
+chelsa_native_stack <- function(scenario = c("current", "future")) {
+  scenario <- match.arg(scenario)
+  if (scenario == "current") {
+    dir <- "data/CHELSA/1981-2010"
+    pattern <- "CHELSA_.*\\.tif$"
+    name_rx <- "(?<=CHELSA_).+(?=_1981)"
+  } else {
+    dir <- "data/CHELSA/2071-2100"
+    prefix <- paste0("CHELSA_", tolower(FUTURE_GCM), "_", FUTURE_SCENARIO, "_")
+    pattern <- paste0(prefix, ".*\\.tif$")
+    name_rx <- paste0("(?<=", prefix, ").+(?=_2071)")
+  }
+  files <- sort(list.files(dir, pattern = pattern, full.names = TRUE))
+  if (length(files) == 0) {
+    stop("No CHELSA ", scenario, " files matched in ", dir)
+  }
+  s <- terra::rast(files)
+  names(s) <- stringr::str_extract(names(s), name_rx)
+  s
+}
+
+# paleo_icefree_n_consecutive is excluded as correlated with paleo_years_icefreeland.
+paleo_native_stack <- function() {
+  files <- list.files(
+    "data/CHELSA/paleo_derived",
+    pattern = "^paleo_.*\\.tif$", full.names = TRUE
+  )
+  files <- sort(setdiff(files, grep("n_consecutive", files, value = TRUE)))
+  if (length(files) == 0) {
+    stop("No paleo-derived predictor files found")
+  }
+  s <- terra::rast(files)
+  names(s) <- stringr::str_remove(basename(files), "_EUextent_EPSG4326\\.tif$")
+  s
+}
+
+# CHELSA no-data conventions ####
+
+# ONE rule, stated once, applied to BOTH blocks -- the same principle
+# landuse_screen_keep() exists for, here applied to no-data rather than to eligibility.
+# The constants (THRESHOLD_VARS, SENTINEL_VARS, MAX_PLAUSIBLE) are in R/config.R; the
+# rule has two halves and each half has a raster form and a point form, because the
+# Norwegian block reads its predictors off a projected raster and the EU block samples
+# the native grid directly:
+#
+#   sentinel  -> mask_sentinels()        raster, applied BEFORE any interpolation
+#   NA-to-0   -> fill_threshold_na()     raster  |  fill_threshold_na_rows()  frame
+#
+# The two NA-to-0 forms implement the same sentence: set NA to 0 only where every OTHER
+# predictor at that location has data, so a genuine no-data cell stays NA instead of
+# being silently turned into a cold-climate zero.
+
+mask_sentinels <- function(s) {
+  for (nm in intersect(SENTINEL_VARS, names(s))) {
+    s[[nm]] <- terra::classify(s[[nm]], cbind(MAX_PLAUSIBLE[[nm]], Inf, NA))
+  }
+  s
+}
+
+# Fail loudly if any CHELSA layer still carries a value no climate variable can take, so
+# a sentinel in another layer or another CHELSA release cannot slip through silently.
+assert_plausible <- function(s, label, bound = 1e5) {
+  mx <- terra::global(s, "max", na.rm = TRUE)$max
+  names(mx) <- names(s)
+  bad <- names(mx)[is.finite(mx) & mx > bound]
+  if (length(bad) > 0) {
+    stop(
+      label, ": implausible maxima in ", paste(bad, collapse = ", "),
+      " (", paste(signif(mx[bad], 3), collapse = ", "), ")"
+    )
+  }
+  cat(label, "- layer maxima all below", bound, "\n")
+  invisible(mx)
+}
+
+fill_threshold_na <- function(s, vars, label) {
+  cat("\nChecking coverage before correction (", label, "):\n", sep = "")
+  counts <- terra::global(s, "notNA")$notNA
+  ref <- max(counts)
+  cat("  Reference coverage (maximum across layers):", ref, "cells\n")
+  for (i in which(counts < ref)) {
+    cat(sprintf(
+      "    - %s: %d cells (%d cells missing)\n",
+      names(s)[i], counts[i], ref - counts[i]
+    ))
+  }
+  present <- intersect(vars, names(s))
+  if (length(present) == 0) {
+    return(s)
+  }
+  all_valid <- all(!is.na(s[[setdiff(names(s), vars)]]))
+  cat("  Converting NA to 0 where every non-threshold layer has data:\n")
+  for (v in present) {
+    fix <- is.na(s[[v]]) & all_valid
+    n_changed <- terra::global(fix, "sum", na.rm = TRUE)$sum
+    if (n_changed > 0) {
+      s[[v]] <- terra::ifel(fix, 0, s[[v]])
+    }
+    cat(sprintf("    - %s: %d cells\n", v, n_changed))
+  }
+  s
+}
+
+# `df` holds predictor columns ONLY -- the "every other predictor has data" test is over
+# the columns present, so passing x/y/response/dataset through would make the bookkeeping
+# columns count as predictors.
+fill_threshold_na_rows <- function(df, vars, label) {
+  present <- intersect(vars, names(df))
+  if (length(present) == 0) {
+    return(df)
+  }
+  others <- setdiff(names(df), vars)
+  all_valid <- rowSums(is.na(df[others])) == 0
+  cat("\nConverting NA to 0 where every non-threshold predictor has data (", label, "):\n",
+    sep = ""
+  )
+  for (v in present) {
+    fix <- is.na(df[[v]]) & all_valid
+    df[[v]][fix] <- 0
+    cat(sprintf("    - %s: %d rows\n", v, sum(fix)))
+  }
+  df
+}
+
+# EU predictors at points, off the native grid ####
+
+# WHY POINTS AND NOT A RASTER. The EU block contributes ~36k labelled rows and nothing
+# else -- the projection is Norway-only -- so the EU side needs predictor VALUES AT
+# COORDINATES, never a surface. Materialising one anyway is what broke the pipeline on
+# 2026-09-15: a 250 m EU+Norway stack is 3.6e8 cells x 43 layers, which is 115 GB across
+# the two scenarios before terra's scratch, against 57 GB of free disk (notebook
+# 2026-09-16). Sampling the native grid costs nothing and removes the surface entirely.
+#
+# WHY THIS MATCHES THE NORWAY BLOCK. A Norwegian row's climate is the value of the 250 m
+# cell holding it, and that cell was filled by project(..., method = "bilinear") -- i.e.
+# the bilinear interpolation of native CHELSA at the cell centre. This function snaps
+# each EU point to its own 250 m cell centre and takes the bilinear interpolation of the
+# same native field there. The two blocks are therefore bilinear samples of one ~1 km
+# CHELSA field at a 250 m cell centre, by construction rather than by coincidence, and
+# neither is interpolated twice.
+#
+# It also fixes what the 5 km stack got wrong. Until 2026-09-15 the EU block read its
+# climate from a 5 km grid while Norway read a 250 m one, so EU rows carried a genuinely
+# 25x-smoothed field (notebook 2026-09-14, open issue 2). That asymmetry is gone without
+# a 250 m EU surface ever existing.
+#
+# `xy`   data frame / matrix of EPSG:3035 coordinates, columns x and y
+# `grid` the EU 250 m reference grid the coordinates are snapped to
+extract_native_predictors <- function(xy, grid, scenario = "current",
+                                      label = "EU block") {
+  xy <- as.data.frame(xy)[c("x", "y")]
+
+  # Snap to 250 m cell centres so the sample location matches how a Norway row is read.
+  cells <- terra::cellFromXY(grid, as.matrix(xy))
+  if (anyNA(cells)) {
+    stop(label, ": ", sum(is.na(cells)), " coordinates fall outside the 250 m grid")
+  }
+  centres <- terra::xyFromCell(grid, cells)
+
+  pts <- terra::vect(centres, type = "points", crs = terra::crs(grid)) |>
+    terra::project("EPSG:4326")
+
+  # Crop the native stacks to the points before touching values: the sentinel mask and
+  # the extract both then run over the EU footprint instead of the globe. The pad is far
+  # wider than the 30 arcsec native cell, so every bilinear neighbourhood stays inside.
+  box <- terra::ext(pts) + 0.05
+
+  climate <- terra::crop(chelsa_native_stack(scenario), box) |> mask_sentinels()
+  assert_plausible(climate, paste0(label, ", CHELSA ", scenario, " crop"))
+  paleo <- terra::crop(paleo_native_stack(), box)
+
+  native <- c(climate, paleo)
+
+  out <- terra::extract(native, pts, method = "bilinear", ID = FALSE)
+
+  # A bilinear neighbourhood that touches the coast returns NA where a nearest-cell read
+  # would have returned a value. project() drops those same cells on the Norway side, so
+  # the loss is consistent rather than an artefact of this path -- but it is a real cost,
+  # so it is counted here instead of disappearing into the drop_na() downstream.
+  simple <- terra::extract(native, pts, method = "simple", ID = FALSE)
+  lost <- colSums(is.na(out) & !is.na(simple))
+  if (any(lost > 0)) {
+    cat(
+      label, "- rows lost to bilinear edge effects (nearest-cell had a value):\n",
+      paste0("    - ", names(lost)[lost > 0], ": ", lost[lost > 0], collapse = "\n"),
+      "\n"
+    )
+  }
+  out
+}
+
 # Land-use and water screen ####
 
 # ONE rule, stated once, applied to BOTH blocks and to ALL THREE classes -- the same

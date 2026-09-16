@@ -25,6 +25,32 @@ FUTURE_GCM <- "GFDL-ESM4"
 # prediction layer uses.
 RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 
+## CHELSA no-data conventions ####
+
+# These three constants describe how CHELSA encodes "the quantity does not occur here",
+# and they live here because TWO code paths now have to agree on them: the Norwegian
+# block reads its predictors off a projected 250 m raster, the EU block point-extracts
+# from the native grid (see extract_native_predictors() in R/functions.R). They were
+# previously written out in pl0_collatePredictors.R alone, with the raster path filling
+# gdd5 in the Norway stack but not in the EU one -- the asymmetry logged as notebook
+# open issue 1 on 2026-09-14. One list, sourced by both paths, is what stops that
+# recurring.
+
+# Threshold quantities are truncated to positive values, so a cell where the quantity is
+# really 0 arrives as NA rather than as zero. gsp joins them only after its sentinel is
+# masked (below): no growing season, no growing-season precipitation.
+THRESHOLD_VARS <- c("gdd5", "gdd10", "gst", "swe", "gsp")
+
+# gsp is stored as an unsigned 32-bit integer with a 0.1 scale factor and NO NoData tag,
+# so where the growing season has zero length the sentinel 4294967295 is read as a real
+# value and scaled to 4.29e8 mm. The gdd/gst/swe layers carry a NoData tag and arrive as
+# NA; gsp did not, and the sentinel reached the modelling frame in 8,987 training rows
+# (notebook 2026-09-12). It must be masked on the NATIVE grid, before any bilinear step,
+# because interpolation blends a sentinel into its neighbours and those blends cannot be
+# recognised afterwards -- which is equally true of project() and of a bilinear extract.
+SENTINEL_VARS <- c("gsp")
+MAX_PLAUSIBLE <- c(gsp = 1e5) # mm; the wettest cells in the frame are ~7,000
+
 ## Settings registry ####
 
 SETTINGS_PATH <- "output/pipeline_settings.csv"

@@ -1,171 +1,74 @@
-# Build unified predictor stack (EU + Norway, 250m, EPSG:3035) ####
+# Build the predictor stacks ####
 
-# PURPOSE: Assembles a single unified predictor stack at 250m resolution (EPSG:3035)
-# covering EU + Norway, with CHELSA climate, paleo-derived, and terrain (elevation/slope)
-# variables. This replaces the previous separate-stack approach (global 5km EU +
-# regional 250m Norway), which created scale mismatches for slope and NA-to-zero
-# inconsistencies.
+# PURPOSE: Assembles the 5 km EU working grid and the 250 m Norway predictor stack
+# (CHELSA, paleo, DTM50 terrain, AR50 land cover) on a common EPSG:3035 origin.
+
+# TWO GRIDS, AND WHY THEY ARE DIFFERENT RESOLUTIONS. The 250 m Norway stack is a
+# modelling surface: the projection runs over it and the Norwegian training rows are read
+# off it. The 5 km EU grid is NOT a modelling surface and nothing is ever trained on it --
+# it is a coarse working grid, and its only consumers want it that way:
 #
-# Elevation: elevatr for all EU + Norway (uniform quality, no separate DTM50 warp).
-# Terrain: elevation + slope calculated at 250m in EPSG:3035.
-# NA-to-zero: applied consistently to gdd5, gdd10, gst, swe, gsp for all domains.
+#   pl0_buildEUdomain.R           rasterize template + extent for delimiting the domain
+#   pl0_collateEuropeanRaisedBog.R  bio10 at Natura 2000 polygon centroids
+#   pl0_sampleEUabsences.R        bio10 as the absence stratification axis
+#
+# All three read bio10 and nothing else, at a grain where 5 km is the right answer: a
+# domain polygon does not become more correct when rasterized 400x finer.
+#
+# WHAT THE EU BLOCK'S TRAINING ROWS USE INSTEAD. Not this grid. They are point-extracted
+# from the native CHELSA and paleo files by extract_native_predictors() in R/functions.R,
+# called from pl2_createModelingFrame.R. That is what closes the resolution asymmetry
+# logged as notebook open issue 2 on 2026-09-14 -- EU rows used to be sampled off this
+# 5 km grid, a genuinely 25x-smoothed field, while Norwegian rows came off 250 m.
+#
+# WHY NOT ONE UNIFIED 250 m EU+Norway STACK. That was tried on 2026-09-15 (commit
+# 207dcab) and is what filled the disk mid-run: 20000 x 18000 cells x 43 layers is 58 GB
+# per scenario, 115 GB across the two, before terra's scratch and before
+# pl2_createModelingFrame.R copies both to scenario_*.tif -- against 57 GB free. Only 20%
+# of that box is land and the EU part of it was only ever sampled at ~36k points. The
+# same commit also replaced DTM50 with a single unbounded elevatr call over the whole box
+# (12,561 tiles at z=9); the chunked, cached fetch in pl0_buildEUterrain.R is the working
+# implementation of that idea and is where EU terrain still comes from.
+#
+# TERRAIN SOURCES DIFFER BY BLOCK, GRAIN DOES NOT. Norway uses DTM50 (the 50 m national
+# model, mean-aggregated to 250 m); the EU uses elevatr at the same 250 m via
+# pl0_buildEUterrain.R. Both derive slope AFTER aggregating, so neither is systematically
+# steeper. The single cell that belongs to both blocks disagrees by 0.08 degrees of slope,
+# which identify_dynamic_predictors() in R/functions.R already accounts for.
 
 library(terra)
 library(sf)
 library(rnaturalearth)
-library(elevatr)
 library(tidyverse)
 
+source("R/functions.R")
 source("R/config.R")
 
 # Clean up old terra temporary files from previous runs
 terra::tmpFiles(remove = TRUE)
 
-# Threshold variables (gdd*, gst, swe, and gsp once its sentinel is masked) are truncated
-# to positive values, so a cold cell where the quantity is really 0 arrives as NA. This
-# sets NA to 0 only where every OTHER layer of the stack has data, so a genuine no-data
-# cell stays NA. One implementation for all scenarios; it reports per-layer coverage before
-# the fix and the cells changed per variable.
-fill_threshold_na <- function(s, vars, label) {
-  cat("\nChecking coverage before correction (", label, "):\n", sep = "")
-  counts <- global(s, "notNA")$notNA
-  ref <- max(counts)
-  cat("  Reference coverage (maximum across layers):", ref, "cells\n")
-  for (i in which(counts < ref)) {
-    cat(sprintf(
-      "    - %s: %d cells (%d cells missing)\n",
-      names(s)[i],
-      counts[i],
-      ref - counts[i]
-    ))
-  }
-  present <- intersect(vars, names(s))
-  if (length(present) == 0) {
-    return(s)
-  }
-  all_valid <- all(!is.na(s[[setdiff(names(s), vars)]]))
-  cat("  Converting NA to 0 where every non-threshold layer has data:\n")
-  for (v in present) {
-    fix <- is.na(s[[v]]) & all_valid
-    n_changed <- global(fix, "sum", na.rm = TRUE)$sum
-    if (n_changed > 0) {
-      s[[v]] <- ifel(fix, 0, s[[v]])
-    }
-    cat(sprintf("    - %s: %d cells\n", v, n_changed))
-  }
-  s
-}
-
-# Unflagged no-data in CHELSA integer layers ####
-
-# gsp is stored as an unsigned 32-bit integer with a 0.1 scale factor and NO NoData tag,
-# so where the growing season has zero length the sentinel 4294967295 is read as a real
-# value and scaled to 4.29e8 mm. The gdd/gst/swe layers carry a NoData tag and arrive as
-# NA, which the NA-to-zero step below handles; gsp did not, and the sentinel reached the
-# modelling frame in 8,987 training rows (notebook 2026-09-12). It is masked HERE, on the
-# cropped native grid and before project(), because bilinear resampling blends a sentinel
-# into its neighbours and those blends cannot be recognised afterwards. Once NA, gsp goes
-# through the same NA-to-zero step as gdd/gst/swe: no growing season, no growing-season
-# precipitation.
-SENTINEL_VARS <- c("gsp")
-MAX_PLAUSIBLE <- c(gsp = 1e5) # mm; the wettest cells in the frame are ~7,000
-
-mask_sentinels <- function(s) {
-  for (nm in intersect(SENTINEL_VARS, names(s))) {
-    s[[nm]] <- classify(s[[nm]], cbind(MAX_PLAUSIBLE[[nm]], Inf, NA))
-  }
-  s
-}
-
-# Fail loudly if any CHELSA layer still carries a value no climate variable can take, so
-# a sentinel in another layer or another CHELSA release cannot slip through silently again.
-assert_plausible <- function(s, label, bound = 1e5) {
-  mx <- global(s, "max", na.rm = TRUE)$max
-  names(mx) <- names(s)
-  bad <- names(mx)[is.finite(mx) & mx > bound]
-  if (length(bad) > 0) {
-    stop(
-      label,
-      ": implausible maxima in ",
-      paste(bad, collapse = ", "),
-      " (",
-      paste(signif(mx[bad], 3), collapse = ", "),
-      ")"
-    )
-  }
-  cat(label, "- layer maxima all below", bound, "\n")
-  invisible(mx)
-}
-
-# Load CHELSA and paleo data ####
-
-## Load CHELSA data ####
-
-### Past climate ####
-chelsa_past_files <- list.files(
-  "data/CHELSA/1981-2010",
-  pattern = "CHELSA_.*\\.tif$",
-  full.names = TRUE
-) %>%
-  sort()
-
-chelsa_past_stack <- rast(chelsa_past_files)
-names(chelsa_past_stack) <- stringr::str_extract(
-  names(chelsa_past_stack),
-  "(?<=CHELSA_).+(?=_1981)"
+record_settings(
+  "R/pl0_collatePredictors.R",
+  future_scenario = FUTURE_SCENARIO,
+  future_gcm = FUTURE_GCM,
+  threshold_vars = THRESHOLD_VARS,
+  gsp_sentinel_bound_mm = MAX_PLAUSIBLE[["gsp"]],
+  eu_working_grid_m = 5000,
+  norway_grid_m = 250,
+  norway_elevation_source = "DTM50"
 )
 
-### Future climate ####
-# CHELSA CMIP6 scenario; must match files downloaded by pl0_downloadCHELSA.R.
-future_scenario <- FUTURE_SCENARIO # R/config.R, shared with pl0_downloadCHELSA.R
-chelsa_future_files <- list.files(
-  "data/CHELSA/2071-2100",
-  pattern = paste0(
-    "CHELSA_",
-    tolower(FUTURE_GCM),
-    "_",
-    future_scenario,
-    "_.*\\.tif$"
-  ),
-  full.names = TRUE
-) %>%
-  sort()
+# Load native predictor sources ####
 
-chelsa_future_stack <- rast(chelsa_future_files)
-names(chelsa_future_stack) <- stringr::str_extract(
-  names(chelsa_future_stack),
-  paste0(
-    "(?<=CHELSA_",
-    tolower(FUTURE_GCM),
-    "_",
-    future_scenario,
-    "_).+(?=_2071)"
-  )
-)
+# Opened through the shared accessors so this script and extract_native_predictors()
+# cannot disagree about layer names or about which paleo file is excluded.
+chelsa_past_stack <- chelsa_native_stack("current")
+chelsa_future_stack <- chelsa_native_stack("future")
+paleo_stack <- paleo_native_stack()
 
-### Paleo-derived predictors ####
+cat("Loaded", nlyr(chelsa_past_stack), "CHELSA layers and", nlyr(paleo_stack), "paleo\n")
 
-# Load paleo-derived predictor files (excluding n_consecutive_icefree which is correlated)
-paleo_files <- list.files(
-  "data/CHELSA/paleo_derived",
-  pattern = "^paleo_.*\\.tif$",
-  full.names = TRUE
-) %>%
-  # Exclude the correlated variable
-  setdiff(., grep("n_consecutive", ., value = TRUE)) %>%
-  sort()
-
-cat("Loading", length(paleo_files), "paleo-derived predictors:\n")
-cat(paste(basename(paleo_files), collapse = "\n"), "\n")
-
-paleo_stack <- rast(paleo_files)
-
-# Extract clean layer names (remove _EUextent_EPSG4326.tif suffix)
-paleo_names <- basename(paleo_files) %>%
-  str_remove("_EUextent_EPSG4326\\.tif$")
-names(paleo_stack) <- paleo_names
-
-### Check scaling across variables ####
+## Check scaling across variables ####
 
 # Compare the scale factor and offset stored in each current and future CHELSA file.
 # This replaces a comparison of medians over a fixed block of global cells: that block
@@ -201,63 +104,33 @@ if (length(mismatch) > 0) {
 }
 cat("Current and future CHELSA layers share scale factor and offset for every layer\n")
 
-# Create unified extent and template grid ####
+# EU working grid, 5 km ####
 
-## Define domain extent ####
+## Domain mask ####
 
-# Get European countries
 europe_countries <- ne_countries(
   continent = "europe",
   scale = 10,
   returnclass = "sf"
 )
 
-# EU member states
 eu_countries <- c(
-  "Austria",
-  "Belgium",
-  "Bulgaria",
-  "Croatia",
-  "Cyprus",
-  "Czechia",
-  "Denmark",
-  "Estonia",
-  "Finland",
-  "France",
-  "Germany",
-  "Greece",
-  "Hungary",
-  "Ireland",
-  "Italy",
-  "Latvia",
-  "Lithuania",
-  "Luxembourg",
-  "Malta",
-  "Netherlands",
-  "Poland",
-  "Portugal",
-  "Romania",
-  "Slovakia",
-  "Slovenia",
-  "Spain",
-  "Sweden"
+  "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark",
+  "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Ireland",
+  "Italy", "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands", "Poland",
+  "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden"
 )
 
-# Filter to EU countries + Norway
 target_countries <- europe_countries %>%
-  filter(name %in% c(eu_countries, "Norway"))
+  filter(name %in% c(eu_countries, "Norway")) %>%
+  st_transform(crs = "EPSG:3035")
 
-# Transform to EPSG:3035
-target_countries <- st_transform(target_countries, crs = "EPSG:3035")
-
-# Create combined polygon for masking
 mask_polygon <- target_countries %>%
   st_union() %>%
   st_sf()
 
-## Create unified 250m grid ####
+## Template and projection ####
 
-# Define unified European extent in EPSG:3035 covering EU + Norway
 europe_ext_3035 <- ext(c(
   xmin = 2000000,
   xmax = 7000000,
@@ -265,196 +138,176 @@ europe_ext_3035 <- ext(c(
   ymax = 5500000
 ))
 
-# Create 250m resolution template grid in EPSG:3035
-template_250m <- rast(europe_ext_3035, resolution = 250, crs = "EPSG:3035")
+template_5km <- rast(europe_ext_3035, resolution = 5000, crs = "EPSG:3035")
 
-# Define extent for cropping before reprojection (WGS84)
 europe_ext_wgs84 <- ext(c(xmin = -10, xmax = 35, ymin = 35, ymax = 72))
 
-# Process CHELSA data ####
-
-## Current climate ####
-
-# Crop to European extent first (in WGS84) to reduce memory, then mask sentinel before resampling
-chelsa_past_cropped <- crop(chelsa_past_stack, europe_ext_wgs84) |>
+# Crop on the native grid first, then mask the sentinel, then project -- in that order,
+# because bilinear resampling blends a sentinel into its neighbours and those blends
+# cannot be recognised afterwards.
+chelsa_eu_cropped <- crop(chelsa_past_stack, europe_ext_wgs84) |>
   mask_sentinels()
-assert_plausible(chelsa_past_cropped, "CHELSA current, Europe crop")
+assert_plausible(chelsa_eu_cropped, "CHELSA current, Europe crop")
 
-# Project to EPSG:3035 at 250m resolution
-chelsa_past_3035 <- project(
-  x = chelsa_past_cropped,
-  y = template_250m,
+chelsa_eu_3035 <- project(
+  x = chelsa_eu_cropped,
+  y = template_5km,
   method = "bilinear"
 )
 
-# Mask to EU + Norway boundaries
-chelsa_past_masked <- mask(chelsa_past_3035, mask_polygon)
+paleo_eu_3035 <- crop(paleo_stack, europe_ext_wgs84) |>
+  project(y = template_5km, method = "bilinear")
 
-## Future climate ####
-
-# Crop to European extent first (in WGS84) to reduce memory, then mask sentinel
-chelsa_future_cropped <- crop(chelsa_future_stack, europe_ext_wgs84) |>
-  mask_sentinels()
-assert_plausible(chelsa_future_cropped, "CHELSA future, Europe crop")
-
-# Project to EPSG:3035 at 250m resolution
-chelsa_future_3035 <- project(
-  x = chelsa_future_cropped,
-  y = template_250m,
-  method = "bilinear"
+predictors_eu <- c(
+  mask(chelsa_eu_3035, mask_polygon),
+  mask(paleo_eu_3035, mask_polygon)
 )
 
-# Mask to EU + Norway boundaries
-chelsa_future_masked <- mask(chelsa_future_3035, mask_polygon)
+cat("EU working grid has", nlyr(predictors_eu), "layers\n")
 
-# Process paleo-derived predictors ####
+predictors_eu <- fill_threshold_na(predictors_eu, THRESHOLD_VARS, "EU working grid")
 
-# Crop paleo stack to European extent (in WGS84)
-paleo_cropped <- crop(paleo_stack, europe_ext_wgs84)
-
-# Project to EPSG:3035 at 250m resolution
-paleo_3035 <- project(
-  x = paleo_cropped,
-  y = template_250m,
-  method = "bilinear"
+writeRaster(
+  predictors_eu,
+  filename = "output/predictors_global_5km_EUNorway_EPSG3035.tif",
+  overwrite = TRUE,
+  names = names(predictors_eu),
+  gdal = c("COMPRESS=LZW", "TILED=YES")
 )
 
-# Mask to EU + Norway boundaries
-paleo_masked <- mask(paleo_3035, mask_polygon)
+# Norway stack, 250 m ####
 
-cat("Processed", nlyr(paleo_masked), "paleo-derived predictors\n")
+## Terrain from DTM50 ####
 
-# Build terrain variables (elevation + slope) using elevatr ####
+# Aggregate to 250 m in the native UTM33 projection and derive slope there, BEFORE
+# reprojecting. Deriving slope from the 50 m model and aggregating afterwards would give
+# a systematically steeper answer; reprojecting first would distort the derivative.
+# pl0_buildEUterrain.R mirrors this order for the EU side.
+dtm_files <- list.files(
+  "data/DTM50_UTM33_20250613",
+  pattern = "\\.tif$",
+  full.names = TRUE
+)
+stopifnot(length(dtm_files) > 0)
 
-# Note: This step may take significant time as elevatr downloads elevation data.
-# Elevation is downloaded at the native resolution available (~1 arc-second ~30m),
-# then aggregated to 250m.
+dtm_mosaic_utm33 <- do.call(mosaic, map(dtm_files, rast))
+dtm_250m_utm33 <- aggregate(dtm_mosaic_utm33, fact = 5, fun = "mean")
 
-cat("Fetching elevation data from elevatr for EU + Norway...\n")
+terrain_stack_utm33 <- c(
+  dtm_250m_utm33,
+  terrain(dtm_250m_utm33, v = "slope", unit = "degrees")
+)
+names(terrain_stack_utm33) <- c("elevation", "slope")
 
-# Create a simple raster template at ~500m for elevatr query (to get reasonable file sizes)
-# elevatr will return its native resolution, then we aggregate
-query_res <- 500
-template_query <- rast(
-  europe_ext_3035,
-  resolution = query_res,
-  crs = "EPSG:3035"
+cat("Terrain derived at 250 m in UTM33\n")
+
+## Template aligned to the EU grid origin ####
+
+# Same origin as template_5km so the two grids nest exactly: a 5 km cell boundary is
+# always also a 250 m cell boundary, which is what lets pl0_sampleEUabsences.R resample
+# 5 km bio10 onto the 250 m EU grid without introducing a half-cell shift.
+norway_ext_3035 <- project(
+  ext(dtm_mosaic_utm33),
+  from = crs(dtm_mosaic_utm33),
+  to = "EPSG:3035"
 )
 
-# Convert template to sf for elevatr
-query_bbox_sf <- as.polygons(template_query) %>%
-  st_as_sf() %>%
-  st_transform(crs = "EPSG:4326")
+origin_x <- xmin(template_5km)
+origin_y <- ymin(template_5km)
 
-# Fetch elevation from elevatr (z=9 is ~30m resolution)
-# This uses the default GEBCO source; adjust z parameter if needed for different resolution
-elev_raw <- get_elev_raster(query_bbox_sf, z = 9, clip = FALSE)
+norway_ext_aligned <- ext(c(
+  xmin = origin_x + floor((norway_ext_3035$xmin - origin_x) / 250) * 250,
+  xmax = origin_x + ceiling((norway_ext_3035$xmax - origin_x) / 250) * 250,
+  ymin = origin_y + floor((norway_ext_3035$ymin - origin_y) / 250) * 250,
+  ymax = origin_y + ceiling((norway_ext_3035$ymax - origin_y) / 250) * 250
+))
 
-# Reproject to EPSG:3035
-elev_3035 <- project(rast(elev_raw), template_250m, method = "bilinear")
+template_250m <- rast(norway_ext_aligned, resolution = 250, crs = "EPSG:3035")
 
-# Mask to domain
-elev_masked <- mask(elev_3035, mask_polygon)
-names(elev_masked) <- "elevation"
+## AR50 land cover ####
 
-cat("Elevation fetched and reprojected to 250m\n")
+# artype_60 is the Norwegian LABEL source (pl0_labelNorwayBlock.R), not a predictor;
+# pl2_createModelingFrame.R drops it before fitting so the response cannot leak.
+land_mask_ar50 <- rast("output/ar50_250m_land_EPSG3035.tif")
 
-# Calculate slope from elevation at 250m
-slope_250m <- terrain(elev_masked, v = "slope", unit = "degrees")
-names(slope_250m) <- "slope"
+ar50_250m <- rast("output/ar50_artype_layers/ar50_50m_EPSG3035_artype60.tif") |>
+  aggregate(fact = 5, fun = "mean", na.rm = FALSE) |>
+  resample(template_250m, method = "bilinear") |>
+  mask(land_mask_ar50)
+names(ar50_250m) <- "artype_60"
 
-cat("Slope calculated at 250m\n")
-
-# Combine all predictors ####
-
-predictors_current <- c(
-  chelsa_past_masked,
-  paleo_masked,
-  elev_masked,
-  slope_250m
+writeRaster(
+  ar50_250m,
+  filename = "output/ar50_250m_cover_EPSG3035.tif",
+  overwrite = TRUE,
+  names = names(ar50_250m),
+  gdal = c("COMPRESS=LZW", "TILED=YES")
 )
 
-predictors_future <- c(
-  chelsa_future_masked,
-  paleo_masked,
-  elev_masked,
-  slope_250m
-)
+## Climate and paleo over Norway ####
+
+norway_ext_wgs84 <- project(norway_ext_3035, from = "EPSG:3035", to = "EPSG:4326")
+
+terrain_250m <- project(terrain_stack_utm33, template_250m, method = "bilinear") |>
+  mask(land_mask_ar50)
+
+project_to_norway <- function(s, label) {
+  cropped <- crop(s, norway_ext_wgs84) |> mask_sentinels()
+  assert_plausible(cropped, label)
+  project(cropped, y = template_250m, method = "bilinear") |>
+    mask(land_mask_ar50)
+}
+
+chelsa_no_current <- project_to_norway(chelsa_past_stack, "CHELSA current, Norway crop")
+chelsa_no_future <- project_to_norway(chelsa_future_stack, "CHELSA future, Norway crop")
+
+paleo_no <- crop(paleo_stack, norway_ext_wgs84) |>
+  project(y = template_250m, method = "bilinear") |>
+  mask(land_mask_ar50)
+
+## Combine and correct ####
+
+predictors_current <- c(chelsa_no_current, terrain_250m, ar50_250m, paleo_no)
+predictors_future <- c(chelsa_no_future, terrain_250m, ar50_250m, paleo_no)
 
 stopifnot(nlyr(predictors_current) == nlyr(predictors_future))
-
-cat("Combined predictor stack has", nlyr(predictors_current), "layers\n")
-
-# Fix threshold-based variables with truncated ranges ####
-
-# Consistent NA-to-zero handling for all domains: gdd5, gdd10, gst, swe, gsp
-THRESHOLD_VARS <- c("gdd5", "gdd10", "gst", "swe", "gsp")
-
-record_settings(
-  "R/pl0_collatePredictors.R",
-  future_scenario = future_scenario,
-  future_gcm = FUTURE_GCM,
-  threshold_vars = THRESHOLD_VARS,
-  gsp_sentinel_bound_mm = MAX_PLAUSIBLE[["gsp"]],
-  terrain_resolution_m = 250,
-  elevation_source = "elevatr"
-)
+cat("Norway stack has", nlyr(predictors_current), "layers\n")
 
 predictors_current <- fill_threshold_na(
-  predictors_current,
-  THRESHOLD_VARS,
-  "unified model - current"
+  predictors_current, THRESHOLD_VARS, "Norway - current"
 )
 predictors_future <- fill_threshold_na(
-  predictors_future,
-  THRESHOLD_VARS,
-  "unified model - future"
+  predictors_future, THRESHOLD_VARS, "Norway - future"
 )
-
-# Write outputs ####
 
 writeRaster(
   predictors_current,
-  filename = "output/predictors_unified_250m_EUNorway_current_EPSG3035.tif",
+  filename = "output/predictors_regional_250m_Norway_current_EPSG3035.tif",
   overwrite = TRUE,
-  names = names(predictors_current)
+  names = names(predictors_current),
+  gdal = c("COMPRESS=LZW", "TILED=YES")
 )
 
 writeRaster(
   predictors_future,
-  filename = "output/predictors_unified_250m_EUNorway_future_EPSG3035.tif",
+  filename = "output/predictors_regional_250m_Norway_future_EPSG3035.tif",
   overwrite = TRUE,
-  names = names(predictors_future)
+  names = names(predictors_future),
+  gdal = c("COMPRESS=LZW", "TILED=YES")
 )
 
-cat("Unified predictor stacks written to:\n")
-cat("  - output/predictors_unified_250m_EUNorway_current_EPSG3035.tif\n")
-cat("  - output/predictors_unified_250m_EUNorway_future_EPSG3035.tif\n")
-
-# Quick visualization check
-if (interactive()) {
-  plot(
-    predictors_current[[c(
-      which(names(predictors_current) == "bio01"),
-      which(names(predictors_current) == "elevation"),
-      which(names(predictors_current) == "paleo_years_icefreeland")
-    )]]
-  )
-}
+cat("Predictor stacks written:\n")
+cat("  - output/predictors_global_5km_EUNorway_EPSG3035.tif\n")
+cat("  - output/predictors_regional_250m_Norway_current_EPSG3035.tif\n")
+cat("  - output/predictors_regional_250m_Norway_future_EPSG3035.tif\n")
 
 # Spatial coverage validation ####
 
-# Check spatial coverage across both current and future stacks
-current_counts <- global(predictors_current, "notNA")
-current_counts$layer <- names(predictors_current)
-
-future_counts <- global(predictors_future, "notNA")
-future_counts$layer <- names(predictors_future)
-
-# Join the two tables
 coverage_comparison <- left_join(
-  current_counts,
-  future_counts,
+  global(predictors_current, "notNA") |>
+    mutate(layer = names(predictors_current)),
+  global(predictors_future, "notNA") |>
+    mutate(layer = names(predictors_future)),
   by = "layer",
   suffix = c("_current", "_future")
 ) |>
@@ -462,20 +315,13 @@ coverage_comparison <- left_join(
   arrange(notNA_current) |>
   select(layer, notNA_current, notNA_future, equal)
 
-cat("\nSpatial coverage comparison (sorted by current coverage, ascending):\n")
+cat("\nNorway coverage (sorted by current coverage, ascending):\n")
 print(coverage_comparison, row.names = FALSE)
 
-# Check for inconsistencies within each stack
-if (
-  !all(
-    coverage_comparison$notNA_current == coverage_comparison$notNA_current[1]
-  )
-) {
+if (!all(coverage_comparison$notNA_current == coverage_comparison$notNA_current[1])) {
   cat("\nWARNING: Current predictors have inconsistent spatial coverage\n")
 }
-if (
-  !all(coverage_comparison$notNA_future == coverage_comparison$notNA_future[1])
-) {
+if (!all(coverage_comparison$notNA_future == coverage_comparison$notNA_future[1])) {
   cat("\nWARNING: Future predictors have inconsistent spatial coverage\n")
 }
 if (!all(coverage_comparison$equal)) {
@@ -484,22 +330,11 @@ if (!all(coverage_comparison$equal)) {
 
 # Clean up
 rm(
-  chelsa_past_stack,
-  chelsa_past_cropped,
-  chelsa_past_3035,
-  chelsa_past_masked,
-  chelsa_future_stack,
-  chelsa_future_cropped,
-  chelsa_future_3035,
-  chelsa_future_masked,
-  paleo_stack,
-  paleo_cropped,
-  paleo_3035,
-  paleo_masked,
-  elev_raw,
-  elev_3035,
-  predictors_current,
-  predictors_future
+  chelsa_past_stack, chelsa_future_stack, paleo_stack,
+  chelsa_eu_cropped, chelsa_eu_3035, paleo_eu_3035, predictors_eu,
+  dtm_mosaic_utm33, dtm_250m_utm33, terrain_stack_utm33, terrain_250m,
+  chelsa_no_current, chelsa_no_future, paleo_no,
+  predictors_current, predictors_future
 )
 terra::tmpFiles(remove = TRUE)
 
