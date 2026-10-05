@@ -57,6 +57,11 @@ source("R/config.R")
 
 SCENARIOS <- c(current = "output/pl2/scenario_current.tif",
                future = "output/pl2/scenario_future.tif")
+# The milder scenario(s) are named "future_<ssp>", after the primary's "future".
+for (ssp in setdiff(FUTURE_SCENARIOS, FUTURE_SCENARIO)) {
+  SCENARIOS[paste0("future", scenario_suffix(ssp))] <-
+    paste0("output/pl2/scenario_future", scenario_suffix(ssp), ".tif")
+}
 
 # Layers written per scenario, and the profile column each is read from.
 PROFILE_LAYERS <- c(

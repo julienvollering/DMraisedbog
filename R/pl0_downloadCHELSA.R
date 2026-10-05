@@ -37,7 +37,7 @@ future_period <- "2071-2100"
 
 # Climate scenario for future projections (CHELSA CMIP6: ssp126, ssp370, ssp585)
 scenario <- FUTURE_SCENARIO # R/config.R, shared with pl0_collatePredictors.R
-ssp_scenarios <- c(scenario)
+ssp_scenarios <- FUTURE_SCENARIOS # primary + the milder leg; `scenario` is the primary only
 
 ### Spatial extent ####
 
@@ -212,74 +212,76 @@ cat("\n")
 
 ### Future period ####
 
-cat(
-  "Downloading future period (",
-  future_period,
-  ", ", toupper(scenario), ") variables...\n",
-  sep = ""
-)
-
-for (var in variables_to_download) {
-  cat("  Downloading", var, "...\n")
-
-  # Construct filename following CHELSA CMIP6 naming convention
-  # Format: CHELSA_gfdl-esm4_<scenario>_bio01_2071-2100_V.2.1.tif
-  chelsa_filename <- paste0(
-    "CHELSA_",
-    tolower(gcm_model),
-    "_", scenario, "_",
-    var,
-    "_2071-2100_V.2.1.tif"
+for (ssp in ssp_scenarios) {
+  cat(
+    "Downloading future period (",
+    future_period,
+    ", ", toupper(ssp), ") variables...\n",
+    sep = ""
   )
 
-  # Full URL to the file
-  # Structure: chelsa/global/bioclim/{variable}/{timeperiod}/{MODEL}/{scenario}/filename
-  file_url <- file.path(
-    future_bioclim_url,
-    var,
-    "2071-2100",
-    gcm_model,
-    scenario,
-    chelsa_filename
-  )
+  for (var in variables_to_download) {
+    cat("  Downloading", var, "...\n")
 
-  # Local output path
-  output_file <- file.path("data/CHELSA", future_period, chelsa_filename)
+    # Construct filename following CHELSA CMIP6 naming convention
+    # Format: CHELSA_gfdl-esm4_<scenario>_bio01_2071-2100_V.2.1.tif
+    chelsa_filename <- paste0(
+      "CHELSA_",
+      tolower(gcm_model),
+      "_", ssp, "_",
+      var,
+      "_2071-2100_V.2.1.tif"
+    )
 
-  # Skip if file already exists
-  if (file.exists(output_file)) {
-    cat("    Already exists, skipping\n")
-    next
-  }
+    # Full URL to the file
+    # Structure: chelsa/global/bioclim/{variable}/{timeperiod}/{MODEL}/{scenario}/filename
+    file_url <- file.path(
+      future_bioclim_url,
+      var,
+      "2071-2100",
+      gcm_model,
+      ssp,
+      chelsa_filename
+    )
 
-  # Download the file with extended timeout (5 minutes for large files)
-  download_status <- tryCatch(
-    {
-      download.file(
-        file_url,
-        output_file,
-        mode = "wb",
-        quiet = TRUE,
-        timeout = 300
-      )
-    },
-    error = function(e) {
-      return(1)
-    }
-  )
+    # Local output path
+    output_file <- file.path("data/CHELSA", future_period, chelsa_filename)
 
-  # Check if download was successful by verifying file exists and has content
-  if (file.exists(output_file) && file.size(output_file) > 0) {
-    cat("    Saved to", output_file, "\n")
-  } else {
-    cat("    ERROR: Download failed or file is empty\n")
+    # Skip if file already exists
     if (file.exists(output_file)) {
-      file.remove(output_file) # Remove empty file
+      cat("    Already exists, skipping\n")
+      next
+    }
+
+    # Download the file with extended timeout (5 minutes for large files)
+    download_status <- tryCatch(
+      {
+        download.file(
+          file_url,
+          output_file,
+          mode = "wb",
+          quiet = TRUE,
+          timeout = 300
+        )
+      },
+      error = function(e) {
+        return(1)
+      }
+    )
+
+    # Check if download was successful by verifying file exists and has content
+    if (file.exists(output_file) && file.size(output_file) > 0) {
+      cat("    Saved to", output_file, "\n")
+    } else {
+      cat("    ERROR: Download failed or file is empty\n")
+      if (file.exists(output_file)) {
+        file.remove(output_file) # Remove empty file
+      }
     }
   }
-}
 
-cat("\n")
+  cat("\n")
+}
 
 ### Paleo period ####
 
@@ -317,7 +319,7 @@ paleo_bioclim_vars <- c(
 # Base URL for CHELSA-TRACE (note: different server than CHELSA v2!)
 record_settings(
   "R/pl0_downloadCHELSA.R",
-  scenario = scenario,
+  scenario = ssp_scenarios,
   gcm_model = gcm_model,
   current_period = current_period,
   future_period = future_period,
