@@ -483,6 +483,10 @@ rel_agg <- aggregate(rel_fut[[c("offset", "DI", "exp_recall_bog", "exp_fpr_bog")
                      fact = AGG, fun = "mean", na.rm = TRUE)
 rel_df <- as.data.frame(rel_agg, xy = TRUE)
 
+# The dissimilarity index is an applicability mask, not a panel: cells beyond the AOA
+# threshold are blanked in the expected-recall panel, so no skill is read there.
+rel_df$exp_recall_bog[rel_df$DI > ep$aoa_threshold] <- NA
+
 p6a <- ggplot() +
   geom_raster(data = rel_df, aes(x, y, fill = offset)) +
   scale_fill_gradient2(
@@ -494,20 +498,15 @@ p6a <- ggplot() +
   labs(title = "A") +
   theme_map
 p6b <- ggplot() +
-  geom_raster(data = rel_df, aes(x, y, fill = DI)) +
-  scale_fill_viridis_c(option = "cividis", name = "dissimilarity\nindex") +
+  geom_raster(data = rel_df, aes(x, y, fill = exp_recall_bog)) +
+  scale_fill_viridis_c(
+    limits = c(0, 1), name = "expected recall\nof raised bog", na.value = "grey85"
+  ) +
   geom_sf(data = footprint, fill = NA, colour = "white", linewidth = 0.2) +
   coord_sf(expand = FALSE) +
   labs(title = "B") +
   theme_map
-p6c <- ggplot() +
-  geom_raster(data = rel_df, aes(x, y, fill = exp_recall_bog)) +
-  scale_fill_viridis_c(limits = c(0, 1), name = "expected recall\nof raised bog") +
-  geom_sf(data = footprint, fill = NA, colour = "white", linewidth = 0.2) +
-  coord_sf(expand = FALSE) +
-  labs(title = "C") +
-  theme_map
-save_fig(p6a + p6b + p6c, "fig_reliability", 7.5, 5.2)
+save_fig(p6a + p6b, "fig_reliability", 7.5, 3.6)
 
 ## Table 1: training frame ####
 
