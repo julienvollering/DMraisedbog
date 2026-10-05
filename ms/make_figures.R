@@ -133,21 +133,19 @@ save_fig(p1a + p1b + plot_layout(widths = c(1.1, 1)), "fig_studyarea", 7.5, 4.6)
 
 mf <- read_csv(
   "output/pl2/modeling_frame_regional.csv",
-  col_select = c("scenario", "response", "dataset", "x", "y", "bio10", "gsp"),
+  col_select = c("scenario", "response", "dataset", "x", "y", "bio10", "gsp", "elevation", "slope"),
   show_col_types = FALSE
 )
 train <- mf |> filter(scenario == "current")
 future_xy <- mf |> filter(scenario == "future") |> select(x, y, bio10, gsp)
 
-# DATA-QUALITY FLAG (found 2026-09-12 while drawing this figure). CHELSA's gsp layer
-# stores no-data as 4294967295 (x 0.1 on read = 4.29e8) where the growing season has
-# zero length, and pl0_collatePredictors.R only converts NA -> 0 for gdd10, gdd5, gst and
-# swe -- gsp is not on that list, so the code is carried into the frame as a real value
-# (and bilinear resampling smears it into intermediate values). Affected rows are cold,
-# high-elevation non-peat cells (bio10 <= 16.8, median elevation ~1,800 m); no Norwegian
-# bog row is affected. They are dropped from the scatter only; the pipeline outputs
-# themselves are reported as they stand, with a TODO in the manuscript.
-GSP_MAX_PLAUSIBLE <- 5000
+# GUARD: CHELSA's gsp layer stores no-data as 4294967295 (x 0.1 on read = 4.29e8) where the
+# growing season has zero length. pl0_collatePredictors.R now masks that sentinel and
+# stops on implausible values, so the counts below should be zero (they are written to
+# study_numbers.csv and ms.qmd refuses to render if they are not). The filter on the
+# scatter is kept as a second guard.
+# Same bound as MAX_PLAUSIBLE["gsp"] in R/config.R. The wettest real cells are ~6,000 mm.
+GSP_MAX_PLAUSIBLE <- 1e5
 numbers$gsp_nodata_rows_training <- sum(train$gsp > GSP_MAX_PLAUSIBLE)
 numbers$gsp_nodata_rows_training_bog <- sum(train$gsp > GSP_MAX_PLAUSIBLE & train$response == "bog")
 numbers$gsp_nodata_rows_future <- sum(future_xy$gsp > GSP_MAX_PLAUSIBLE)
@@ -156,6 +154,30 @@ future_bog <- train |>
   filter(response == "bog", dataset == "NO") |>
   select(x, y) |>
   inner_join(future_xy, by = c("x", "y"))
+
+# Frame-derived numbers quoted in the manuscript text.
+bog_tr <- train |> filter(response == "bog")
+bio10_summary <- function(d) c(min = min(d$bio10), med = median(d$bio10), max = max(d$bio10))
+numbers$no_bog_bio10_min <- bio10_summary(bog_tr |> filter(dataset == "NO"))[["min"]]
+numbers$no_bog_bio10_median <- bio10_summary(bog_tr |> filter(dataset == "NO"))[["med"]]
+numbers$no_bog_bio10_max <- bio10_summary(bog_tr |> filter(dataset == "NO"))[["max"]]
+numbers$eu_bog_bio10_min <- bio10_summary(bog_tr |> filter(dataset == "EU"))[["min"]]
+numbers$eu_bog_bio10_max <- bio10_summary(bog_tr |> filter(dataset == "EU"))[["max"]]
+numbers$no_train_bio10_max <- max(train$bio10[train$dataset == "NO"])
+numbers$eu_absence_bio10_max <- max(train$bio10[train$dataset == "EU" & train$response != "bog"])
+numbers$pooled_bog_bio10_max <- max(bog_tr$bio10)
+numbers$future_bog_bio10_min <- min(future_bog$bio10)
+numbers$future_bog_bio10_median <- median(future_bog$bio10)
+numbers$future_bog_bio10_max <- max(future_bog$bio10)
+numbers$future_bog_share_above_pooled_bog_max <-
+  mean(future_bog$bio10 > max(bog_tr$bio10))
+warm18 <- train |> filter(bio10 > 18)
+numbers$warm18_n <- nrow(warm18)
+numbers$warm18_elevation_min <- min(warm18$elevation)
+numbers$warm18_elevation_max <- max(warm18$elevation)
+otherpeat <- train |> filter(response == "otherpeat")
+numbers$otherpeat_flat_share_NO <- mean(otherpeat$slope[otherpeat$dataset == "NO"] < 1)
+numbers$otherpeat_flat_share_EU <- mean(otherpeat$slope[otherpeat$dataset == "EU"] < 1)
 
 set.seed(42)
 bg <- train |>
@@ -547,9 +569,19 @@ save_tbl(frame, "tbl_frame")
 
 ## Table: partitions ####
 
+# The partition axis is the top-VI predictor among the materially shifting ones
+# (pl2_partitionDataByTopFeature.R rule), so it is recovered from the weights file rather
+# than assumed to be bio10.
+w_axis <- read_csv("output/pl2/weights_feature_data_partitioning.csv", show_col_types = FALSE) |>
+  filter(method == "Balanced Random Forest", material)
+PART_AXIS <- w_axis$feature[which.max(w_axis$median)]
+
 part <- read_csv(
   "output/pl2/modeling_frame_regional_partitioned_topfeature.csv",
-  col_select = c("scenario", "partition", "envelope_side", "response", "dataset", "bio10"),
+  col_select = c(
+    "scenario", "partition", "envelope_side", "response", "dataset", "x", "y",
+    "bio10", all_of(PART_AXIS)
+  ),
   show_col_types = FALSE
 ) |>
   filter(scenario == "current")
@@ -557,6 +589,11 @@ part <- read_csv(
 tbl_part <- part |>
   group_by(partition) |>
   summarise(
+    axis_feature = PART_AXIS,
+    axis_min = round(min(.data[[PART_AXIS]]), 2),
+    axis_max = round(max(.data[[PART_AXIS]]), 2),
+    axis_bog_min = round(min(.data[[PART_AXIS]][response == "bog"]), 2),
+    axis_bog_max = round(max(.data[[PART_AXIS]][response == "bog"]), 2),
     bio10_min = round(min(bio10), 2),
     bio10_max = round(max(bio10), 2),
     bog_bio10_min = round(min(bio10[response == "bog"]), 2),
@@ -569,6 +606,32 @@ tbl_part <- part |>
     .groups = "drop"
   )
 save_tbl(tbl_part, "tbl_partitions")
+
+# Held-out raised-bog cells that fall inside the 10th-90th percentile band of the mapped
+# bogs' 2071-2100 offset, by CV arm: how much calibration data each arm has where the
+# projection is read. Offsets follow pl2_fitErrorProfiles.R (row bio10 minus the median bio10
+# of the bogs in the fold's training set; reference per fold from error_profiles.rds).
+stopifnot(!anyDuplicated(part[c("x", "y", "dataset")]))
+cvp <- read_csv(
+  "output/pl2/predictions_cv_topfeature.csv",
+  col_select = c("arm", "train_partition", "x", "y", "dataset", "response"),
+  col_types = cols(.default = col_guess(), train_partition = col_character()),
+  show_col_types = FALSE
+) |>
+  filter(response == "bog") |>
+  left_join(part |> select(x, y, dataset, bio10), by = c("x", "y", "dataset")) |>
+  left_join(
+    ep$fold_ref |> mutate(train_partition = as.character(train_partition)) |>
+      distinct(arm, train_partition, ref),
+    by = c("arm", "train_partition")
+  ) |>
+  mutate(offset = bio10 - ref)
+stopifnot(!anyNA(cvp$offset))
+band <- quantile(lyng_off_fut, c(0.10, 0.90), na.rm = TRUE)
+numbers$band_bog_rows_pairwise <-
+  sum(cvp$arm == "pairwise" & cvp$offset >= band[[1]] & cvp$offset <= band[[2]])
+numbers$band_bog_rows_lopo <-
+  sum(cvp$arm == "lopo" & cvp$offset >= band[[1]] & cvp$offset <= band[[2]])
 
 numbers$rows_above_envelope <- sum(part$envelope_side == "above")
 numbers$rows_below_envelope <- sum(part$envelope_side == "below")
