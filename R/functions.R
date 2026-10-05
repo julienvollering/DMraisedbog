@@ -31,7 +31,7 @@ assert_fresher <- function(newer, older) {
 # its own list.files()/str_extract() is how the two paths would drift apart on layer
 # naming or on which paleo file is excluded -- so they share these.
 
-chelsa_native_stack <- function(scenario = c("current", "future")) {
+chelsa_native_stack <- function(scenario = c("current", "future"), ssp = FUTURE_SCENARIO) {
   scenario <- match.arg(scenario)
   if (scenario == "current") {
     dir <- "data/CHELSA/1981-2010"
@@ -39,7 +39,7 @@ chelsa_native_stack <- function(scenario = c("current", "future")) {
     name_rx <- "(?<=CHELSA_).+(?=_1981)"
   } else {
     dir <- "data/CHELSA/2071-2100"
-    prefix <- paste0("CHELSA_", tolower(FUTURE_GCM), "_", FUTURE_SCENARIO, "_")
+    prefix <- paste0("CHELSA_", tolower(FUTURE_GCM), "_", ssp, "_")
     pattern <- paste0(prefix, ".*\\.tif$")
     name_rx <- paste0("(?<=", prefix, ").+(?=_2071)")
   }

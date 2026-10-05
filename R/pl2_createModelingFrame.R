@@ -98,6 +98,20 @@ writeRaster(preds_fut, "output/pl2/scenario_future.tif",
   overwrite = TRUE, gdal = gdal_opts
 )
 
+# Milder-scenario projection stacks (FUTURE_SCENARIOS in R/config.R). Projection only: the
+# frame below carries the primary scenario's future rows and nothing is fitted on any
+# future climate.
+for (ssp in setdiff(FUTURE_SCENARIOS, FUTURE_SCENARIO)) {
+  preds_ssp <- rast(paste0(
+    "output/predictors_regional_250m_Norway_future", scenario_suffix(ssp), "_EPSG3035.tif"
+  ))
+  writeRaster(
+    preds_ssp[[names(preds_cur)]],
+    paste0("output/pl2/scenario_future", scenario_suffix(ssp), ".tif"),
+    overwrite = TRUE, gdal = gdal_opts
+  )
+}
+
 ## Norway block ####
 
 no_block <- read_csv("output/pl0/no_block_coords.csv", show_col_types = FALSE)

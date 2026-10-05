@@ -90,7 +90,10 @@ scripts_pl2 <- c(
   # Reliability mapping. Both read the CV output above rather than generating their own,
   # which is the whole reason pl3 collapsed into this stage.
   "R/pl2_fitErrorProfiles.R", # skill vs DI, cluster-bootstrap CIs, AOA cut
-  "R/pl2_mapReliability.R" # apply those curves to the projection domain
+  "R/pl2_mapReliability.R", # apply those curves to the projection domain
+  # Parallel interpretation leg: the production model under the milder scenario (SSP1-2.6)
+  # against the primary one. Needs the reliability rasters of both, hence last.
+  "R/pl2_compareScenarios.R" # bog area, transitions and persistence, SSP1-2.6 vs SSP3-7.0
 )
 
 scripts <- c(scripts_pl0, scripts_pl2)
@@ -122,7 +125,9 @@ SUMMARY_FILES <- c(
   "output/pl2/error_profiles_by_bin.csv",
   "output/pl2/error_profiles_ci.csv",
   "output/pl2/reliability_summary.csv",
-  "output/pl2/reliability_at_lyngstad.csv"
+  "output/pl2/reliability_at_lyngstad.csv",
+  "output/pl2/scenario_comparison_area.csv",
+  "output/pl2/scenario_comparison_persistence_cells.csv"
 )
 PREVIOUS_DIR <- "output/_previous"
 dir.create(PREVIOUS_DIR, showWarnings = FALSE, recursive = TRUE)

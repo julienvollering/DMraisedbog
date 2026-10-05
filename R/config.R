@@ -21,6 +21,17 @@
 FUTURE_SCENARIO <- "ssp370"
 FUTURE_GCM <- "GFDL-ESM4"
 
+# The milder parallel leg. The model is fitted once and never sees either scenario, so
+# FUTURE_SCENARIO stays the primary (its files and layers keep their unsuffixed names:
+# scenario_future.tif, future_* prediction layers) and every extra scenario is a projection
+# written next to it with a "_<ssp>" suffix. Download and predictor collation loop over
+# FUTURE_SCENARIOS; nothing upstream of the projection depends on which scenarios exist.
+MILD_SCENARIO <- "ssp126"
+FUTURE_SCENARIOS <- c(FUTURE_SCENARIO, MILD_SCENARIO)
+
+# "" for the primary scenario, "_ssp126" for the others: the suffix on file and layer names.
+scenario_suffix <- function(ssp) if (ssp == FUTURE_SCENARIO) "" else paste0("_", ssp)
+
 # The 3-class response, in the order every probability matrix, confusion table and
 # prediction layer uses.
 RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")

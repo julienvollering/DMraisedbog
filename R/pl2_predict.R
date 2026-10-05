@@ -178,6 +178,19 @@ writeRaster(
 )
 cat("Saved predictions to output/pl2/rf_local_pred_brf.tif\n\n")
 
+# Milder scenario(s): the same model under a different future climate. One file per
+# scenario, so rf_local_pred_brf.tif keeps the layout every existing reader expects.
+for (ssp in setdiff(FUTURE_SCENARIOS, FUTURE_SCENARIO)) {
+  cat("Predicting", ssp, "...\n")
+  ssp_rasters <- rast(paste0("output/pl2/scenario_future", scenario_suffix(ssp), ".tif"))
+  stopifnot(identical(names(ssp_rasters), names(current_rasters)))
+  pred_ssp <- terra::predict(ssp_rasters, model_brf, fun = predfun, na.rm = TRUE)
+  names(pred_ssp) <- paste0("future", scenario_suffix(ssp), "_", RESPONSE_LEVELS)
+  ssp_pred_file <- paste0("output/pl2/rf_local_pred_brf", scenario_suffix(ssp), ".tif")
+  writeRaster(pred_ssp, ssp_pred_file, overwrite = TRUE)
+  cat("Saved predictions to", ssp_pred_file, "\n\n")
+}
+
 plot(pred_combined)
 
 ## Save production model ####

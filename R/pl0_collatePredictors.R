@@ -50,6 +50,7 @@ terra::tmpFiles(remove = TRUE)
 record_settings(
   "R/pl0_collatePredictors.R",
   future_scenario = FUTURE_SCENARIO,
+  mild_scenario = MILD_SCENARIO,
   future_gcm = FUTURE_GCM,
   threshold_vars = THRESHOLD_VARS,
   gsp_sentinel_bound_mm = MAX_PLAUSIBLE[["gsp"]],
@@ -300,6 +301,34 @@ cat("Predictor stacks written:\n")
 cat("  - output/predictors_global_5km_EUNorway_EPSG3035.tif\n")
 cat("  - output/predictors_regional_250m_Norway_current_EPSG3035.tif\n")
 cat("  - output/predictors_regional_250m_Norway_future_EPSG3035.tif\n")
+
+## Milder scenario(s) ####
+
+# Same terrain, land cover and paleo layers as the primary scenario; only the CHELSA
+# future climate differs. Written next to the primary stack with a "_<ssp>" suffix, so
+# every file the primary leg reads keeps its name.
+for (ssp in setdiff(FUTURE_SCENARIOS, FUTURE_SCENARIO)) {
+  chelsa_ssp <- chelsa_native_stack("future", ssp = ssp) |>
+    project_to_norway(paste0("CHELSA ", ssp, ", Norway crop"))
+  predictors_ssp <- c(chelsa_ssp, terrain_250m, ar50_250m, paleo_no) |>
+    fill_threshold_na(THRESHOLD_VARS, paste0("Norway - ", ssp))
+  stopifnot(identical(names(predictors_ssp), names(predictors_current)))
+  ssp_file <- paste0(
+    "output/predictors_regional_250m_Norway_future", scenario_suffix(ssp), "_EPSG3035.tif"
+  )
+  writeRaster(
+    predictors_ssp,
+    filename = ssp_file,
+    overwrite = TRUE,
+    names = names(predictors_ssp),
+    gdal = c("COMPRESS=LZW", "TILED=YES")
+  )
+  cat("  -", ssp_file, "\n")
+  stopifnot(identical(
+    global(predictors_ssp, "notNA")$notNA, global(predictors_future, "notNA")$notNA
+  ))
+  rm(chelsa_ssp, predictors_ssp)
+}
 
 # Spatial coverage validation ####
 
