@@ -33,7 +33,7 @@ lyngstad_offset_future_median,3.1669058799743652
 lyngstad_offset_future_q90,3.7936144828796388
 lyngstad_offset_current_median,-0.34689760208129883
 lyngstad_share_beyond_bog_edge,0.06205673758865248
-aoa_threshold,1.9616927457785414
+aoa_threshold,1.9762083838350024
 lyngstad_pbog_current_mean,0.9110910609960153
 lyngstad_pbog_future_mean,0.16344753977738566
 lyngstad_pbog_change_median,-0.8200000151991844
@@ -41,7 +41,7 @@ lyngstad_pbog_change_q05,-0.8873083229797583
 lyngstad_pbog_change_q95,-0.3892999935522675
 lyngstad_share_declining,0.9911347517730497
 lyngstad_future_pbog_above_0.5,0
-band_bog_rows_pairwise,221
-band_bog_rows_lopo,34
-rows_above_envelope,1919
-rows_below_envelope,38191
+band_bog_rows_pairwise,273
+band_bog_rows_lopo,39
+rows_above_envelope,2054
+rows_below_envelope,35519
