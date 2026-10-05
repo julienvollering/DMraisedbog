@@ -16,6 +16,8 @@ format:
       text: |
         % \usepackage{setspace}
         % \doublespacing
+execute:
+  echo: false
 author:
   - name: Julien Vollering
     affiliations:
@@ -59,24 +61,174 @@ DRAFTING NOTES (delete before submission)
 
 * This draft covers Materials and methods and Results only. Introduction and Discussion are
   placeholders. Search for "TODO" for every point that needs input.
-* It describes the pipeline as it stood on 2026-09-12 (R/RUNALL.R: 24 scripts, pl0 + pl2).
-  Retired designs (hierarchical global/local cascade, binary response with the AR50 mask,
-  RFQ, separate pl3 cross-validation, DI as the skill axis) are deliberately not mentioned.
-* Figures and tables are produced by ms/make_figures.R from pipeline outputs; the numbers in
-  the text were transcribed from output/pl0 and output/pl2 on the same date.
-* DATA-QUALITY FLAG, found while drawing @fig-occupancy: 8,987 training rows (27% of Norwegian
-  non-peat, 12% of European non-peat, all cold high-elevation cells with bio10 <= 12.5 C)
-  carry CHELSA's no-data code in growing-season precipitation (gsp), read as ~4.3e8 mm.
-  pl0_collatePredictors.R converts NA to 0 for gdd10, gdd5, gst and swe but not gsp. No
-  bog row in Norway is affected and the warm columns of the occupancy table are untouched,
-  but the cold-wet cell of that table is inflated, gsp's contribution to the DI ruler is
-  effectively nil (its scaling SD is dominated by the code), and the model has seen the code
-  as a feature value. FIXED in R/pl0_collatePredictors.R on 2026-09-14 (sentinel masked
-  before projection, gsp added to the NA-to-zero step, plausibility guard); the pipeline
-  has NOT yet been rerun, so every number and figure in this draft still reflects the
-  affected frame. Rerun R/RUNALL.R from pl0_collatePredictors.R onward, then
-  ms/make_figures.R, then re-check every number marked TODO(gsp).
+* It describes the pipeline as of the full rerun of 2026-09-16 (output/run_manifest.csv;
+  R/RUNALL.R: 24 scripts, pl0 + pl2). Retired designs (hierarchical global/local cascade,
+  binary response with the AR50 mask, RFQ, separate pl3 cross-validation, DI as the skill
+  axis) are deliberately not mentioned.
+* Figures and tables are produced by ms/make_figures.R from pipeline outputs. NUMBERS IN THE
+  TEXT ARE NOT TRANSCRIBED: Results (and every Methods number that has a source file) are
+  inline R, read in the `setup` chunk below from ms/tables/*.csv and from the pipeline CSVs
+  listed in output/run_manifest.csv. The setup chunk refuses to render if the latest run of
+  any pipeline script failed, if ms/tables is older than the pipeline outputs (rerun
+  ms/make_figures.R), or if a qualitative claim the prose relies on no longer holds
+  (guards are marked GUARD).
+* Methods numbers still typed by hand because no output file carries them (check after any
+  rerun of pl0): 1,137 Norwegian bog cells and the 1.76 million absence candidates; the AR50
+  label counts (1.32 million non-peat, 61,850 other peatland, 177,860 mixed, 197,190 without
+  value); the land-use screen retention percentages; 524 European presence cells. Design
+  settings (0.5 / 0.1 AR50 fractions, 25 absences per bog cell, 1 degree strata, 1,000 trees)
+  are in output/pipeline_settings.csv and are also typed. The numbers in the YAML abstract
+  placeholder are likewise not coded.
+* The gsp no-data sentinel (found 2026-09-12) is fixed and the pipeline was rerun on
+  2026-09-16: no training or projection row carries it any more (guarded below). The fix
+  changed one thing the old prose relied on: gsp now shifts by about one standard deviation
+  under the scenario (it was 0.36 SD while the sentinel inflated its SD), so "precipitation
+  barely changes" is gone from Methods and Results. The header of R/pl2_exploreOccupancy.R
+  still says every precipitation variable shifts by less than 0.4 SD.
 -->
+
+```{r}
+#| label: setup
+#| include: false
+# Every number quoted in the prose is read here. Paths are relative to ms/
+# (quarto render ms/ms.qmd).
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr)
+
+OUT <- "../output"
+rd <- function(...) read_csv(file.path(...), show_col_types = FALSE)
+
+## GUARD: the pipeline is complete and the manuscript tables are not older than it ####
+man <- rd(OUT, "run_manifest.csv")
+last_run <- man |> arrange(end) |> group_by(script) |> slice_tail(n = 1) |> ungroup()
+stopifnot(
+  "latest run of a pipeline script failed (output/run_manifest.csv)" =
+    all(last_run$status == "ok")
+)
+produced <- file.path(OUT, unlist(strsplit(last_run$files[nzchar(last_run$files)], ";")))
+produced <- produced[file.exists(produced)]
+stopifnot(
+  "ms/tables is older than the pipeline outputs: rerun ms/make_figures.R" =
+    all(file.mtime(list.files("tables", full.names = TRUE)) >= max(file.mtime(produced)))
+)
+
+## Formatting helpers ####
+n0 <- function(x) format(round(x), big.mark = ",", trim = TRUE, scientific = FALSE)
+f1 <- function(x, d = 1) formatC(x, format = "f", digits = d)
+f2 <- function(x) f1(x, 2)
+pc <- function(x, d = 0) paste0(formatC(100 * x, format = "f", digits = d), "%")
+sg <- function(x, d = 1) formatC(x, format = "f", digits = d, flag = "+")
+fp <- function(x) paste0(formatC(x, format = "f", digits = ifelse(x < 1, 2, 1)), "%") # x in percent
+cap1 <- function(x) sub("^(.)", "\\U\\1", x, perl = TRUE)
+
+## Tables and CSVs ####
+sn <- tibble::deframe(rd("tables", "study_numbers.csv"))
+S <- function(k) unname(sn[[k]])
+stopifnot(
+  "gsp no-data code present in the training or projection frame" =
+    S("gsp_nodata_rows_training") == 0 && S("gsp_nodata_rows_future") == 0
+)
+
+frame <- rd("tables", "tbl_frame.csv")
+fr <- function(resp, col = "total") frame[[col]][frame$response == resp]
+n_all <- sum(frame$total)
+
+cv <- rd("tables", "tbl_cv.csv")
+cvv <- function(arm, slice, col) cv[[col]][cv$arm == arm & cv$slice == slice]
+
+ci <- rd(OUT, "pl2", "error_profiles_ci.csv")
+bn <- function(b, metric, what = "estimate") ci[[what]][ci$bin == b & ci$metric == metric]
+bci <- function(b, metric) {
+  sprintf("%s (%s--%s)", f2(bn(b, metric)), f2(bn(b, metric, "lower")), f2(bn(b, metric, "upper")))
+}
+bins <- ci |> distinct(bin, n, n_bog, n_folds, axis_median, axis_lo, axis_hi)
+WARM <- max(bins$bin)
+cmp <- rd(OUT, "pl2", "error_profiles_by_bin_compare.csv")
+bin_of <- function(x) bins$bin[bins$axis_lo <= x & x <= bins$axis_hi][1]
+dip <- rd(OUT, "pl2", "error_profiles_by_bin_di.csv")
+rng <- function(x) if (min(x) == max(x)) as.character(min(x)) else paste(min(x), "to", max(x))
+
+occ <- rd("tables", "tbl_occupancy.csv")
+oc <- function(b, g, col) occ[[col]][occ$bio10_band == b & occ$gsp_band == g]
+WET <- "> 650"
+fut_wet <- sum(occ$future_bog_pct[occ$gsp_band == WET]) / 100
+fut_warm <- sum(occ$future_bog_pct[occ$bio10_band == ">18"]) / 100
+occ12 <- rd(OUT, "pl2", "occupancy_grid_bio12.csv")
+warm_cells <- rd(OUT, "pl2", "occupancy_warm_evidence_cells.csv")
+
+trans <- rd("tables", "tbl_transitions.csv")
+shr <- rd("tables", "tbl_domain_class_share.csv")
+sh <- function(scn, cls, col = "majority_share") shr[[col]][shr$scenario == scn & shr$class == cls]
+pr <- rd("tables", "tblS_predictors.csv")
+shift <- function(v) pr$projected_shift_sd[pr$predictor == v]
+oob <- rd(OUT, "pl2", "oob_metrics_production.csv")
+ob <- function(cls, col) oob[[col]][oob$class == cls]
+rel <- rd(OUT, "pl2", "reliability_summary.csv")
+rl <- function(scn, col) rel[[col]][rel$scenario == scn]
+relL <- rd(OUT, "pl2", "reliability_at_lyngstad.csv")
+rL <- function(scn, col) relL[[col]][relL$scenario == scn]
+cov <- rd(OUT, "pl2", "cv_novelty_coverage.csv")
+cvcov <- function(q) cov$cv_heldout[cov$arm == "pairwise" & cov$quantile == q]
+part <- rd("tables", "tbl_partitions.csv")
+
+## Predictors that shift most (model-free section) ####
+q15 <- rd(OUT, "pl2", "occupancy_quantiles_by_group.csv") |>
+  select(feature, group, q05, median, q95) |>
+  pivot_wider(
+    names_from = group, values_from = c(q05, median, q95),
+    names_glue = "{.value}_{gsub(' ', '_', group)}"
+  )
+top15 <- q15$feature
+PRECIP <- c(sprintf("bio%02d", 12:19), "gsp")
+stopifnot( # GUARD: the prose says gsp is the only precipitation variable among them
+  "gsp is no longer the only precipitation variable among the strongly shifting predictors" =
+    identical(intersect(top15, PRECIP), "gsp")
+)
+n_beyond <- sum(
+  q15$median_future_bog < q15$q05_current_bog | q15$median_future_bog > q15$q95_current_bog
+)
+n_in_np <- sum(
+  q15$median_future_bog >= q15$q05_current_nonpeat & q15$median_future_bog <= q15$q95_current_nonpeat
+)
+qv <- function(f, g) q15[[paste0("median_", g)]][q15$feature == f]
+
+## Partitioning and ruler ####
+wts <- rd(OUT, "pl2", "weights_feature_data_partitioning.csv") |>
+  filter(method == "Balanced Random Forest")
+mat <- wts |> filter(material) |> arrange(desc(median))
+part_axis <- mat$feature[1]
+part_axis_desc <- sub("^(.)", "\\L\\1", pr$description[pr$predictor == part_axis], perl = TRUE)
+bio10_rank <- which(mat$feature == "bio10")
+n_material <- nrow(mat)
+n_climate <- sum(wts$dynamic)
+static_share <- sum(wts$median[!wts$dynamic]) / sum(wts$median)
+slope_share <- wts$median[wts$feature == "slope"] / sum(wts$median)
+stopifnot( # GUARD: the skill curves are indexed on bio10; the prose reports both axes
+  "error-profile axis feature is no longer bio10" =
+    rd(OUT, "pipeline_settings.csv") |>
+      filter(script == "R/pl2_fitErrorProfiles.R", setting == "axis_feature") |>
+      pull(value) == "bio10"
+)
+
+## Data blocks ####
+eu_alloc <- rd(OUT, "pl0", "eu_absence_allocation.csv")
+np_warm <- eu_alloc |> filter(response == "nonpeat", warm)
+op_warm <- eu_alloc |> filter(response == "otherpeat", warm)
+quota_warm <- max(np_warm$drawn)
+quota_cool <- max(eu_alloc$drawn[eu_alloc$response == "nonpeat" & !eu_alloc$warm])
+full_warm <- np_warm |> filter(drawn == quota_warm)
+epm <- rd(OUT, "pl0", "epm_map_cat_summary.csv")
+epm_share <- function(lab) epm$share[epm$label == lab]
+msk <- tibble::deframe(rd(OUT, "pl0", "eu_mask_summary.csv"))
+dom <- rd(OUT, "pl0", "eu_domain_area_by_country.csv")
+aud <- rd(OUT, "pl0", "eu_presence_audit.csv")
+aud_stat <- function(set, i) {
+  as.numeric(strsplit(aud$bio10_min_q25_med_q75_max[aud$set == set], " / ")[[1]][i])
+}
+aud_col <- function(set, col) aud[[col]][aud$set == set]
+```
 
 # Introduction
 
@@ -134,17 +286,17 @@ domed, with easily visible surface patterns, which makes them well suited to
 identification from stereo imagery. Every mire massif in the surveyed areas was assessed,
 and massifs classified as concentric, eccentric or plateau raised bog were delineated as
 polygons. We used all massifs of these three types (mire-massif type "A" in the survey
-database) and dissolved adjoining polygons into 564 contiguous raised-bog polygons with a
-total area of 70 km^2^ (@fig-studyarea). TODO(JV): confirm that ridge raised bog (kanthøgmyr, A6) is
+database) and dissolved adjoining polygons into `r n0(S("n_lyngstad_polygons"))` contiguous raised-bog polygons with a
+total area of `r n0(S("lyngstad_area_km2"))` km^2^ (@fig-studyarea). TODO(JV): confirm that ridge raised bog (kanthøgmyr, A6) is
 included in type A and should be, and whether atlantic raised bog is excluded by the
 region definition alone.
 
 Because the survey was designed to be complete within the areas it covered, the absence of
 a mapped raised bog is informative there and nowhere else. We reconstructed the surveyed
-area from the aerial-photo project coverages listed in the survey reports (13 orthophoto
+area from the aerial-photo project coverages listed in the survey reports (`r S("n_survey_projects")` orthophoto
 projects flown 2008--2015, matched image strip by image strip to the reports) plus the
 orthophoto-surveyed area given in @lyngstadKartleggingAvTypisk2016. The survey footprint
-covers 110,065 km^2^ of southern, eastern and central Norway, and all Norwegian absences
+covers `r n0(S("footprint_km2"))` km^2^ of southern, eastern and central Norway, and all Norwegian absences
 were drawn from inside it (@fig-studyarea (B)). TODO(JV): check the footprint area and the count of
 projects against the reports; the Hedmark 2012 survey has no strip table
 (notebook 2025-11).
@@ -169,20 +321,20 @@ bog vegetation (EUNIS habitat Q11 in the European Vegetation Archive plot databa
 such plot became one presence point. Only sites with habitat data quality "good" were
 used, and sites with representativity "D" (non-significant presence) were excluded.
 
-This is deliberately narrow. Of the good-quality raised-bog sites in the region, 494
-larger sites without a plot record (10,045 km^2^ of designated area) were not used as
+This is deliberately narrow. Of the good-quality raised-bog sites in the region, `r n0(aud_col("large, discarded", "polygons"))`
+larger sites without a plot record (`r n0(aud_col("large, discarded", "area_km2"))` km^2^ of designated area) were not used as
 presences. The loss costs statistical power but not climatic coverage: the median
-warmest-quarter temperature of the discarded sites (15.7 °C) lies between that of the
-small sites retained (15.4 °C) and the large sites with plots (16.0 °C), and the retained
-small sites span the widest temperature range of the three sets (9.5--19.1 °C). The final
-European presence set held 701 geometries (445 small site polygons and 256 plot points),
+warmest-quarter temperature of the discarded sites (`r f1(aud_stat("large, discarded", 3))` °C) lies between that of the
+small sites retained (`r f1(aud_stat("small, retained", 3))` °C) and the large sites with plots (`r f1(aud_stat("large with Q11, retained", 3))` °C), and the retained
+small sites span the widest temperature range of the three sets (`r f1(aud_stat("small, retained", 1))`--`r f1(aud_stat("small, retained", 5))` °C; polygon values on the 5 km working grid). The final
+European presence set held `r n0(S("n_eu_presence_geometries"))` geometries (`r n0(msk[["presences (small Natura polygons)"]])` small site polygons and `r n0(msk[["presences (EUNIS Q11 in large Natura polygons)"]])` plot points),
 falling in 524 grid cells.
 
 The European domain from which absences were drawn was region IV intersected with the
 EU-27 (because Natura 2000 exists only in member states, so raised bogs elsewhere in the
 region are unmapped rather than absent), with the country coverage of the European
 Peatland Map (next section), and with the extent of our climate data, minus Norway. The
-domain covers 495,223 km^2^ in ten countries (Finland, Sweden, Latvia, Lithuania,
+domain covers `r n0(sum(dom$area_km2))` km^2^ in `r nrow(dom)` countries (Finland, Sweden, Latvia, Lithuania,
 Estonia, Poland, Austria, France, Germany and Czechia; @fig-studyarea (A)). It contains the whole
 range of warmest-quarter temperature that Norway is projected to reach by 2071--2100 (see
 Results), which is the property the European data were recruited for.
@@ -225,15 +377,14 @@ category 1 (peat-dominated) became *other peatland*. Category 2 (peat in a soil 
 was excluded, exactly as Norway's mixed cells were: the data producers already flag it as
 the class where the extent of peat is uncertain. Inside a mapped country, no value means no
 peatland; outside the mapped countries, no value means unknown, and those cells were
-excluded rather than treated as non-peat. At 250 m the domain was 90.2% non-peat, 9.3%
-peat-dominated and 0.5% soil mosaic.
+excluded rather than treated as non-peat. At 250 m the domain was `r pc(epm_share("non-peat"), 1)` non-peat, `r pc(epm_share("other-peat"), 1)` peat-dominated and `r pc(epm_share("excluded (soil mosaic)"), 1)` soil mosaic.
 
 Before absences were drawn, every cell that could be a raised bog was removed from the
 European candidate pool with a deliberately generous exclusion mask: all Natura 2000
 raised-bog and blanket-bog sites (7110, 7120, 7130) of any data quality, all raised-bog and
 blanket-bog vegetation plots (EUNIS Q11 and Q12) buffered by one cell, and all polygons of
 the vector European Peatland Map whose national peatland-type attribute contained "bog",
-the whole union dilated by one cell. The mask removed 13.2% of the domain (69,289 km^2^).
+the whole union dilated by one cell. The mask removed `r pc(msk[["mask share of domain"]], 1)` of the domain (`r n0(msk[["mask area (km2)"]])` km^2^).
 Its generosity costs almost nothing in absence supply and ensures that a mapped raised
 bog that did not qualify as a presence (for example a large site without a plot record)
 became unlabelled rather than a false absence.
@@ -260,13 +411,13 @@ The two absence classes are far more numerous than raised bogs on both blocks, a
 non-peat pool in particular is dominated by climates far from any raised bog. Drawing
 absences at random would fill the training set with cold uplands and leave the warm edge,
 where the European data are needed, thin. We therefore drew a fixed budget of 25 absences
-per raised-bog cell per absence class from each block (27,900 per class in Norway, 12,475
+per raised-bog cell per absence class from each block (`r n0(fr("non-peat", "Norway"))` per class in Norway, `r n0(fr("non-peat", "Europe"))`
 per class in Europe), spread as evenly as possible across 1 °C strata of mean
 warmest-quarter temperature (bio10). Strata with fewer candidates than their share were
 taken in full and the remainder redistributed. Strata warmer than the warmest Norwegian
-training cell (17.1 °C) were guaranteed a minimum share before the general allocation, so
+training cell (`r f1(S("no_train_bio10_max"))` °C) were guaranteed a minimum share before the general allocation, so
 that the European block always contributed labelled cells beyond the Norwegian envelope.
-The final pooled training frame held 82,359 cells (@tbl-frame).
+The final pooled training frame held `r n0(n_all)` cells (@tbl-frame).
 
 ## Predictors
 
@@ -294,14 +445,18 @@ the whole 16 ka. These express the time a site has had to accumulate peat and we
 same in both scenarios.
 
 Climate and palaeoclimate layers were projected from their native 30 arc-second grid to
-the 250 m grid for Norway and to a 5 km grid for Europe (no 250 m European stack was built;
-both are resamples of the same source). Growing-degree, growing-season-temperature and
-snow variables that CHELSA leaves undefined where the threshold is never crossed were set
-to zero where all other layers had data. Growing-season precipitation is stored without
-a no-data tag, so its no-data code was masked explicitly before resampling and then
-treated the same way. TODO(gsp): the results below were produced before that step was
-added and 8,987 training cells (all cold, bio10 <= 12.5 °C) carry the code; rerun the
-pipeline and refresh every number marked TODO(gsp).
+a 250 m grid for Norway, which is both the training surface for the Norwegian block and the
+projection domain. No European surface was built: the European working grid (5 km) serves
+only to define the domain and to stratify the draw on bio10, and predictor values for the
+European cells were extracted at 250 m cell centres by bilinear interpolation from the same
+native climate and palaeoclimate grids (terrain from the 250 m European terrain raster
+above), so that both blocks are bilinear samples of the same native field at a 250 m cell
+centre. Growing-degree, growing-season-temperature and snow variables that CHELSA leaves
+undefined where the threshold is never crossed were set to zero where all other layers had
+data. Growing-season precipitation is stored without a no-data tag, so its no-data code was
+masked explicitly before resampling and then treated the same way; the pipeline stops if any
+value implies a growing-season precipitation above 100,000 mm. No training or projection cell
+carries the code in the results reported here.
 
 ## Model-free description of the projection problem
 
@@ -313,18 +468,22 @@ the same evidence the model will be asked to generalise, and it does not depend 
 learner.
 
 For the first question we compared the 15 predictors that shift most under the scenario
-between the three current classes and the 1,116 Norwegian raised-bog cells carried to their
-2071--2100 climate. All 15 are temperature or degree-day measures; no precipitation
-variable shifts by more than 0.4 standard deviations of its current spread. For the
+between the three current classes and the `r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells carried to their
+2071--2100 climate. All but one of the 15 are temperature, degree-day, season-length or
+temperature-driven productivity measures; the exception is growing-season precipitation
+(gsp), which shifts by `r f2(shift("gsp"))` standard deviations of its current spread, while annual precipitation
+shifts by only `r f2(shift("bio12"))`. For the
 second question we cross-tabulated the training cells on warmest-quarter temperature
-(bio10; < 14, 14--16, 16--18 and > 18 °C) and growing-season precipitation (gsp; < 500,
+(bio10; < 14, 14--16, 16--18 and > 18 °C) and gsp (< 500,
 500--650 and > 650 mm) and reported the observed prevalence of raised bog in each cell of
 the grid alongside the share of future raised-bog cells that land there. Temperature is
-the axis the projection travels; growing-season precipitation is the moisture axis with
-the highest importance in the model and it barely changes under the scenario, so crossing
-the two isolates the temperature effect. Raised bogs are ombrotrophic, so a warm-and-dry
+the axis the projection travels. Growing-season precipitation is the moisture axis, chosen
+because it is a dynamic predictor tied to the growing season; it is not held constant by the
+scenario, so the grid reads prevalence at the moisture the future brings, not at today's.
+Raised bogs are ombrotrophic, so a warm-and-dry
 analogue would say little about a warm-and-wet future, and the grid keeps the two apart.
-The same grid was repeated with annual precipitation as the moisture axis.
+The same grid was repeated with annual precipitation (bio12; < 700, 700--1100, > 1100 mm)
+as the moisture axis.
 
 ## The model
 
@@ -332,7 +491,7 @@ We fitted one random forest to the pooled three-class frame with the randomFores
 package [TODO(JV): Ishwaran & Kogalur citation], using the package's balanced-sampling
 recipe for imbalanced classes [@chenUsingRandomForest]: each of 1,000 trees was grown on a
 class-balanced bootstrap sample (three times the size of the rarest class, drawn with
-class-equalising weights), so that the 2% of cells that are raised bogs count as much as
+class-equalising weights), so that the `r pc(fr("raised bog") / n_all)` of cells that are raised bogs count as much as
 either abundant class. The predicted class of a cell was the most probable of the three
 (argmax), which for a balanced forest needs no separately tuned threshold. We used default
 values for the number of variables tried at each split and the terminal node size; random
@@ -358,21 +517,26 @@ climate warmer than any Norwegian training bog [@meyerPredictingUnknownSpace2021
 @linnenbrinkKNNDMCVKfold2024]. We therefore partitioned the training frame in
 climate space along the axis the projection travels. The candidate axis was chosen among
 predictors that change under the scenario by at least half a standard deviation of their
-current spread (17 of the 32 climate predictors qualify) as the one with the highest
-importance in the forest; that was warmest-quarter temperature (bio10). The 1,615
-raised-bog cells were sorted on bio10 and cut into five equal groups of 323; the other
-cells were assigned to the partition whose bog temperature range they fell in, with the
+current spread (`r n_material` of the `r n_climate` climate predictors qualify) as the one with the highest
+importance in the forest; in this run that was `r part_axis` (`r part_axis_desc`), with
+warmest-quarter temperature (bio10) ranking `r bio10_rank`th among them. The `r n0(fr("raised bog"))`
+raised-bog cells were sorted on `r part_axis` and cut into five equal groups of `r n0(part$n_bog[1])`; the other
+cells were assigned to the partition whose bog range on that axis they fell in, with the
 cuts between partitions placed midway between adjacent bog groups and the two end
 partitions open-ended, so that every cell belongs to exactly one partition and cells warmer
 than the warmest training bog are kept, in partition 5, rather than dropped (S2 Table;
 TODO(JV): decide whether the partition table goes in the main text or supplement).
+TODO(JV): the partitions are cut on `r part_axis`, but the skill curves below and the
+reliability map are indexed on a bio10 offset (R/pl2_fitErrorProfiles.R hard-codes bio10 as
+the axis "the partitions were cut on"). Decide whether the partition axis should be pinned to
+bio10 or the offset axis follow the partition axis; the text reports both as they are.
 
 Two cross-validation arms were run on these partitions with the same learner. The
 *pairwise* arm trained on one partition and tested on each of the other four (20 train--test
-pairs); it is the harder extrapolation test but trains on a median of 5,042 cells against
-the production model's 82,359, so its skill confounds extrapolation with data starvation.
+pairs); it is the harder extrapolation test but trains on a median of `r n0(cvv("pairwise", "all", "median_n_train"))` cells against
+the production model's `r n0(n_all)`, so its skill confounds extrapolation with data starvation.
 The *leave-one-partition-out* arm trained on four partitions and tested on the fifth (5
-folds, median 77,317 training cells); it is the arm that resembles the production model.
+folds, median `r n0(cvv("lopo", "all", "median_n_train"))` training cells); it is the arm that resembles the production model.
 Reading the two together separates the cost of extrapolating from the cost of a small
 training set. The leave-one-partition-out arm is quoted as the estimate of production
 skill; the pairwise arm is the one the reliability curves are fitted on, for reasons given
@@ -384,13 +548,13 @@ G-mean (geometric mean of the three recalls, which falls to zero if any class is
 abandoned). All metrics were reported for the whole test partition and separately for the
 Norwegian and European test cells, so that a good score on one block cannot mask a poor
 score on the other. They were also reported separately for test cells warmer than the
-warmest training bog and colder than the coldest, where the only meaningful quantity is
+warmest training bog and colder than the coldest on the partition axis, where the only meaningful quantity is
 the rate at which the model wrongly calls such a cell a raised bog.
 
 ### Skill as a function of warming beyond the training bogs
 
 A single cross-validated score describes the model on average, but the projection is read
-at a specific place in climate space: about 3 °C warmer than the bogs the model learned
+at a specific place in climate space: about `r f1(S("lyngstad_offset_future_median"), 0)` °C warmer than the bogs the model learned
 from. What matters is the model's skill *there*. Following the logic of pixel-wise
 accuracy estimation [@meyerPredictingUnknownSpace2021;
 @ludwigAssessingImprovingTransferability2023], we used the held-out predictions of the
@@ -407,14 +571,13 @@ projection makes: a model trained on one partition and tested on a distant one s
 held-out raised bogs far from the bogs it learned from, whereas a model trained on four
 partitions has a close analogue for nearly every held-out bog and so places few raised-bog
 cells at the offsets where the projection is read. Within the 10th--90th percentile band
-of the mapped raised bogs' 2071--2100 offset (+1.7 to +3.8 °C), the pairwise arm holds
-366 held-out raised-bog cells scored by four models; the leave-one-partition-out arm holds
-32, scored by one. And it replicates: every bin of the axis is scored by four to six
-independently fitted models, which is what a fold-level interval requires, whereas with
-partitions cut on the same axis a leave-one-partition-out bin and a fold are nearly the
-same object, and four of its eight bins are fed by a single model. The price is that the
-curves describe models trained on a median of 5,042 cells, not the production model's
-82,359, so the expected skill read from them is a floor on the production model's rather
+of the mapped raised bogs' 2071--2100 offset (`r sg(S("lyngstad_offset_future_q10"))` to `r sg(S("lyngstad_offset_future_q90"))` °C), the pairwise arm holds
+`r n0(S("band_bog_rows_pairwise"))` scored held-out raised-bog cells, each from one of four models; the leave-one-partition-out arm holds
+`r n0(S("band_bog_rows_lopo"))`. And it replicates: every bin of the axis is scored by `r rng(bins$n_folds)`
+independently fitted pairwise models, which is what a fold-level interval requires, against
+`r rng(cmp$n_folds)` for the leave-one-partition-out arm. The price is that the
+curves describe models trained on a median of `r n0(cvv("pairwise", "all", "median_n_train"))` cells, not the production model's
+`r n0(n_all)`, so the expected skill read from them is a floor on the production model's rather
 than an estimate of it. The leave-one-partition-out point estimates are drawn alongside
 for reference.
 
@@ -423,7 +586,7 @@ Held-out cells were binned into eight bins with equal numbers of raised-bog cell
 train on it), so that the warm end of the axis, where the projection sits, is not resting
 on a handful of presences, and skill was computed per bin. Because cells within a fold
 share one model, uncertainty was estimated by resampling the 20 folds, not cells (cluster
-bootstrap, 500 resamples). Every bin draws on four to six folds, so an interval is reported
+bootstrap, 500 resamples). Every bin draws on `r rng(bins$n_folds)` folds, so an interval is reported
 for every bin; the intervals on the operating-point metrics are wide, and should be read
 as such.
 
@@ -438,23 +601,23 @@ measured. The weights (median permutation importance over five fits of the produ
 learner to the whole training frame, 500 trees each) and the standardisation were frozen
 once and reused for every fold and for the projection. The distance was computed over the 32 climate
 predictors only: terrain and palaeoclimate are identical in both scenarios, cannot register
-any projected change, and would only dilute the distance (they carry 58% of the
-unrestricted importance mass, slope alone 43%). And the area of applicability threshold
+any projected change, and would only dilute the distance (they carry `r pc(static_share)` of the
+unrestricted importance mass, slope alone `r pc(slope_share)`). And the area of applicability threshold
 was derived from held-out cross-validation distances (the Tukey upper fence of the
 pairwise arm's held-out distances), as in the original method, rather than from
-within-training distances, which with 82,000 densely packed cells measure training density
+within-training distances, which with `r n0(round(n_all, -3))` densely packed cells measure training density
 rather than attainable novelty. The dissimilarity index was used for the applicability
 mask and as a second, retained axis for the skill curves; the map's expected skill was
 read on the signed temperature offset.
 
 ## Projection and reliability mapping
 
-The production forest, fitted on all 82,359 cells, was applied to every 250 m land cell of
+The production forest, fitted on all `r n0(n_all)` cells, was applied to every 250 m land cell of
 mainland Norway under current and future climate, giving three class-probability layers
 per scenario. Change at the mapped raised bogs was summarised per polygon as the mean of
 each layer over the polygon's cells, the predicted class before and after, and the change
 in the raised-bog score. For every projected cell we also computed its signed bio10 offset
-from the production model's training bogs (median 15.53 °C), its dissimilarity index, and
+from the production model's training bogs (median `r f2(S("axis_ref_bio10"))` °C), its dissimilarity index, and
 the cross-validated recall and false-positive rate for raised bog interpolated from the
 offset bins to the cell's offset; cells beyond the last bin inherit that bin's values,
 and cells beyond the applicability threshold are flagged so that no estimate is read
@@ -472,183 +635,197 @@ and cite it.
 
 ## Training data
 
-The pooled training frame held 1,615 raised-bog cells, 1,116 Norwegian and 499 European,
+The pooled training frame held `r n0(fr("raised bog"))` raised-bog cells, `r n0(fr("raised bog", "Norway"))` Norwegian and `r n0(fr("raised bog", "Europe"))` European,
 against 25 absences per bog cell in each of the two other classes (@tbl-frame). The Norwegian
-raised bogs occupy warmest-quarter temperatures of 12.1--16.5 °C (median 15.5 °C), and no
-Norwegian training cell of any class is warmer than 17.1 °C. The European presences span
-9.5--19.1 °C and so extend the warm edge of the raised-bog class by 2.6 °C, and the
-European absences reach 21 °C. Of the 344,513 screened European absence candidates warmer
-than any Norwegian training cell, the stratified draw placed 1,134 non-peat cells in each
-1 °C stratum from 17 to 21 °C, against 745 per stratum in the cooler strata; other
-peatland is scarce that warm (12,423 candidates above 17 °C, 518 above 18 °C) and all of
-it up to the budget was taken.
+raised bogs occupy warmest-quarter temperatures of `r f1(S("no_bog_bio10_min"))`--`r f1(S("no_bog_bio10_max"))` °C (median `r f1(S("no_bog_bio10_median"))` °C), and no
+Norwegian training cell of any class is warmer than `r f1(S("no_train_bio10_max"))` °C. The European presences span
+`r f1(S("eu_bog_bio10_min"))`--`r f1(S("eu_bog_bio10_max"))` °C and so extend the warm edge of the raised-bog class by `r f1(S("eu_bog_bio10_max") - S("no_bog_bio10_max"))` °C, and the
+European absences reach `r f1(S("eu_absence_bio10_max"), 0)` °C. Of the `r n0(sum(np_warm$available))` screened European absence candidates warmer
+than any Norwegian training cell, the stratified draw placed `r n0(quota_warm)` non-peat cells in each
+1 °C stratum from `r min(full_warm$bio10_from)` to `r max(full_warm$bio10_to)` °C, against `r n0(quota_cool)` per stratum in the cooler strata; other
+peatland is scarce that warm (`r n0(sum(op_warm$available))` candidates above `r min(op_warm$bio10_from)` °C, `r n0(sum(op_warm$available[op_warm$bio10_from >= 18]))` above 18 °C), and the draw
+took `r n0(sum(op_warm$drawn))` of them.
 
-| Class | Norway | Europe | Total |
-|:--|--:|--:|--:|
-| Raised bog | 1,116 | 499 | 1,615 |
-| Other peatland | 27,900 | 12,471 | 40,371 |
-| Non-peat | 27,900 | 12,473 | 40,373 |
-| All | 56,916 | 25,443 | 82,359 |
-
-: **Composition of the pooled training frame** (250 m cells, current climate).
-Absences were drawn at 25 per raised-bog cell per class from each block, stratified on
-warmest-quarter temperature, after the land-use and water screen. {#tbl-frame}
+```{r}
+#| label: tbl-frame
+#| tbl-cap: "**Composition of the pooled training frame** (250 m cells, current climate). Absences were drawn at 25 per raised-bog cell per class from each block, stratified on warmest-quarter temperature, after the land-use and water screen."
+tf <- frame |>
+  mutate(response = factor(response, levels = c("raised bog", "other peatland", "non-peat"))) |>
+  arrange(response) |>
+  mutate(response = as.character(response))
+tf <- bind_rows(
+  tf,
+  tibble(response = "All", Norway = sum(tf$Norway), Europe = sum(tf$Europe), total = sum(tf$total))
+)
+tf |>
+  mutate(across(-response, n0)) |>
+  setNames(c("Class", "Norway", "Europe", "Total")) |>
+  kable(align = "lrrr")
+```
 
 ![**Study area.** (A) The European absence domain (green: mire region IV within the
 EU-27, the countries mapped by the European Peatland Map, and the climate-data extent) with
-the 701 European raised-bog presences (green points), and the Norwegian survey footprint
-(orange) with the 564 mapped raised bogs (orange points). (B) Norway with the survey
+the `r n0(S("n_eu_presence_geometries"))` European raised-bog presences (green points), and the Norwegian survey footprint
+(orange) with the `r n0(S("n_lyngstad_polygons"))` mapped raised bogs (orange points). (B) Norway with the survey
 footprint (black outline) and the mapped raised bogs over mean temperature of the warmest
 quarter, 1981--2010.](figures/fig_studyarea.png){#fig-studyarea}
 
 ## Where the future takes today's raised bogs, and what is observed there
 
-Under SSP3-7.0 the mean warmest-quarter temperature at the 1,116 Norwegian raised-bog
-cells rises from a median of 15.5 °C to 19.1 °C (range 14.8--20.2 °C), so that 48% of them
-become warmer than the warmest raised bog in the pooled training data (19.1 °C, a European
-one), and every one of the 15 most strongly
-shifting predictors moves the bog cells past the current raised-bog distribution and into
-the range of today's non-peat cells (@fig-occupancy (A); growing degree days above 5 °C, for example,
-from a median of 1,354 to 2,096). Precipitation barely changes: growing-season
-precipitation shifts by 0.36 standard deviations and annual precipitation by 0.22.
+Under SSP3-7.0 the mean warmest-quarter temperature at the `r n0(fr("raised bog", "Norway"))` Norwegian raised-bog
+cells rises from a median of `r f1(S("no_bog_bio10_median"))` °C to `r f1(S("future_bog_bio10_median"))` °C (range `r f1(S("future_bog_bio10_min"))`--`r f1(S("future_bog_bio10_max"))` °C), so that `r pc(S("future_bog_share_above_pooled_bog_max"))` of them
+become warmer than the warmest raised bog in the pooled training data (`r f1(S("pooled_bog_bio10_max"))` °C, a European
+one). For `r n_beyond` of the 15 most strongly shifting predictors the median future bog cell lies beyond
+the central 90% of today's raised bogs, and for all `r n_in_np` of them it lies within the central 90% of today's non-peat cells
+(growing degree days above 5 °C, for example, from a median of `r n0(qv("gdd5", "current_bog"))` in today's raised bogs to `r n0(qv("gdd5", "future_bog"))`).
+Precipitation does not stay put either: growing-season
+precipitation shifts by `r f2(shift("gsp"))` standard deviations (median `r n0(qv("gsp", "current_bog"))` mm to `r n0(qv("gsp", "future_bog"))` mm) and annual precipitation by `r f2(shift("bio12"))`.
 
 The climates the bogs are moving into are already sampled, by the European block. In the
 wet column of the occupancy grid (growing-season precipitation above 650 mm), which holds
-83% of the future raised-bog cells, the observed prevalence of raised bog is 8.5% at
-14--16 °C, 4.1% at 16--18 °C and 0.19% at temperatures above 18 °C (7 raised bogs among
-3,782 cells; @fig-occupancy (B), @tbl-occupancy). Ninety per cent of the future raised-bog cells fall in that
-warmest band, three-quarters of them in its wet column: a 21-fold drop in observed
-prevalence at constant moisture, on 3,782 sampled cells, with the moisture that raised bogs
-need still present. The grid on annual precipitation shows the same pattern (0.34% raised
-bog above 18 °C in the wettest column; S2 Table TODO).
+`r pc(fut_wet)` of the future raised-bog cells, the observed prevalence of raised bog is `r fp(oc("14-16", WET, "prevalence_pct"))` at
+14--16 °C, `r fp(oc("16-18", WET, "prevalence_pct"))` at 16--18 °C and `r fp(oc(">18", WET, "prevalence_pct"))` at temperatures above 18 °C (`r oc(">18", WET, "n_bog")` raised bogs among
+`r n0(oc(">18", WET, "n_cells"))` cells; @fig-occupancy (B), @tbl-occupancy). `r pc(fut_warm)` of the future raised-bog cells fall in that
+warmest band, `r pc(oc(">18", WET, "future_bog_pct") / 100)` of all of them in its wet column: a `r f1(oc("16-18", WET, "prevalence_pct") / oc(">18", WET, "prevalence_pct"), 0)`-fold drop in observed
+prevalence from the adjacent band at constant moisture, on `r n0(oc(">18", WET, "n_cells"))` sampled cells, with the moisture that raised bogs
+need still present. The grid on annual precipitation shows the same pattern (`r fp(100 * occ12$prevalence[occ12$temp_band == ">18" & occ12$moist_band == "wet >1100"])` raised
+bog above 18 °C in the wettest column; supplementary table TODO(JV)).
 
-Two caveats belong with this table. The warm evidence is entirely European and
-geographically concentrated: the 4,081 training cells warmer than 18 °C lie in 16
-one-degree squares between 45 and 49 °N (the Massif Central, Jura, Alpine foothills and
-the Bohemian belt), with 60% of them in three squares, at elevations of 160--870 m. Matching
+A caveat belongs with this table. The warm evidence is entirely European and
+geographically concentrated: the `r n0(S("warm18_n"))` training cells warmer than 18 °C lie in `r nrow(warm_cells)`
+one-degree squares between `r min(warm_cells$grid_lat)` and `r max(warm_cells$grid_lat) + 1` °N (the Massif Central, Jura, Alpine foothills and
+the Bohemian belt), with `r pc(warm_cells$cumshare[3])` of them in three squares, at elevations of `r n0(S("warm18_elevation_min"))`--`r n0(S("warm18_elevation_max"))` m. Matching
 on temperature and precipitation does not match day length or evaporative demand, and the
-effective sample size is far below the cell count. And the cold-wet cell of the grid
-(< 14 °C, > 650 mm) is inflated by the 8,987 cells carrying the growing-season
-precipitation no-data code (Methods; TODO(gsp): remove this sentence after the rerun);
-its prevalence with those cells removed is about 0.9%. Neither caveat touches the warm
-columns.
+effective sample size is far below the cell count.
 
-| bio10 (°C) | gsp (mm) | Cells | Raised bog | Prevalence | Share from Europe | Future raised-bog cells |
-|:--|:--|--:|--:|--:|--:|--:|
-| < 14 | < 500 | 18,589 | 23 | 0.12% | 6% | 0% |
-| < 14 | 500--650 | 16,888 | 21 | 0.12% | 16% | 0% |
-| < 14 | > 650 | 16,538 | 68 | 0.41% | 28% | 0% |
-| 14--16 | < 500 | 5,330 | 244 | 4.58% | 80% | 0% |
-| 14--16 | 500--650 | 8,948 | 834 | 9.32% | 18% | 0% |
-| 14--16 | > 650 | 2,869 | 243 | 8.47% | 9% | 0.4% |
-| 16--18 | < 500 | 4,210 | 39 | 0.93% | 99% | 1.0% |
-| 16--18 | 500--650 | 3,073 | 61 | 1.99% | 64% | 1.2% |
-| 16--18 | > 650 | 1,833 | 75 | 4.09% | 39% | 7.8% |
-| > 18 | < 500 | 196 | 0 | 0.00% | 100% | 0% |
-| > 18 | 500--650 | 103 | 0 | 0.00% | 100% | 14.7% |
-| > 18 | > 650 | 3,782 | 7 | 0.19% | 100% | 75.0% |
-
-: **Observed prevalence of raised bog across the climate grid, and where the
-future raised-bog cells land.** Training cells (current climate) are cross-tabulated on
-mean temperature of the warmest quarter (bio10) and growing-season precipitation (gsp).
-The last column is the share of the 1,116 Norwegian raised-bog cells whose 2071--2100
-climate falls in that cell of the grid. {#tbl-occupancy}
+```{r}
+#| label: tbl-occupancy
+#| tbl-cap: !expr 'sprintf("**Observed prevalence of raised bog across the climate grid, and where the future raised-bog cells land.** Training cells (current climate) are cross-tabulated on mean temperature of the warmest quarter (bio10) and growing-season precipitation (gsp). The last column is the share of the %s Norwegian raised-bog cells whose 2071--2100 climate falls in that cell of the grid.", format(fr("raised bog", "Norway"), big.mark = ","))'
+occ |>
+  transmute(
+    `bio10 (°C)` = sub("-", "–", bio10_band),
+    `gsp (mm)` = sub("-", "–", gsp_band),
+    Cells = n0(n_cells),
+    `Raised bog` = n0(n_bog),
+    Prevalence = sprintf("%.2f%%", prevalence_pct),
+    `Share from Europe` = sprintf("%.0f%%", share_eu_pct),
+    `Future raised-bog cells` = sprintf("%.1f%%", future_bog_pct)
+  ) |>
+  kable(align = "llrrrrr")
+```
 
 ![**The climate the projection moves into, and what is observed there.** (A) Training
 cells in the space of warmest-quarter temperature and growing-season precipitation
-(15,000 cells drawn at random from each absence class; all 1,615 raised-bog cells), with the
-1,116 Norwegian raised-bog cells at their 2071--2100 climate (red). Dotted lines are the
-bands of panel B. Cells carrying the growing-season precipitation no-data code are omitted
-(TODO(gsp): drop this sentence after the rerun). (B) Observed prevalence of raised bog per band, with the number of raised-bog cells
+(15,000 cells drawn at random from each absence class; all `r n0(fr("raised bog"))` raised-bog cells), with the
+`r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells at their 2071--2100 climate (red). Dotted lines are the
+bands of panel B. (B) Observed prevalence of raised bog per band, with the number of raised-bog cells
 over the number of training cells, and the share of the future raised-bog cells that land
 in each band.](figures/fig_occupancy.png){#fig-occupancy}
 
 ## Model fit and cross-validated skill
 
-On its own out-of-bag cells the production forest recovered 89% of raised bogs (one-vs-rest
-AUC 0.97), 85% of other peatland and 79% of non-peat, with a macro G-mean of 0.84. As
-expected for a balanced forest, the raised-bog class was over-called: 7,484 cells were
-predicted raised bog for 1,615 actual, a precision of 0.19.
+On its own out-of-bag cells the production forest recovered `r pc(ob("bog", "recall"))` of raised bogs (one-vs-rest
+AUC `r f2(ob("bog", "auc"))`), `r pc(ob("otherpeat", "recall"))` of other peatland and `r pc(ob("nonpeat", "recall"))` of non-peat, with a macro G-mean of `r f2(oob$Gmean_macro[1])`. As
+expected for a balanced forest, the raised-bog class was over-called: `r n0(ob("bog", "n_predicted"))` cells were
+predicted raised bog for `r n0(ob("bog", "n_true"))` actual, a precision of `r f2(ob("bog", "precision"))`.
 
 Held-out skill was lower and depended strongly on how much the training set resembled the
 production model (@tbl-cv). Leave-one-partition-out folds, with training sets of the
-production model's size, reached a macro AUC of 0.79 and a macro G-mean of 0.48, recovering
-78% of raised bogs; pairwise folds, trained on a fifth of the data, reached 0.73 and 0.37,
-recovering 54%. Most of the difference between these arms is the cost of the small training
+production model's size, reached a macro AUC of `r f2(cvv("lopo", "all", "macro_auc"))` and a macro G-mean of `r f2(cvv("lopo", "all", "macro_gmean"))`, recovering
+`r pc(cvv("lopo", "all", "recall_bog"))` of raised bogs; pairwise folds, trained on a median of `r n0(cvv("pairwise", "all", "median_n_train"))` cells (`r pc(cvv("pairwise", "all", "median_n_train") / n_all)` of the production set), reached `r f2(cvv("pairwise", "all", "macro_auc"))` and `r f2(cvv("pairwise", "all", "macro_gmean"))`,
+recovering `r pc(cvv("pairwise", "all", "recall_bog"))`. Most of the difference between these arms is the cost of the small training
 set rather than of extrapolating, so we quote the leave-one-partition-out arm as the
 estimate of production skill under climate transfer.
 
 Skill differed between the two data blocks in a specific way. Raised bogs were recovered
-about equally well on both (78% in Norway, 77% in Europe), but Norwegian other peatland was
-recovered at only 15% against 73% in Europe, with those Norwegian mires mostly called
-non-peat, and European non-peat at 19% against 56% in Norway (@tbl-cv, S3 Table TODO
-confusion by block). Slope is by far the most important predictor for the other peatland
-contrast (S1 Table), and European mapped peatland is flatter than Norway's: 74% of
-European other-peatland cells have a slope below 1° against 22% of Norwegian ones
-(TODO(JV): verify; from notebook 2026-08-24), so the forest has learned a "peat is flat"
+well on both (`r pc(cvv("lopo", "NO", "recall_bog"))` in Norway, `r pc(cvv("lopo", "EU", "recall_bog"))` in Europe), but Norwegian other peatland was
+recovered at only `r pc(cvv("lopo", "NO", "recall_otherpeat"))` against `r pc(cvv("lopo", "EU", "recall_otherpeat"))` in Europe, and European non-peat at `r pc(cvv("lopo", "EU", "recall_nonpeat"))` against
+`r pc(cvv("lopo", "NO", "recall_nonpeat"))` in Norway (@tbl-cv; S3 Table TODO confusion by block). Slope is by far the most important predictor in the
+production forest (permutation importance `r f2(max(pr$importance_all))` against `r f2(sort(pr$importance_all, decreasing = TRUE)[2])` for the next; S1 Table), and
+European mapped peatland is flatter than Norway's: `r pc(S("otherpeat_flat_share_EU"))` of
+European other-peatland cells have a slope below 1° against `r pc(S("otherpeat_flat_share_NO"))` of Norwegian ones,
+so the forest has plausibly learned a "peat is flat"
 rule from the European block that it misapplies to Norwegian sloping mires. This weakness
 lies on the flat-versus-steep axis, not on the climatic axis the study turns on.
 
 Beyond the temperature range of the training bogs the model was asymmetric, and the
 asymmetry is the most informative single result of the cross-validation. When the warmest
-partition was held out (2,425 test cells warmer than every training bog, none of them a
-raised bog), the model called *all* of them raised bog: a false-positive rate of 1.00
-(pairwise arm 0.77). When the coldest partition was held out (17,961 cells colder than
-every training bog) it called none of them raised bog. So the forest, asked about a
+partition was held out (`r n0(cvv("lopo", "above", "n_test_rows"))` test cells warmer than every training bog on the partition axis, none of them a
+raised bog), the model called `r pc(cvv("lopo", "above", "fpr_bog"))` of them raised bog: a false-positive rate of `r f2(cvv("lopo", "above", "fpr_bog"))`
+(pairwise arm `r f2(cvv("pairwise", "above", "fpr_bog"))`). When the coldest partition was held out (`r n0(cvv("lopo", "below", "n_test_rows"))` cells colder than
+every training bog) it called `r pc(cvv("lopo", "below", "fpr_bog"))` of them raised bog (pairwise arm `r pc(cvv("pairwise", "below", "fpr_bog"))`). So the forest, asked about a
 climate warmer than any raised bog it has seen, does not withdraw the raised-bog label; it
 extends it. The projected loss reported below is therefore not an artefact of a model that
 defaults to absence outside its training range. It is produced by the warm-flank labels
 that are present in the production training set.
 
-| Arm | Test cells | Folds | Median training cells | Macro AUC | Macro G-mean | Recall raised bog | Recall other peatland | Recall non-peat | FPR raised bog |
-|:--|:--|--:|--:|--:|--:|--:|--:|--:|--:|
-| Leave-one-out | all | 5 | 77,317 | 0.79 | 0.48 | 0.78 | 0.49 | 0.43 | 0.43 |
-| | Norway | 5 | 77,317 | 0.78 | 0.30 | 0.78 | 0.15 | 0.56 | 0.53 |
-| | Europe | 5 | 77,317 | 0.76 | 0.28 | 0.77 | 0.73 | 0.19 | 0.33 |
-| | warmer than all training bogs | 1 | 67,943 | 0.57 | -- | -- | 0.00 | 0.00 | 1.00 |
-| | colder than all training bogs | 1 | 23,430 | 0.76 | -- | -- | 0.10 | 0.99 | 0.00 |
-| Pairwise | all | 20 | 5,042 | 0.73 | 0.37 | 0.54 | 0.41 | 0.55 | 0.32 |
-| | Norway | 20 | 5,042 | 0.72 | 0.24 | 0.51 | 0.17 | 0.67 | 0.35 |
-| | Europe | 20 | 5,042 | 0.72 | 0.31 | 0.57 | 0.56 | 0.36 | 0.28 |
-| | warmer than all training bogs | 4 | 3,610 | 0.57 | -- | -- | 0.00 | 0.20 | 0.77 |
-| | colder than all training bogs | 4 | 3,610 | 0.62 | -- | -- | 0.00 | 0.96 | 0.04 |
-
-: **Cross-validated skill on partitions cut along warmest-quarter temperature,
-by arm and by subset of the test cells** (means over folds). Recall is the share of cells
-of a class predicted as that class; FPR is the share of cells not of the class predicted
-as it. The two envelope rows contain no raised bogs, so raised-bog recall and the G-mean
-are undefined there and the false-positive rate is the informative column. {#tbl-cv}
+```{r}
+#| label: tbl-cv
+#| tbl-cap: "**Cross-validated skill on partitions cut along the top materially shifting predictor, by arm and by subset of the test cells** (means over folds). Recall is the share of cells of a class predicted as that class; FPR is the share of cells not of the class predicted as it. The two envelope rows contain no raised bogs, so raised-bog recall and the G-mean are undefined there and the false-positive rate is the informative column."
+lab_slice <- c(
+  all = "all", NO = "Norway", EU = "Europe",
+  above = "warmer than all training bogs", below = "colder than all training bogs"
+)
+f2na <- function(x) ifelse(is.na(x), "--", f2(x))
+cv |>
+  filter(slice != "inside") |>
+  mutate(
+    arm = factor(arm, c("lopo", "pairwise")),
+    slice = factor(slice, names(lab_slice))
+  ) |>
+  arrange(arm, slice) |>
+  mutate(
+    env = slice %in% c("above", "below"),
+    Arm = ifelse(duplicated(arm), "", c(lopo = "Leave-one-out", pairwise = "Pairwise")[as.character(arm)]),
+    `Test cells` = unname(lab_slice[as.character(slice)]),
+    Folds = n_folds,
+    `Median training cells` = n0(median_n_train),
+    `Macro AUC` = f2na(macro_auc),
+    `Macro G-mean` = ifelse(env, "--", f2na(macro_gmean)),
+    `Recall raised bog` = ifelse(env, "--", f2na(recall_bog)),
+    `Recall other peatland` = f2na(recall_otherpeat),
+    `Recall non-peat` = f2na(recall_nonpeat),
+    `FPR raised bog` = f2na(fpr_bog)
+  ) |>
+  select(Arm, `Test cells`, Folds, `Median training cells`, `Macro AUC`, `Macro G-mean`,
+         `Recall raised bog`, `Recall other peatland`, `Recall non-peat`, `FPR raised bog`) |>
+  kable(align = "llrrrrrrrr")
+```
 
 ## Skill against warming beyond the training bogs
 
 Along the signed temperature offset, discrimination and the operating point behaved
-differently (@fig-skill, @tbl-bins). The raised-bog AUC was 0.70--0.83 in the seven bins
-up to +1.4 °C and fell to 0.64 (0.56--0.78) in the warm bin (+1.4 to +6.8 °C, median
-+2.5 °C), which draws on the six folds whose test partition lay warmer than their training
-partition. The operating point moved the other way. In the cold bin and within a degree of
-the typical training bog the pairwise models recovered 43--53% of raised bogs at
-false-positive rates of 0.10--0.16; from +0.4 °C upward recall rose through 0.47 and 0.74
-to 0.81 (0.62--0.93) in the warm bin, and the false-positive rate through 0.22 and 0.28 to
-0.48 (0.41--0.55). The leave-one-partition-out reference, whose models saw four
-partitions, is sharper in the same direction: it recovered 12% of raised bogs in the cold
-bin at a false-positive rate of 0.002, 89--99% between -0.7 and +0.6 °C, and 79% in its
-warm bin at a false-positive rate of 0.55. On both arms, then, the forest asked about a
+differently (@fig-skill, @tbl-bins). The raised-bog AUC stayed within `r f2(min(ci$estimate[ci$metric == "auc_bog"]))`--`r f2(max(ci$estimate[ci$metric == "auc_bog"]))` across the eight bins and
+did not fall in the warm bin (`r bci(WARM, "auc_bog")`; +`r f1(bins$axis_lo[WARM])` to `r sg(bins$axis_hi[WARM])` °C, median
+`r sg(bins$axis_median[WARM])` °C), which draws on `r bins$n_folds[WARM]` folds; the macro AUC did,
+from `r f2(max(ci$estimate[ci$metric == "macro_auc" & ci$bin < WARM]))` at its best to `r bci(WARM, "macro_auc")`. The operating point moved
+the other way. In the cold bin and within a degree of
+the typical training bog (bins 1--5) the pairwise models recovered `r pc(min(ci$estimate[ci$metric == "recall_bog" & ci$bin <= 5]))`--`r pc(max(ci$estimate[ci$metric == "recall_bog" & ci$bin <= 5]))` of raised bogs at
+false-positive rates of `r f2(min(ci$estimate[ci$metric == "fpr_bog" & ci$bin <= 5]))`--`r f2(max(ci$estimate[ci$metric == "fpr_bog" & ci$bin <= 5]))`; from `r sg(bins$axis_lo[6])` °C upward recall rose through `r f2(bn(6, "recall_bog"))` and `r f2(bn(7, "recall_bog"))`
+to `r bci(WARM, "recall_bog")` in the warm bin, and the false-positive rate through `r f2(bn(6, "fpr_bog"))` and `r f2(bn(7, "fpr_bog"))` to
+`r bci(WARM, "fpr_bog")`. The intervals of the warm bin are wide: with `r bins$n_folds[WARM]` folds
+they span most of the unit range for both rates. The leave-one-partition-out reference, whose models saw four
+partitions, shows the same rise and fall: it recovered `r pc(cmp$recall_bog[1])` of raised bogs in the cold
+bin at a false-positive rate of `r f2(cmp$fpr_bog[1])`, `r pc(min(cmp$recall_bog[4:7]))`--`r pc(max(cmp$recall_bog[4:7]))` between `r sg(cmp$axis_lo[4])` and `r sg(max(cmp$axis_median[7], cmp$axis_lo[7]))` °C
+(bins 4--7), and `r pc(cmp$recall_bog[WARM])` in its warm bin at a false-positive rate of `r f2(cmp$fpr_bog[WARM])`. On both arms,
+then, the false-positive rate is highest in the warm bin: the forest asked about a
 climate warmer than its training bogs extends the raised-bog label rather than withholding
-it, consistent with the envelope result above; the production-sized model does so more
-strongly, and withholds the label more strongly on the cold side, where it has learned
-that bogs stop.
+it, consistent with the envelope result above. The production-sized reference does not
+recover more of the warm bin's raised bogs than the pairwise models do; the two arms differ
+mainly in how sharply they separate the interior bins.
 
-The 564 mapped raised bogs sit today at a median offset of -0.4 °C, in the bins where the
-pairwise models recover about half of the raised bogs and the production-sized reference
-over 90%. Under the 2071--2100 climate they sit at a median offset of +3.2 °C (90th
-percentile +3.8 °C), inside the warm bin; 23% of the polygons (48% of their cells) lie
-beyond the warmest raised bog in the production training set (+3.5 °C). The skill the map
-can attach to them is the warm bin's: a recall of 0.81 (0.62--0.93) and a false-positive
-rate of 0.48 (0.41--0.55), from six folds.
+The `r n0(S("n_lyngstad_polygons"))` mapped raised bogs sit today at a median offset of `r sg(S("lyngstad_offset_current_median"))` °C, in bin `r bin_of(S("lyngstad_offset_current_median"))`,
+where the pairwise models recover `r pc(bn(bin_of(S("lyngstad_offset_current_median")), "recall_bog"))` of the raised bogs and the production-sized reference
+`r pc(cmp$recall_bog[bin_of(S("lyngstad_offset_current_median"))])`. Under the 2071--2100 climate they sit at a median offset of `r sg(S("lyngstad_offset_future_median"))` °C (90th
+percentile `r sg(S("lyngstad_offset_future_q90"))` °C), inside the warm bin; `r pc(S("lyngstad_share_beyond_bog_edge"))` of the polygons
+lie beyond the warmest raised bog in the production training set (`r sg(S("bog_edge_offset"))` °C). The skill the map
+can attach to them is the warm bin's: a recall of `r bci(WARM, "recall_bog")` and a false-positive
+rate of `r bci(WARM, "fpr_bog")`, from `r bins$n_folds[WARM]` folds.
 
-The same curves against the multivariate dissimilarity index are flat in discrimination
-(raised-bog AUC 0.69--0.77 across a forty-fold range of novelty) while the false-positive
-rate slides from 0.30 to 0.17 and recall varies between 0.41 and 0.66 without trend
+The same curves against the multivariate dissimilarity index are not monotonic in
+discrimination (raised-bog AUC `r f2(dip$auc_bog[1])` in the least novel bin, `r f2(min(dip$auc_bog))` at its lowest and `r f2(dip$auc_bog[nrow(dip)])` in the most
+novel, across a `r f1(max(dip$axis_median) / min(dip$axis_median), 0)`-fold range of novelty) while recall falls from `r f2(dip$recall_bog[1])` to `r f2(min(dip$recall_bog))`
+and the false-positive rate from `r f2(dip$fpr_bog[1])` to `r f2(dip$fpr_bog[nrow(dip)])`
 (S1 Fig). That axis is dominated by cold and seasonally unusual cells rather than
 warm ones, which is why it cannot carry the skill read for a warming projection; it is
 retained for the applicability mask.
@@ -661,88 +838,102 @@ false-positive rate for raised bog at the argmax operating point. (B) One-vs-res
 raised bog and macro AUC. Ribbons are 95% cluster-bootstrap intervals over the 20 folds.
 Thin dashed lines: point estimates of the leave-one-partition-out arm, whose training sets
 are the production model's size, for reference. Solid vertical line: the typical training
-bog; dashed: the warmest training bog. Rug: the 564 mapped raised bogs at their current
+bog; dashed: the warmest training bog. Rug: the `r n0(S("n_lyngstad_polygons"))` mapped raised bogs at their current
 and 2071--2100 offsets; the shaded band spans the 10th--90th percentile of their future
 offset.](figures/fig_skill_offset.png){#fig-skill}
 
-| Bin | Offset range (°C) | Cells | Raised bogs | Folds | Recall raised bog | FPR raised bog | AUC raised bog | Macro AUC |
-|--:|:--|--:|--:|--:|:--|:--|:--|:--|
-| 1 | -14.2 to -1.2 | 220,702 | 808 | 5 | 0.43 (0.05--0.88) | 0.12 (0.00--0.44) | 0.74 (0.70--0.80) | 0.72 (0.69--0.79) |
-| 2 | -1.2 to -0.7 | 18,623 | 812 | 6 | 0.43 (0.08--0.76) | 0.16 (0.00--0.48) | 0.70 (0.63--0.77) | 0.75 (0.69--0.81) |
-| 3 | -0.7 to -0.4 | 10,244 | 803 | 6 | 0.53 (0.11--0.84) | 0.13 (0.02--0.42) | 0.76 (0.64--0.85) | 0.77 (0.70--0.83) |
-| 4 | -0.4 to -0.1 | 7,422 | 807 | 5 | 0.48 (0.26--0.82) | 0.14 (0.07--0.28) | 0.76 (0.71--0.87) | 0.79 (0.75--0.83) |
-| 5 | +0.1 to +0.4 | 6,490 | 808 | 4 | 0.43 (0.14--0.59) | 0.10 (0.03--0.31) | 0.83 (0.73--0.88) | 0.84 (0.77--0.87) |
-| 6 | +0.4 to +0.8 | 10,929 | 808 | 6 | 0.47 (0.33--0.75) | 0.22 (0.02--0.61) | 0.71 (0.54--0.82) | 0.77 (0.65--0.84) |
-| 7 | +0.8 to +1.4 | 14,881 | 809 | 5 | 0.74 (0.29--0.89) | 0.28 (0.01--0.82) | 0.78 (0.61--0.84) | 0.74 (0.66--0.81) |
-| 8 | +1.4 to +6.8 | 40,145 | 805 | 6 | 0.81 (0.62--0.93) | 0.48 (0.41--0.55) | 0.64 (0.56--0.78) | 0.66 (0.59--0.78) |
-
-: **Held-out skill by bin of warmest-quarter temperature offset from the training
-raised bogs** (pairwise arm). Intervals are 95% cluster-bootstrap intervals over the 20
-folds. {#tbl-bins}
+```{r}
+#| label: tbl-bins
+#| tbl-cap: "**Held-out skill by bin of warmest-quarter temperature offset from the training raised bogs** (pairwise arm). Intervals are 95% cluster-bootstrap intervals over the 20 folds."
+ci |>
+  filter(metric %in% c("recall_bog", "fpr_bog", "auc_bog", "macro_auc")) |>
+  mutate(cell = ifelse(
+    is.na(lower), f2(estimate),
+    sprintf("%s (%s–%s)", f2(estimate), f2(lower), f2(upper))
+  )) |>
+  select(bin, n, n_bog, n_folds, axis_lo, axis_hi, metric, cell) |>
+  pivot_wider(names_from = metric, values_from = cell) |>
+  transmute(
+    Bin = bin,
+    `Offset range (°C)` = sprintf("%+.1f to %+.1f", axis_lo, axis_hi),
+    Cells = n0(n),
+    `Raised bogs` = n0(n_bog),
+    Folds = n_folds,
+    `Recall raised bog` = recall_bog,
+    `FPR raised bog` = fpr_bog,
+    `AUC raised bog` = auc_bog,
+    `Macro AUC` = macro_auc
+  ) |>
+  kable(align = "rlrrrllll")
+```
 
 ## Projected change at the mapped raised bogs
 
 Under current climate the model reproduces the mapped distribution: the raised-bog score
-averages 0.91 over the 564 polygons and 544 of them are predicted raised bog (@fig-projection (A, C);
-@fig-lyngstad (A)). Under the 2071--2100 climate the score averages 0.16, it falls at 99% of the
-polygons (median change -0.82; 5th and 95th percentiles -0.90 and -0.38), no polygon keeps
-a score above 0.5, and 543 of the 544 predicted raised bogs are predicted non-peat, one
+averages `r f2(S("lyngstad_pbog_current_mean"))` over the `r n0(sum(trans$n_polygons))` polygons and `r n0(sum(trans$n_polygons[trans$class_current == "raised bog"]))` of them are predicted raised bog (@fig-projection (A, C);
+@fig-lyngstad (A)). Under the 2071--2100 climate the score averages `r f2(S("lyngstad_pbog_future_mean"))`, it falls at `r pc(S("lyngstad_share_declining"))` of the
+polygons (median change `r f2(S("lyngstad_pbog_change_median"))`; 5th and 95th percentiles `r f2(S("lyngstad_pbog_change_q05"))` and `r f2(S("lyngstad_pbog_change_q95"))`), `r ifelse(S("lyngstad_future_pbog_above_0.5") == 0, "no polygon keeps a score above 0.5", pc(S("lyngstad_future_pbog_above_0.5")) |> paste("of polygons keep a score above 0.5"))`, and `r n0(trans$n_polygons[trans$class_current == "raised bog" & trans$class_future == "non-peat"])` of the `r n0(sum(trans$n_polygons[trans$class_current == "raised bog"]))` predicted raised bogs are predicted non-peat, `r n0(trans$n_polygons[trans$class_current == "raised bog" & trans$class_future == "other peatland"])`
 other peatland (@tbl-transitions; @fig-projection (B, D); @fig-lyngstad). The direction of the transition is the point
 of the three-class response: the mapped raised bogs are not projected to become other
 kinds of mire but to leave the peat-supporting climate altogether.
 
 Over mainland Norway as a whole, the share of 2 km cells whose majority class is raised
-bog falls from 3.3% to 0.2%, and other peatland from 22% to 10% (TODO(JV): these shares
+bog falls from `r pc(sh("current", "bog"), 1)` to `r pc(sh("future", "bog"), 1)`, and other peatland from `r pc(sh("current", "otherpeat"))` to `r pc(sh("future", "otherpeat"))` (TODO(JV): these shares
 are computed on 2 km aggregates for plotting; recompute at 250 m if they are to be quoted).
 The few cells predicted raised bog in 2071--2100 lie in the far north-east and at scattered
 inland sites (@fig-projection (D)). TODO(JV): whether to report "newly suitable" area at all; notebook
 2026-06-05 frames the cold-flank transition (other peatland warming into the bog window)
 as a second question.
 
-| Predicted today | Predicted 2071--2100 | Polygons | Share |
-|:--|:--|--:|--:|
-| Raised bog | Non-peat | 543 | 96.3% |
-| Non-peat | Non-peat | 11 | 2.0% |
-| Other peatland | Non-peat | 9 | 1.6% |
-| Raised bog | Other peatland | 1 | 0.2% |
-
-: **Predicted class of the 564 mapped raised bogs under current and 2071--2100
-climate** (argmax of the polygon-mean class probabilities). {#tbl-transitions}
+```{r}
+#| label: tbl-transitions
+#| tbl-cap: !expr 'sprintf("**Predicted class of the %s mapped raised bogs under current and 2071--2100 climate** (argmax of the polygon-mean class probabilities).", format(sum(trans$n_polygons), big.mark = ","))'
+trans |>
+  transmute(
+    `Predicted today` = cap1(class_current),
+    `Predicted 2071–2100` = cap1(class_future),
+    Polygons = n0(n_polygons),
+    Share = sprintf("%.1f%%", share_pct)
+  ) |>
+  kable(align = "llrr")
+```
 
 ![**Projected class probabilities over mainland Norway.** Raised-bog score under
 (A) 1981--2010 and (B) 2071--2100 climate, and the majority class under (C) 1981--2010 and
 (D) 2071--2100. Rasters aggregated to 2 km for display; outlines show the survey
 footprint.](figures/fig_projection.png){#fig-projection}
 
-![**Change at the 564 mapped raised bogs.** (A) Polygon-mean raised-bog score under
+![**Change at the `r n0(S("n_lyngstad_polygons"))` mapped raised bogs.** (A) Polygon-mean raised-bog score under
 current against future climate (dotted line: no change). (B) The polygons coloured by their
 2071--2100 raised-bog score.](figures/fig_lyngstad_change.png){#fig-lyngstad}
 
 ## Reliability of the projection where it is read
 
 By the multivariate dissimilarity index the future projection domain is not extreme: its
-median dissimilarity (0.28) is below the median of the held-out cross-validation cells
-(0.55), its 90th percentile (0.63) is covered by the cross-validation's 90th percentile
-(1.33), and no future cell exceeds the applicability threshold (1.97). At the mapped raised
-bogs the future dissimilarity is 0.37, where the model still has many training neighbours.
+median dissimilarity (`r f2(rl("future", "DI_median"))`) is below the median of the held-out cross-validation cells
+(`r f2(cvcov("median"))`), its 90th percentile (`r f2(rl("future", "DI_q90"))`) is covered by the cross-validation's 90th percentile
+(`r f2(cvcov("q90"))`), and only `r f1(rl("future", "pct_outside_aoa"), 1)`% of the future cells exceed the applicability threshold (`r f2(S("aoa_threshold"))`; maximum `r f2(rl("future", "DI_max"))`), mostly
+in the western mountains (@fig-reliability (B)). At the mapped raised
+bogs the future dissimilarity is `r f2(rL("future", "DI_median"))`, where the model still has many training neighbours, and `r f1(rL("future", "pct_outside_aoa"), 0)`% of the polygons exceed the threshold.
 That reading is optimistic in a specific way: the index measures distance to any training
 cell, and the future climate of the bogs is close to European non-peat and other-peatland
 cells, not to raised bogs. On the signed temperature axis the same cells sit beyond the
 warmest training bog (@fig-reliability (A)). The two layers therefore say different things, and both are
 part of the answer: the projection is well supported by labelled data of the two other
 classes, and it is an extrapolation with respect to raised bogs specifically. The expected
-skill layer (@fig-reliability (C)) carries the warm bin's recall of 0.81 over most of southern Norway
-and the interior bins' recall of about 0.43--0.53 over the mountains and the north, so
-that the median expected recall over the domain is 0.43. At the mapped raised bogs the
-expected recall is 0.81 (0.62--0.93) under the future climate against 0.46 (0.16--0.78)
-today, and the expected false-positive rate 0.48 against 0.13: the operating point the
+skill layer (@fig-reliability (C)) carries the warm bin's recall of `r f2(bn(WARM, "recall_bog"))` over the south-eastern
+lowlands and the coastal lowlands, and the cold bin's recall of about `r f2(bn(1, "recall_bog"))` over the mountains and the north, so
+that the median expected recall over the domain is `r f2(rl("future", "exp_recall_bog_median"))`. At the mapped raised bogs the
+expected recall is `r f2(rL("future", "exp_recall_bog"))` (`r f2(rL("future", "exp_recall_bog_lo"))`--`r f2(rL("future", "exp_recall_bog_hi"))`) under the future climate against `r f2(rL("current", "exp_recall_bog"))` (`r f2(rL("current", "exp_recall_bog_lo"))`--`r f2(rL("current", "exp_recall_bog_hi"))`)
+today, and the expected false-positive rate `r f2(rL("future", "exp_fpr_bog"))` against `r f2(rL("current", "exp_fpr_bog"))`: the operating point the
 projection is read at favours calling raised bog, which makes the non-peat verdict at
 these polygons stronger evidence than the same verdict from a neutral operating point
-would be.
+would be. The interval on the future recall is wide, however, and at its lower limit the
+forest would miss most raised bogs in that climate, so the verdict is weaker than the point estimate suggests.
 
 ![**Reliability layers over the 2071--2100 projection domain.** (A) Warmest-quarter
 temperature offset from the production model's training raised bogs. (B) Dissimilarity
-index on the frozen ruler (applicability threshold 1.97; no cell exceeds it). (C)
+index on the frozen ruler (applicability threshold `r f2(S("aoa_threshold"))`; `r f1(rl("future", "pct_outside_aoa"), 1)`% of cells exceed it). (C)
 Expected recall of raised bog, read from the offset bins of @fig-skill. Rasters aggregated to
 2 km.](figures/fig_reliability.png){#fig-reliability}
 
@@ -778,8 +969,8 @@ ms/make_figures.R as ms/tables/tblS_predictors.csv.
 
 Partitions.
 
-Warmest-quarter temperature range and class composition of the five cross-validation
-partitions (ms/tables/tbl_partitions.csv).
+Range on the partition axis (and on warmest-quarter temperature) and class composition of the
+five cross-validation partitions (ms/tables/tbl_partitions.csv).
 :::
 
 ::: {.supp}
