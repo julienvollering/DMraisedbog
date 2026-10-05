@@ -291,15 +291,10 @@ numbers$lyngstad_share_beyond_bog_edge <- mean(lyng_off_fut > bog_edge, na.rm = 
 numbers$aoa_threshold <- ep$aoa_threshold
 
 metric_lab <- c(
-  recall_bog = "recall, raised bog",
-  fpr_bog = "false-positive rate, raised bog",
+  recall_bog = "true bog cells called bog (recall)",
+  fpr_bog = "non-bog cells called bog (false positives)",
   auc_bog = "AUC, raised bog vs rest",
   macro_auc = "macro AUC"
-)
-
-rug_df <- bind_rows(
-  tibble(offset = lyng_off_cur, when = "current climate"),
-  tibble(offset = lyng_off_fut, when = "2071-2100")
 )
 
 # The reference arm (leave-one-partition-out, production-sized training sets), point
@@ -321,19 +316,19 @@ offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
     annotate("rect",
       xmin = quantile(lyng_off_fut, 0.1, na.rm = TRUE),
       xmax = quantile(lyng_off_fut, 0.9, na.rm = TRUE),
-      ymin = -Inf, ymax = Inf, fill = "#c1462c", alpha = 0.12
+      ymin = -Inf, ymax = Inf, fill = "grey50", alpha = 0.18
     ) +
-    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, colour = NA) +
+    annotate("text",
+      x = mean(quantile(lyng_off_fut, c(0.1, 0.9), na.rm = TRUE)),
+      y = ylim[1] + 0.01 * diff(ylim),
+      label = "mapped bogs\n2071-2100", hjust = 0.5, vjust = 0,
+      size = 2.1, lineheight = 0.9, colour = "grey25"
+    ) +
+    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, colour = NA) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 1.6) +
     geom_line(data = d_cmp, linetype = 2, linewidth = 0.4) +
-    geom_vline(xintercept = 0, colour = "grey30") +
     geom_vline(xintercept = bog_edge, linetype = 2, colour = "grey30") +
-    geom_rug(
-      data = rug_df, aes(x = offset, colour = NULL, fill = NULL),
-      sides = "b", alpha = 0.3, length = unit(0.04, "npc"), colour = "#c1462c",
-      inherit.aes = FALSE
-    ) +
     scale_colour_brewer(palette = "Dark2", name = NULL) +
     scale_fill_brewer(palette = "Dark2", name = NULL) +
     coord_cartesian(ylim = ylim, xlim = c(-6, 6)) +
@@ -343,10 +338,11 @@ offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
       y = ylab
     ) +
     theme_ms +
+    guides(colour = guide_legend(nrow = 2), fill = guide_legend(nrow = 2)) +
     theme(legend.position = "bottom")
 }
 
-p3a <- offset_panel(c("recall_bog", "fpr_bog"), "A", "rate at the argmax operating point")
+p3a <- offset_panel(c("recall_bog", "fpr_bog"), "A", "proportion of held-out cells called raised bog")
 p3b <- offset_panel(c("auc_bog", "macro_auc"), "B", "AUC", ylim = c(0.5, 1))
 save_fig(p3a + p3b, "fig_skill_offset", 7.5, 3.8)
 
