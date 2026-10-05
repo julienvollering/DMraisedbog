@@ -732,7 +732,7 @@ footprint.](figures/fig_projection.png){#fig-projection}
 
 By the multivariate dissimilarity index the future projection domain is not extreme: only
 `r f1(rl("future", "pct_outside_aoa"), 1)`% of the future cells exceed the applicability threshold (`r f2(S("aoa_threshold"))`), mostly in the western
-mountains (@fig-reliability (B)), and `r f1(rL("future", "pct_outside_aoa"), 0)`% of the mapped-bog polygons do. That reading is
+mountains, and `r f1(rL("future", "pct_outside_aoa"), 0)`% of the mapped-bog polygons do. That reading is
 optimistic in a specific way: the index measures distance to any training cell, and the future
 climate of the bogs is close to European non-peat and other-peatland cells, not to raised
 bogs. On the signed temperature axis the same cells sit beyond the warmest training bog
@@ -740,7 +740,7 @@ bogs. On the signed temperature axis the same cells sit beyond the warmest train
 the projection is well supported by labelled data of the two other classes, and it is an
 extrapolation with respect to raised bogs specifically.
 
-The expected-skill layer (@fig-reliability (C)) carries the warm bin's recall over the
+The expected-skill layer (@fig-reliability (B)) carries the warm bin's recall over the
 south-eastern and coastal lowlands and the cold bin's recall over the mountains and the north.
 At the mapped raised bogs the expected recall is `r f2(rL("future", "exp_recall_bog"))` (`r f2(rL("future", "exp_recall_bog_lo"))`--`r f2(rL("future", "exp_recall_bog_hi"))`) under
 the future climate against `r f2(rL("current", "exp_recall_bog"))` today, and the expected false-positive rate `r f2(rL("future", "exp_fpr_bog"))` against
@@ -750,10 +750,10 @@ from a neutral operating point would be. The interval on the future recall is wi
 is weaker than the point estimate suggests.
 
 ![**Reliability layers over the 2071--2100 projection domain.** (A) Warmest-quarter
-temperature offset from the production model's training raised bogs. (B) Dissimilarity
-index on the frozen ruler (applicability threshold `r f2(S("aoa_threshold"))`; `r f1(rl("future", "pct_outside_aoa"), 1)`% of cells exceed it). (C)
-Expected recall of raised bog, read from the offset bins of @fig-skill. Rasters aggregated to
-2 km.](figures/fig_reliability.png){#fig-reliability}
+temperature offset from the production model's training raised bogs. (B) Expected recall of
+raised bog, read from the offset bins of @fig-skill; grey cells lie beyond the applicability
+threshold of the dissimilarity index (`r f2(S("aoa_threshold"))`; `r f1(rl("future", "pct_outside_aoa"), 1)`% of cells) and carry no estimate.
+Rasters aggregated to 2 km.](figures/fig_reliability.png){#fig-reliability}
 
 # Discussion
 
