@@ -17,7 +17,7 @@ and extrapolation (area-of-applicability) analysis.
 ## Development Environment
 
 - **Language**: R (prefer the native pipe `|>`)
-- **Project Type**: RStudio project (DMraisedbog.Rproj)
+- **IDE**: Positron (https///posit.co/products/positron/)
 - **Coordinate systems**: EPSG:25833 (UTM 33N) for Norwegian data; EPSG:3035 for modelling
 - Core install: `install.packages(c('tidyverse', 'sf', 'terra'))`
 
