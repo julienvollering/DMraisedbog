@@ -122,7 +122,7 @@ COMPARE_ARM <- "lopo"
 PROFILE_AXIS <- "offset"
 
 # The predictor the partitions were cut on, and therefore the axis the projection travels.
-AXIS_FEATURE <- "bio10"
+AXIS_FEATURE <- PARTITION_AXIS
 
 # Bin count is a compromise: enough bins to see a trend, few enough that the rarest class
 # still has a usable count in each. Pairwise scores each of ~1.6k bog cells four times (once
