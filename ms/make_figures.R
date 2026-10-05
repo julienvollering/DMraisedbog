@@ -365,41 +365,6 @@ tbl_bins <- ci |>
          recall_bog, fpr_bog, auc_bog, macro_auc)
 save_tbl(tbl_bins, "tbl_offset_bins")
 
-## S1 Fig: the retained DI axis ####
-
-ci_di <- ep$profiles_ci_di |>
-  filter(metric %in% c("recall_bog", "fpr_bog", "auc_bog", "macro_auc")) |>
-  mutate(metric = factor(metric_lab[metric], levels = metric_lab))
-
-di_fut <- values(rel_fut[["DI"]], na.rm = TRUE)[, 1]
-di_fut_bog <- terra::extract(rel_fut[["DI"]], vect(bogs), fun = mean, na.rm = TRUE)$DI
-
-ps1 <- ggplot(ci_di, aes(axis_median, estimate, colour = metric, fill = metric)) +
-  annotate("rect",
-    xmin = quantile(di_fut, 0.1), xmax = quantile(di_fut, 0.9),
-    ymin = -Inf, ymax = Inf, fill = "grey60", alpha = 0.15
-  ) +
-  annotate("rect",
-    xmin = quantile(di_fut_bog, 0.1, na.rm = TRUE),
-    xmax = quantile(di_fut_bog, 0.9, na.rm = TRUE),
-    ymin = -Inf, ymax = Inf, fill = "#c1462c", alpha = 0.15
-  ) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, colour = NA) +
-  geom_line(linewidth = 0.7) +
-  geom_point(size = 1.6) +
-  geom_vline(xintercept = ep$aoa_threshold, linetype = 2, colour = "grey30") +
-  scale_colour_brewer(palette = "Dark2", name = NULL) +
-  scale_fill_brewer(palette = "Dark2", name = NULL) +
-  scale_x_log10() +
-  coord_cartesian(ylim = c(0, 1)) +
-  labs(
-    x = "dissimilarity index (log scale)",
-    y = "rate or AUC"
-  ) +
-  theme_ms +
-  theme(legend.position = "bottom")
-save_fig(ps1, "figS_skill_di", 5.5, 3.8)
-
 ## Fig 4: projected class probabilities over Norway ####
 
 pred <- rast("output/pl2/rf_local_pred_brf.tif") |>
@@ -441,26 +406,20 @@ p4 <- (prob_map("current_bog", "A  1981-2010") | prob_map("future_bog", "B  2071
   theme(legend.position = "right")
 save_fig(p4, "fig_projection", 7.5, 8.2)
 
-# Share of the projection domain in each class, current and future, for the text.
-class_share <- pred_df |>
-  summarise(
-    across(c(current_nonpeat, current_otherpeat, current_bog,
-             future_nonpeat, future_otherpeat, future_bog), ~ mean(.x, na.rm = TRUE))
-  ) |>
-  pivot_longer(everything(), names_to = c("scenario", "class"), names_sep = "_",
-               values_to = "mean_probability") |>
-  left_join(
-    bind_rows(
-      pred_df |> count(scenario = "current", class = current_class, name = "n_cells"),
-      pred_df |> count(scenario = "future", class = future_class, name = "n_cells")
-    ) |>
-      mutate(class = names(CLASS_LAB)[match(class, CLASS_LAB)]) |>
-      group_by(scenario) |>
-      mutate(majority_share = n_cells / sum(n_cells)) |>
-      ungroup() |>
-      select(-n_cells),
-    by = c("scenario", "class")
-  ) |>
+# Share of the projection domain in each class, current and future, for the text. Computed
+# at the native 250 m grid, not on the 2 km display aggregate.
+pred250 <- rast("output/pl2/rf_local_pred_brf.tif")
+class_share <- bind_rows(lapply(c("current", "future"), function(scn) {
+  lyr <- paste0(scn, "_", c("nonpeat", "otherpeat", "bog"))
+  maj <- app(pred250[[lyr]], which.max)
+  n <- freq(maj)
+  tibble(
+    scenario = scn,
+    class = c("nonpeat", "otherpeat", "bog"),
+    mean_probability = unname(unlist(global(pred250[[lyr]], "mean", na.rm = TRUE))),
+    majority_share = n$count[match(1:3, n$value)] / sum(n$count)
+  )
+})) |>
   mutate(across(where(is.numeric), ~ round(.x, 4)))
 save_tbl(class_share, "tbl_domain_class_share")
 
