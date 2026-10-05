@@ -25,6 +25,14 @@ FUTURE_GCM <- "GFDL-ESM4"
 # prediction layer uses.
 RESPONSE_LEVELS <- c("nonpeat", "otherpeat", "bog")
 
+# The one predictor the cross-validation partitions are cut on AND the skill/reliability
+# curves are indexed on (as a signed offset from the training bogs). It is also the axis
+# of the climate-stratified absence draw. Warmest-quarter temperature is the axis the
+# projection travels; pinning it here replaces a data-driven choice (top-importance
+# materially shifting predictor) that picked a different, collinear temperature predictor
+# after the gsp rerun and left the partitions and the curves on different axes.
+PARTITION_AXIS <- "bio10"
+
 ## CHELSA no-data conventions ####
 
 # These three constants describe how CHELSA encodes "the quantity does not occur here",

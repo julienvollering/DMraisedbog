@@ -102,33 +102,50 @@ rd <- function(...) read_csv(file.path(...), show_col_types = FALSE)
 
 ## GUARD: the pipeline is complete and the manuscript tables are not older than it ####
 man <- rd(OUT, "run_manifest.csv")
-last_run <- man |> arrange(end) |> group_by(script) |> slice_tail(n = 1) |> ungroup()
+last_run <- man |>
+  arrange(end) |>
+  group_by(script) |>
+  slice_tail(n = 1) |>
+  ungroup()
 stopifnot(
-  "latest run of a pipeline script failed (output/run_manifest.csv)" =
-    all(last_run$status == "ok")
+  "latest run of a pipeline script failed (output/run_manifest.csv)" = all(
+    last_run$status == "ok"
+  )
 )
-produced <- file.path(OUT, unlist(strsplit(last_run$files[nzchar(last_run$files)], ";")))
+produced <- file.path(
+  OUT,
+  unlist(strsplit(last_run$files[nzchar(last_run$files)], ";"))
+)
 produced <- produced[file.exists(produced)]
 stopifnot(
-  "ms/tables is older than the pipeline outputs: rerun ms/make_figures.R" =
-    all(file.mtime(list.files("tables", full.names = TRUE)) >= max(file.mtime(produced)))
+  "ms/tables is older than the pipeline outputs: rerun ms/make_figures.R" = all(
+    file.mtime(list.files("tables", full.names = TRUE)) >=
+      max(file.mtime(produced))
+  )
 )
 
 ## Formatting helpers ####
-n0 <- function(x) format(round(x), big.mark = ",", trim = TRUE, scientific = FALSE)
+n0 <- function(x) {
+  format(round(x), big.mark = ",", trim = TRUE, scientific = FALSE)
+}
 f1 <- function(x, d = 1) formatC(x, format = "f", digits = d)
 f2 <- function(x) f1(x, 2)
 pc <- function(x, d = 0) paste0(formatC(100 * x, format = "f", digits = d), "%")
 sg <- function(x, d = 1) formatC(x, format = "f", digits = d, flag = "+")
-fp <- function(x) paste0(formatC(x, format = "f", digits = ifelse(x < 1, 2, 1)), "%") # x in percent
+fp <- function(x) {
+  paste0(formatC(x, format = "f", digits = ifelse(x < 1, 2, 1)), "%")
+} # x in percent
 cap1 <- function(x) sub("^(.)", "\\U\\1", x, perl = TRUE)
 
 ## Tables and CSVs ####
 sn <- tibble::deframe(rd("tables", "study_numbers.csv"))
 S <- function(k) unname(sn[[k]])
 stopifnot(
-  "gsp no-data code present in the training or projection frame" =
-    S("gsp_nodata_rows_training") == 0 && S("gsp_nodata_rows_future") == 0
+  "gsp no-data code present in the training or projection frame" = S(
+    "gsp_nodata_rows_training"
+  ) ==
+    0 &&
+    S("gsp_nodata_rows_future") == 0
 )
 
 frame <- rd("tables", "tbl_frame.csv")
@@ -139,16 +156,25 @@ cv <- rd("tables", "tbl_cv.csv")
 cvv <- function(arm, slice, col) cv[[col]][cv$arm == arm & cv$slice == slice]
 
 ci <- rd(OUT, "pl2", "error_profiles_ci.csv")
-bn <- function(b, metric, what = "estimate") ci[[what]][ci$bin == b & ci$metric == metric]
+bn <- function(b, metric, what = "estimate") {
+  ci[[what]][ci$bin == b & ci$metric == metric]
+}
 bci <- function(b, metric) {
-  sprintf("%s (%s--%s)", f2(bn(b, metric)), f2(bn(b, metric, "lower")), f2(bn(b, metric, "upper")))
+  sprintf(
+    "%s (%s--%s)",
+    f2(bn(b, metric)),
+    f2(bn(b, metric, "lower")),
+    f2(bn(b, metric, "upper"))
+  )
 }
 bins <- ci |> distinct(bin, n, n_bog, n_folds, axis_median, axis_lo, axis_hi)
 WARM <- max(bins$bin)
 cmp <- rd(OUT, "pl2", "error_profiles_by_bin_compare.csv")
 bin_of <- function(x) bins$bin[bins$axis_lo <= x & x <= bins$axis_hi][1]
 dip <- rd(OUT, "pl2", "error_profiles_by_bin_di.csv")
-rng <- function(x) if (min(x) == max(x)) as.character(min(x)) else paste(min(x), "to", max(x))
+rng <- function(x) {
+  if (min(x) == max(x)) as.character(min(x)) else paste(min(x), "to", max(x))
+}
 
 occ <- rd("tables", "tbl_occupancy.csv")
 oc <- function(b, g, col) occ[[col]][occ$bio10_band == b & occ$gsp_band == g]
@@ -160,7 +186,9 @@ warm_cells <- rd(OUT, "pl2", "occupancy_warm_evidence_cells.csv")
 
 trans <- rd("tables", "tbl_transitions.csv")
 shr <- rd("tables", "tbl_domain_class_share.csv")
-sh <- function(scn, cls, col = "majority_share") shr[[col]][shr$scenario == scn & shr$class == cls]
+sh <- function(scn, cls, col = "majority_share") {
+  shr[[col]][shr$scenario == scn & shr$class == cls]
+}
 pr <- rd("tables", "tblS_predictors.csv")
 shift <- function(v) pr$projected_shift_sd[pr$predictor == v]
 oob <- rd(OUT, "pl2", "oob_metrics_production.csv")
@@ -177,20 +205,26 @@ part <- rd("tables", "tbl_partitions.csv")
 q15 <- rd(OUT, "pl2", "occupancy_quantiles_by_group.csv") |>
   select(feature, group, q05, median, q95) |>
   pivot_wider(
-    names_from = group, values_from = c(q05, median, q95),
+    names_from = group,
+    values_from = c(q05, median, q95),
     names_glue = "{.value}_{gsub(' ', '_', group)}"
   )
 top15 <- q15$feature
 PRECIP <- c(sprintf("bio%02d", 12:19), "gsp")
-stopifnot( # GUARD: the prose says gsp is the only precipitation variable among them
-  "gsp is no longer the only precipitation variable among the strongly shifting predictors" =
-    identical(intersect(top15, PRECIP), "gsp")
+stopifnot(
+  # GUARD: the prose says gsp is the only precipitation variable among them
+  "gsp is no longer the only precipitation variable among the strongly shifting predictors" = identical(
+    intersect(top15, PRECIP),
+    "gsp"
+  )
 )
 n_beyond <- sum(
-  q15$median_future_bog < q15$q05_current_bog | q15$median_future_bog > q15$q95_current_bog
+  q15$median_future_bog < q15$q05_current_bog |
+    q15$median_future_bog > q15$q95_current_bog
 )
 n_in_np <- sum(
-  q15$median_future_bog >= q15$q05_current_nonpeat & q15$median_future_bog <= q15$q95_current_nonpeat
+  q15$median_future_bog >= q15$q05_current_nonpeat &
+    q15$median_future_bog <= q15$q95_current_nonpeat
 )
 qv <- function(f, g) q15[[paste0("median_", g)]][q15$feature == f]
 
@@ -199,17 +233,26 @@ wts <- rd(OUT, "pl2", "weights_feature_data_partitioning.csv") |>
   filter(method == "Balanced Random Forest")
 mat <- wts |> filter(material) |> arrange(desc(median))
 part_axis <- mat$feature[1]
-part_axis_desc <- sub("^(.)", "\\L\\1", pr$description[pr$predictor == part_axis], perl = TRUE)
+part_axis_desc <- sub(
+  "^(.)",
+  "\\L\\1",
+  pr$description[pr$predictor == part_axis],
+  perl = TRUE
+)
 bio10_rank <- which(mat$feature == "bio10")
 n_material <- nrow(mat)
 n_climate <- sum(wts$dynamic)
 static_share <- sum(wts$median[!wts$dynamic]) / sum(wts$median)
 slope_share <- wts$median[wts$feature == "slope"] / sum(wts$median)
-stopifnot( # GUARD: the skill curves are indexed on bio10; the prose reports both axes
-  "error-profile axis feature is no longer bio10" =
-    rd(OUT, "pipeline_settings.csv") |>
-      filter(script == "R/pl2_fitErrorProfiles.R", setting == "axis_feature") |>
-      pull(value) == "bio10"
+stopifnot(
+  # GUARD: the skill curves are indexed on bio10; the prose reports both axes
+  "error-profile axis feature is no longer bio10" = rd(
+    OUT,
+    "pipeline_settings.csv"
+  ) |>
+    filter(script == "R/pl2_fitErrorProfiles.R", setting == "axis_feature") |>
+    pull(value) ==
+    "bio10"
 )
 
 ## Data blocks ####
@@ -217,7 +260,9 @@ eu_alloc <- rd(OUT, "pl0", "eu_absence_allocation.csv")
 np_warm <- eu_alloc |> filter(response == "nonpeat", warm)
 op_warm <- eu_alloc |> filter(response == "otherpeat", warm)
 quota_warm <- max(np_warm$drawn)
-quota_cool <- max(eu_alloc$drawn[eu_alloc$response == "nonpeat" & !eu_alloc$warm])
+quota_cool <- max(eu_alloc$drawn[
+  eu_alloc$response == "nonpeat" & !eu_alloc$warm
+])
 full_warm <- np_warm |> filter(drawn == quota_warm)
 epm <- rd(OUT, "pl0", "epm_map_cat_summary.csv")
 epm_share <- function(lab) epm$share[epm$label == lab]
@@ -225,7 +270,9 @@ msk <- tibble::deframe(rd(OUT, "pl0", "eu_mask_summary.csv"))
 dom <- rd(OUT, "pl0", "eu_domain_area_by_country.csv")
 aud <- rd(OUT, "pl0", "eu_presence_audit.csv")
 aud_stat <- function(set, i) {
-  as.numeric(strsplit(aud$bio10_min_q25_med_q75_max[aud$set == set], " / ")[[1]][i])
+  as.numeric(strsplit(aud$bio10_min_q25_med_q75_max[aud$set == set], " / ")[[
+    1
+  ]][i])
 }
 aud_col <- function(set, col) aud[[col]][aud$set == set]
 ```
@@ -833,24 +880,27 @@ retained for the applicability mask.
 ![**Cross-validated skill as a function of warming beyond the training raised
 bogs.** Held-out cells of the pairwise arm, binned on their warmest-quarter
 temperature offset from the median of the raised bogs in that fold's training set (eight
-bins with equal numbers of raised-bog cells; points at bin medians). (A) Recall and
-false-positive rate for raised bog at the argmax operating point. (B) One-vs-rest AUC for
-raised bog and macro AUC. Ribbons are 95% cluster-bootstrap intervals over the 20 folds.
-Thin dashed lines: point estimates of the leave-one-partition-out arm, whose training sets
-are the production model's size, for reference. Solid vertical line: the typical training
-bog; dashed: the warmest training bog. Rug: the `r n0(S("n_lyngstad_polygons"))` mapped raised bogs at their current
-and 2071--2100 offsets; the shaded band spans the 10th--90th percentile of their future
-offset.](figures/fig_skill_offset.png){#fig-skill}
+bins with equal numbers of raised-bog cells; points at bin medians). (A) Share of true
+raised-bog cells called raised bog (recall) and share of non-bog cells wrongly called raised
+bog (false-positive rate), at the argmax operating point. (B) One-vs-rest AUC for raised bog
+and macro AUC. Ribbons are 95% cluster-bootstrap intervals over the 20 folds. Thin dashed
+lines: point estimates of the leave-one-partition-out arm, whose training sets are the
+production model's size, for reference. Dashed vertical line: the warmest training bog. Grey
+band: 10th--90th percentile of the 2071--2100 offset of the `r n0(S("n_lyngstad_polygons"))`
+mapped raised bogs; their current offsets lie near zero.](figures/fig_skill_offset.png){#fig-skill}
 
 ```{r}
 #| label: tbl-bins
 #| tbl-cap: "**Held-out skill by bin of warmest-quarter temperature offset from the training raised bogs** (pairwise arm). Intervals are 95% cluster-bootstrap intervals over the 20 folds."
 ci |>
   filter(metric %in% c("recall_bog", "fpr_bog", "auc_bog", "macro_auc")) |>
-  mutate(cell = ifelse(
-    is.na(lower), f2(estimate),
-    sprintf("%s (%s–%s)", f2(estimate), f2(lower), f2(upper))
-  )) |>
+  mutate(
+    cell = ifelse(
+      is.na(lower),
+      f2(estimate),
+      sprintf("%s (%s–%s)", f2(estimate), f2(lower), f2(upper))
+    )
+  ) |>
   select(bin, n, n_bog, n_folds, axis_lo, axis_hi, metric, cell) |>
   pivot_wider(names_from = metric, values_from = cell) |>
   transmute(

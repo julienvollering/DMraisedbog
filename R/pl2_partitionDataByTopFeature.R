@@ -1,9 +1,9 @@
 # Top-Feature Partitioning ####
 
-# PURPOSE: Cuts the frame into k CV partitions by sorting bog presences along the top materially-shifting feature (bio10), assigning other classes by range overlap.
+# PURPOSE: Cuts the frame into k CV partitions by sorting bog presences along the pinned partition axis (bio10), assigning other classes by range overlap.
 
-# This script implements presence-based partitioning using the most important
-# feature. Sorts presences along the feature and divides into k groups.
+# This script implements presence-based partitioning on the pinned partition axis.
+# Sorts presences along the feature and divides into k groups.
 # Absences are assigned by a complete tiling of the feature axis: interior cuts at the
 # midpoint between adjacent presence groups, terminal intervals open to +/- Inf. Nothing
 # is dropped. Each row also carries `envelope_side` -- its position relative to the
@@ -40,7 +40,7 @@ record_settings(
   min_presences = min_presences,
   presence_level = presence_level,
   seed = partition_seed,
-  axis_rule = "top-VI predictor among material shifters (>= 0.5 SD)"
+  axis_rule = paste("pinned:", PARTITION_AXIS)
 )
 
 ## Read modeling frame ####
@@ -66,37 +66,28 @@ cat("Requested partitions:", k_partitions, "\n")
 cat("Minimum presences per partition:", min_presences, "\n")
 cat("Total presences needed:", k_partitions * min_presences, "\n")
 
-## Load feature weights and identify most important feature ####
+## Partition axis ####
+
+# The axis is pinned (PARTITION_AXIS in R/config.R), not chosen by importance. It is
+# warmest-quarter temperature, the gradient the projection travels, and it is the same
+# axis the absence draw is stratified on and the skill curves are indexed on. An earlier
+# rule took the top-importance predictor among those that shift >= 0.5 SD under the
+# scenario; after the gsp rerun that picked a collinear temperature predictor other than
+# bio10, which left the partitions and the offset curves on different axes. The guard
+# below only confirms the pinned axis still moves under the scenario.
+most_important_feature <- PARTITION_AXIS
+
 weights_features <- read_csv("output/pl2/weights_feature_data_partitioning.csv")
-weighting_method <- "Balanced Random Forest"
+axis_info <- weights_features |>
+  filter(method == "Balanced Random Forest", feature == most_important_feature)
+stopifnot(
+  "partition axis is not a projection-dynamic predictor" = nrow(axis_info) == 1 &&
+    axis_info$dynamic
+)
 
-# Restricted to predictors that MOVE MATERIALLY under the scenario (`material`, written
-# by pl2_weightFeaturesDataPartitioning.R: projection-dynamic AND a mean shift of at least
-# 0.5 SD of the predictor's own spread). The partitions exist to make the pairwise CV an
-# extrapolation test along the axis the projection actually travels, and two filters are
-# needed to get there:
-#
-#  - the unrestricted ruler's top feature is `slope`, static terrain that is identical in
-#    the current and future frames, so folds cut on it differ in terrain and not climate;
-#  - the top merely-dynamic feature is `bio02`, which changes in nearly every cell but
-#    shifts only 0.26 SD, so folds cut on it separate the data along a gradient the
-#    projection barely traverses.
-#
-# The bar (17 of 32 dynamic features clear it) leaves `bio10` as the top-VI candidate,
-# which is also the cut axis of the section 1.3 sweep -- so pl2's CV and pl3's sweep sit
-# on the same gradient rather than on two unrelated ones.
-weights <- weights_features |>
-  filter(method == weighting_method, material) |>
-  select(feature, median) |>
-  arrange(desc(median)) |>
-  tibble::deframe()
-
-most_important_feature <- names(weights)[1]
-
-cat("\n=== TOP FEATURE ===\n")
-cat("Most important materially-shifting feature:", most_important_feature, "\n")
-cat("Feature importance:", round(weights[most_important_feature], 4), "\n")
-cat("Candidates considered:", length(weights), "of", nrow(filter(weights_features, method == weighting_method)), "\n")
+cat("\n=== PARTITION AXIS ===\n")
+cat("Pinned axis:", most_important_feature,
+    "- mean projected shift", round(axis_info$shift_sd, 2), "SD\n")
 
 ## Apply presence-based partitioning ####
 
