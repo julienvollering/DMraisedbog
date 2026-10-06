@@ -58,6 +58,7 @@ scripts_pl0 <- c(
   # Climate and paleo predictors
   "R/pl0_downloadCHELSA.R", # fetch CHELSA current + future bioclim
   "R/pl0_prepareCHELSATrace.R", # derive paleo_* predictors from TraCE21k
+  "R/pl0_prepareCHELSATraceSeries.R", # TraCE21k centennial series over Norway, 10-0 ka
   "R/pl0_collatePredictors.R", # assemble the full predictor stack
   # EU domain and its layers
   "R/pl0_buildEUdomain.R", # delimit the EU absence domain
@@ -83,6 +84,7 @@ scripts_pl2 <- c(
   "R/pl2_weightFeaturesDataPartitioning.R", # feature weights for every weighted distance
   "R/pl2_freezeDIRuler.R", # freeze weights + scaling + normalising constant
   "R/pl2_exploreOccupancy.R", # model-free: where the future goes, what is observed there
+  "R/pl2_exploreClimateHistory.R", # model-free: future bog climate vs the bogs' Holocene past
   "R/pl2_partitionDataByTopFeature.R", # cut CV partitions along the pinned axis (bio10)
   "R/pl2_evaluate.R", # pairwise CV: skill, confusion, per-row DI
   "R/pl2_predict.R", # production fit and projection
