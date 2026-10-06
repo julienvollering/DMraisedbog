@@ -24,6 +24,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# git prints UTF-8; Windows PowerShell 5.1 would decode it with the legacy console code page
+# and mangle non-ASCII path characters (ø, å), so every worktree would look "missing".
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$env:GIT_CONFIG_COUNT = "1"; $env:GIT_CONFIG_KEY_0 = "core.quotepath"; $env:GIT_CONFIG_VALUE_0 = "false"
+
 # Registered worktrees: path + branch, from git's own list. The first entry is the main checkout.
 function Get-Worktrees {
   $items = @()
