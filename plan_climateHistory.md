@@ -1,6 +1,7 @@
 # Plan: the climate history of today's raised bogs against the future climate
 
-Status: plan only, nothing run. Written 2026-10-06 on branch `worktree-ms-refresh-from-rerun`.
+Status: plan only, nothing run. Written 2026-10-06 on branch `climate-history-plan`; revised the same day
+after review.
 
 ## 1. The question, and what would answer it
 
@@ -17,9 +18,11 @@ The analysis has to give a verdict that is explicit about its one unknown. That 
 **t0, the age at which a bog became a bog**, so the headline result is a function of t0,
 not a number:
 
-- **Coverage curve**: share of future bog cells that fall inside the experienced climate
-  space, for every assumed transition age t0 from 0 (today's niche, the current figure) to
-  ~9 ka.
+- **Coverage curve**: share of future bog pixels that fall inside the experienced climate
+  space, for every assumed transition age t0 from 0 (today's climate of the Norwegian bogs)
+  to ~9 ka. Note t0 = 0 is *not* `fig_occupancy`'s reference: that figure compares against
+  all training bogs, Norwegian and European. Draw the pooled NO+EU present as a reference
+  line so the two figures can be read together.
 - **t\***: the smallest t0 at which coverage reaches a stated threshold (e.g. 95%), or
   "never". Read t\* against the independent evidence on when bogs ombrotrophied.
 
@@ -50,7 +53,11 @@ Gaps, found while planning:
 2. **gsp does not exist in TraCE.** The moisture axis must be bio12 (or bio18, warmest-quarter
    precipitation). Fig 2 already has a bio12 robustness grid. Re-draw the *present-day*
    occupancy on the same axes so the two figures are comparable.
-3. Neither `ecospat`, `hypervolume` nor `ENMTools` is installed (checked).
+3. **500-yr spacing samples one centennial mean in five**, so a per-pixel maximum can miss
+   the warmest HTM century and bias the verdict toward "novel". Use every centennial slice
+   for 10-0 ka (~100 files per variable); read only the Norway window over `/vsicurl/`
+   rather than storing global files.
+4. Neither `ecospat`, `hypervolume` nor `ENMTools` is installed (checked).
 
 ## 3. Design
 
@@ -61,29 +68,39 @@ bio18. Keep the axis count at 2-3: the occupancy figure shows that the shifting 
 are all collinear temperature measures, so more axes add dimensionality without adding
 information, and hull/density methods degrade quickly.
 
-### 3.2 Unit of analysis: TraCE pixels, not 250 m cells
+### 3.2 Unit of analysis: TraCE pixels, resampled by GCM cell
 TraCE is ~1 km. 1,116 Norwegian bog cells at 250 m collapse to a few dozen to a few hundred
-distinct ~1 km pixels. Extract climate per pixel and weight or resample by pixel, so n is
-honest. (The same autocorrelation caution `pl2_exploreOccupancy.R` already makes for the warm
-evidence.) Bootstrap by pixel, or by Lyngstad polygon where available.
+distinct ~1 km pixels; extract climate and report coverage per pixel. But pixels are not
+independent: after the delta correction (3.3) each pixel's history is its local baseline
+plus a CCSM3 anomaly from a ~3.75 degree grid, and the GFDL future anomaly is similarly
+smooth. All of Norway sits in a handful of GCM cells, so the effective n is that handful.
+Bootstrap by GCM cell; a pixel or polygon bootstrap would give far too narrow intervals.
 
 ### 3.3 Experienced climate, with a TraCE-to-CHELSA bridge
 For every bog pixel i and slice s: c_i(s) = (bio10, bio12). Two ways to place TraCE on the
 CHELSA v2 scale, run both:
 
-- **Delta (primary)**: c_i(s) = CHELSA_1981-2010(i) + [TraCE(i, s) - TraCE(i, 0 ka)]. Removes
-  the TraCE-vs-CHELSA offset at the present, so past and future are on one scale (CHELSA
-  v2 current vs GFDL-ESM4 SSP3-7.0, `FUTURE_SCENARIO`/`FUTURE_GCM` in `R/config.R`).
+- **Delta (primary)**: bio10 additive, CHELSA_1981-2010(i) + [TraCE(i, s) - TraCE(i, 0 ka)];
+  precipitation as a **ratio**, CHELSA_1981-2010(i) x TraCE(i, s) / TraCE(i, 0 ka) (an
+  additive precipitation delta can go negative at dry sites). Puts past and future on one
+  scale (CHELSA v2 current vs `FUTURE_GCM` under `FUTURE_SCENARIOS`, `R/config.R`).
 - **Raw TraCE** as sensitivity.
-First report the present-day offset (TraCE 0 ka vs CHELSA) per axis: if it is large, that
-alone is a result about how far the HTM comparison can be trusted.
+
+Baseline mismatch: TraCE ends in 1990, so its last centennial slice is mostly 20th-century
+climate, cooler than CHELSA 1981-2010. Anchoring the anomaly to 1981-2010 then makes the
+past too warm by that difference (bias toward "inside"). Confirm what period `time = 20`
+covers, quantify the difference, and state it. The present-day TraCE-vs-CHELSA offset is
+near zero by construction (CHELSA-TraCE is itself delta-downscaled onto a CHELSA
+climatology), so it is a plumbing check only and says nothing about HTM fidelity; that
+needs the proxy comparison in 3.8.
 
 ### 3.4 Per-pixel window, capped by deglaciation
 For a given t0, pixel i's history is slices with age <= min(t0, `paleo_years_icefreeland`_i).
 A bog cannot be older than its ground, so this cap is automatic and removes the
-glaciated or inundated part of the series. Caveat: TraCE `orog`/`glz` carry no isostatic
-uplift, so coastal sites that emerged from the sea late are treated as land too early; the
-cap is a *maximum* age. Flag these pixels (low elevation, near coast) rather than hide them.
+glaciated or inundated part of the series. Caveat: TraCE `orog` palaeotopography (check whether it
+includes ICE-5G/6G isostasy and sea level) is too coarse to resolve shoreline displacement
+along fjords and coast, so sites that emerged from the sea late may be treated as land too
+early; the cap is a *maximum* age. Flag these pixels (low elevation, near coast) rather than hide them.
 
 ### 3.5 "Inside the experienced space": three definitions, reported together
 For each t0, with E(t0) = the set of (bio10, bio12) points experienced by *any* bog pixel
@@ -96,7 +113,10 @@ in its own window, and F = the future points of the same pixels:
 2. **Pooled hull**: convex hull of E(t0) in bio10 x bio12 (alpha-hull as variant), share of F
    inside. Answers "has *a* bog been through this climate", the niche-style question.
 3. **Pooled density quantile**: kernel density of E(t0), F inside the 95% (and 99%)
-   contour. Robust to a few extreme slices that a hull would lock in.
+   contour. Robust to a few extreme slices that a hull would lock in, but that is also its
+   weakness here: the question is about extremes, and a contour trims rare warm periods
+   like the HTM by design. It is not monotone in t0 either (adding cool early slices can
+   push HTM points outside), so t\* is defined on definitions 1-2 only; 3 is a sensitivity.
 
 Definitions 1 and 2 differ on purpose. If F is in the pooled space but outside its own
 history, bogs are surviving a future that only *other* bogs have seen; say which one the
@@ -110,10 +130,13 @@ Use each for what it does well, not as the engine:
   `ecospat.niche.dyn.index()` return exactly the quantities in the question:
   **expansion** (future climate outside the experienced niche = the novelty we are asking
   about), **stability** (inside), **unfilling** (experienced but not in the future), plus
-  Schoener's D. Pass the *available* climate (all Norwegian land cells at that slice) as the
-  background so density is corrected for availability; this matters because the HTM
-  landscape was differently distributed in climate space. Run on a few t0 (0, 2, 4, 6, 8 ka)
-  and per slice (e.g. 0, 2, 4, 6, 8 ka), not on every t0.
+  Schoener's D. Two pitfalls: (a) `ecospat.niche.dyn.index()` can restrict the indices to
+  climates present in both backgrounds, which would drop exactly the novel future climate
+  we ask about; set `intersection = NA` and say so. (b) Its availability correction
+  (background = all Norwegian land at that slice) answers "do bogs prefer this climate",
+  not containment for fixed sites, and D measures overlap; so COUE expansion will not
+  equal the coverage curve, and is reported alongside it, not as a check of it. Run on a
+  few t0 (0, 2, 4, 6, 8 ka) and per slice, not on every t0.
 - **hypervolume** (Blonder): sensitivity for the 3-axis version and for set operations
   (`hypervolume_set`: unique/intersection fractions). Cost and bandwidth sensitivity make
   it a check, not the base.
@@ -121,16 +144,17 @@ Use each for what it does well, not as the engine:
   which is not our question (we want containment of a future in a history, not a test of
   equivalence). Leave out unless a reviewer asks; do not install for the base analysis.
 - The transparent **headroom + hull + density-contour** set (3.5) carries the verdict;
-  ecospat and hypervolume confirm it. Agreement across the methods is the robustness claim.
+  hypervolume checks it, ecospat puts it in the niche-dynamics vocabulary reviewers expect.
 
 ### 3.7 Bog-age information to narrow t0 (this is the tricky part)
 Do not pick one t0. Provide:
 
 - **A sweep** t0 = 0, 0.5, 1, 2, ..., 9 ka (slice spacing is 0.5 ka).
 - **A weak prior from the literature**, drawn as a shaded band on the coverage curve, never
-  as a single line. Edvardsson (2013) is the anchor: bog-pine chronologies in *Sphagnum peat
+  as a single line. Edvardsson et al. (check year: 2012/2016) is the anchor: bog-pine chronologies in *Sphagnum peat
   over fen peat* at three bogs in southern Sweden span 5284-3728 BC and 2668-1108 BC
-  (~7.2-5.7 ka and ~4.6-3.1 ka BP), with bog-tree establishment during the relatively warm,
+  (~7.2-5.7 ka and ~4.6-3.1 ka BP, BP = 1950; TraCE ages here are b2k, a 50-yr
+  difference to state once), with bog-tree establishment during the relatively warm,
   dry HTM and lateral expansion as it turned humid. That says some southern Fennoscandian
   bogs were already ombrotrophic well before 6 ka; it does **not** date Norwegian bogs, and
   tree establishment is a lower bound on the transition, not the transition.
@@ -147,14 +171,22 @@ Do not pick one t0. Provide:
 
 ### 3.8 Known limits of the climate record (state them in the Methods)
 - TraCE21k is one transient simulation, downscaled; GCM-scale (~3.75 degree) forcing means local
-  detail is not resolved, and the HTM amplitude is model-dependent. Validate bio10 at a
+  detail is not resolved, and the HTM amplitude is model-dependent; CCSM3/TraCE likely
+  shows weaker Fennoscandian HTM summer warmth than proxies (bias toward "novel"). Validate bio10 at a
   handful of sites against Fennoscandian proxy summer-temperature reconstructions, or at
   least report the simulated HTM-minus-present anomaly next to published ones.
 - **Smoothing mismatch**: TraCE slices are centennial means; the future layer is a 30-yr
   mean. A smoother past makes the future look *more* extreme than the past (the past's
   warm years are averaged away). Bogs survived the warm *years* of the HTM, which TraCE
-  cannot show. Mitigation: compare with the modern interannual SD added (envelope widened by
-  the 1981-2010 interannual spread), and state the direction of the bias.
+  cannot show. Mitigation: widen the envelope by the SD of 30-yr means about a centennial
+  mean (multidecadal variability, e.g. from TraCE's own variability or a long control
+  run), **not** the interannual SD, which is far larger and would overcorrect toward
+  "inside"; state the direction of the bias.
+- **Not the same climate, even inside the envelope**: future change is ~100x faster than
+  Holocene change; CO2 is ~260 ppm then vs >500 ppm under SSP3-7.0 (plant water use); HTM
+  warmth came with colder winters, so the bio06 sensitivity will flag "novel" from winter
+  warming almost by construction (say so before reading it); and surviving the HTM is not
+  surviving unchanged (the Edvardsson bog pines record dry surfaces).
 - Absence from the experienced space is a statement about *this* climate record, not about
   bog physiology; hydrology (bio12 vs evaporative demand) is only partly captured by
   precipitation alone. A warm-dry past is not a warm-wet future; the moisture axis is
@@ -171,8 +203,8 @@ the `paleo_*` predictors, so no model rerun is implied):
 
 | Step | Script | What |
 |---|---|---|
-| 1 | `R/pl0_downloadCHELSA.R` (edit) | add `bio10`, `bio18` (and `bio06` for the 3-axis check) to `paleo_bioclim_vars`; the loop already skips existing files. Check file integrity as with the other downloads. ~33 slices x 2-3 vars. |
-| 2 | `R/pl0_prepareCHELSATraceSeries.R` (new) | crop the new variables to the Norway window, **keep the time dimension**: one multi-layer GeoTIFF per variable (`data/CHELSA/paleo_derived/trace_series_<var>_Norway.tif`). Do **not** edit `pl0_prepareCHELSATrace.R`: its `paleo_*` outputs feed the model and must not change. |
+| 1 | `R/pl0_downloadCHELSA.R` (edit) | add `bio10`, `bio18` (and `bio06` for the 3-axis check), plus centennial slices for 10-0 ka (gap 3; keep the existing 500-yr set for `paleo_*`); the loop already skips existing files. Check integrity as with the other downloads. Changes the `record_settings()` row; note it in `notebook.md`. |
+| 2 | `R/pl0_prepareCHELSATraceSeries.R` (new), listed in `RUNALL.R` after `pl0_prepareCHELSATrace.R` | crop the new variables to the Norway window, **keep the time dimension**: one multi-layer GeoTIFF per variable (`data/CHELSA/paleo_derived/trace_series_<var>_Norway.tif`). Do **not** edit `pl0_prepareCHELSATrace.R`: its `paleo_*` outputs feed the model and must not change. |
 | 3 | `R/pl2_exploreClimateHistory.R` (new), listed in `RUNALL.R` right after `pl2_exploreOccupancy.R` | Sections: bog pixels and deglaciation cap; TraCE-vs-CHELSA offset check; delta-corrected series; E(t0) and the three containment definitions; coverage curve; ecospat COUE at selected t0; hypervolume sensitivity. Writes `output/pl2/climatehistory_*.csv` and PNGs; calls `record_settings()` with t0 grid, axes, thresholds. |
 | 4 | `ms/make_figures.R` (edit) | new figure from the CSV outputs only. |
 | 5 | `plan` / `notebook.md` | record the rerun and the finding. |
@@ -188,7 +220,7 @@ edge distance.
 ## 5. Figures and tables
 
 1. **Space-time figure (the "third dimension")**, 7.5 in wide, shown like `fig_occupancy`:
-   - **A.** bio10 x bio12 small multiples, one panel per ~1 ka slice (0, 2, 4, 6, 8 ka): bog
+   - **A.** bio10 x bio12 small multiples, one panel per ~2 ka slice (0, 2, 4, 6, 8 ka): bog
      pixels' climate for that slice (points + hull/95% contour), future bog climate in red
      in every panel. The reader sees the red cloud move from outside the contour to inside
      as the panels go back to the HTM, or not.
@@ -204,13 +236,12 @@ edge distance.
 
 ## 6. Decisions and checks before running
 
-- **Run first, decide after** (cheap): the TraCE-vs-CHELSA offset at the present for bio10
-  and bio12, and whether 0 ka in TraCE is 2000 CE (script treats `time = 20` as present; the
-  slice list also contains `0` twice because the two `seq()` calls overlap at 0, harmless but
-  worth confirming).
-- **Which future?** Primary scenario is the one in `R/config.R` (SSP3-7.0, GFDL-ESM4). The
-  branch `worktree-ssp126-scenario` adds an SSP1-2.6 leg and `FUTURE_SCENARIOS`; when merged,
-  loop over both. The milder scenario is where t* is most likely to be small, so it matters for the
+- **Run first, decide after** (cheap): what period the `time = 20` slice averages (the
+  scripts treat it as present; it sets the baseline mismatch in 3.3), and the present-day
+  offset as a plumbing check. The slice list contains `0` twice (the two `seq()` calls
+  overlap); harmless, since the download skips existing files.
+- **Which future?** `FUTURE_SCENARIOS` in `R/config.R` (SSP3-7.0 primary, SSP1-2.6 mild,
+  GFDL-ESM4): loop over both. The milder scenario is where t* is most likely to be small, so it matters for the
   message.
 - **Coverage threshold** (95%? any pixel outside?) and the **t0 prior band**: JV's call, and
   needs the Norwegian literature pass in 3.7.
@@ -224,7 +255,8 @@ edge distance.
 
 ## 7. Suggested order of work
 
-1. Download bio10/bio18; crop to a time-series stack; check offset to CHELSA and slice timing.
+1. Download bio10/bio18 (centennial, 10-0 ka); crop to a time-series stack; check the
+   `time = 20` period and the baseline mismatch.
 2. Headroom and coverage curve for the delta version, bio10 only (fastest read of the answer).
 3. Add bio12, the hull and density definitions, pixel-level bootstrap.
 4. ecospat COUE; hypervolume sensitivity.
