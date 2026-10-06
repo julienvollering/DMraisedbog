@@ -1,7 +1,43 @@
 # Plan: the climate history of today's raised bogs against the future climate
 
-Status: plan only, nothing run. Written 2026-10-06 on branch `climate-history-plan`; revised the same day
-after review.
+Status: plan written 2026-10-06 on branch `climate-history-plan`, revised after review; steps 1-3 of
+section 7 implemented and run the same day (first results in section 0 below).
+
+Departures from the plan in the implementation:
+- **No edit to `pl0_downloadCHELSA.R`.** `R/pl0_prepareCHELSATraceSeries.R` reads the Norway window of
+  each centennial slice over `/vsicurl/` (~4 s per slice) instead of downloading ~56 GB of global
+  files. It must not write into `data/CHELSA/paleo/`: `pl0_prepareCHELSATrace.R` globs every bio01/bio12
+  file there and would either stop on mismatched slices or silently change `paleo_*`.
+- **Future climate is read from native CHELSA at each pixel**, for both scenarios, rather than from the
+  modelling frame, so SSP1-2.6 works before its projection leg has run.
+- **Definition 1b is one-sided on moisture** (not drier than the pixel's driest slice): the future is
+  wetter than every slice of every pixel's past, the safe direction for an ombrotrophic bog.
+- **The GCM-cell bootstrap is weak**: 614 pixels fall in 6 approximate CCSM3 cells, 510 of them in one.
+  Bands are reported but are not a confidence statement.
+- **Not done yet**: ecospat/hypervolume (step 4; `ecospat` pulls in retired `biomod2` and `cluster` -
+  COUE could instead be computed directly on the KDE grid), the multidecadal-variability widening (3.8),
+  core-cell sensitivity and the literature t0 band (step 5), `ms/make_figures.R` (step 6).
+
+## 0. First results (2026-10-06, delta, bio10 x bio12)
+
+Outputs: `output/pl2/climatehistory_*.csv|png`. 1,116 NO bog cells -> 614 TraCE pixels in 6 approximate
+CCSM3 cells (510 in one), so effective n is ~1-6.
+
+| | t0 = 0 | 6 ka | 10 ka |
+|---|---|---|---|
+| SSP3-7.0, pooled hull | 0.2% | 3.9% | 3.9% |
+| SSP3-7.0, per-pixel headroom (median) | +3.5 C | +2.6 C | +2.6 C |
+| SSP1-2.6, pooled hull | 37% | 99% (t\* = 6 ka) | 99% |
+| SSP1-2.6, per-pixel coverage / median headroom | 0% / +1.2 C | 11% / +0.3 C | 11% / +0.3 C |
+
+Reference, today's pooled NO+EU bog climate (hull): 21% (SSP3-7.0), 99% (SSP1-2.6).
+
+- TraCE's simulated HTM is weak here: max 8-6 ka bio10 only +0.7 C over the last slice (mean +0.1 C).
+  The SSP1-2.6 verdict (+0.3 C headroom) sits inside any plausible proxy-vs-TraCE bias; the SSP3-7.0
+  one (+2.6 C) does not.
+- TraCE last slice vs CHELSA 1981-2010: bio10 +0.3 C, bio12 -18%, bio18 -22%. The "near zero by
+  construction" expectation (3.3) holds for temperature only.
+- Moisture never binds (future wetter than every past slice), so temperature carries the verdict.
 
 ## 1. The question, and what would answer it
 

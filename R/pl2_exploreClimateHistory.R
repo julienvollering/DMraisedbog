@@ -23,7 +23,10 @@
 #
 # THREE CONTAINMENT DEFINITIONS (3.5), reported together:
 #   1  per-pixel headroom: future bio10 minus the warmest slice in that pixel's own window
-#      ("this bog has been this warm before"); 1b adds the pixel's own bio12 range.
+#      ("this bog has been this warm before"); 1b adds "and not drier than its driest
+#      slice". One-sided on purpose: the future is WETTER than every slice of every
+#      pixel's own past (bio12 +8% SSP3-7.0, +3% SSP1-2.6), and for an ombrotrophic bog
+#      wetter is the safe side. A two-sided range scored that as novelty (0% coverage).
 #   2  pooled convex hull of every bog pixel's experienced (bio10, bio12).
 #   3  pooled density: inside the 95% highest-density region. Not monotone in t0 and trims
 #      the rare warm slices by design, so t* is defined on 1 and 2 only.
@@ -268,7 +271,7 @@ coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) 
 
   headroom <- fx - row_max_in(tx, win)
   inside_1 <- headroom <= 0
-  inside_1b <- inside_1 & fy >= row_min_in(my, win) & fy <= row_max_in(my, win)
+  inside_1b <- inside_1 & fy >= row_min_in(my, win)
 
   sel <- w > 0
   e_x <- tx[sel, ][win[sel, ]]
@@ -276,7 +279,7 @@ coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) 
   inside_2 <- in_hull(fx, fy, e_x, e_y)
 
   out <- tibble(
-    definition = c("1 headroom", "1b own range", "2 pooled hull"),
+    definition = c("1 headroom", "1b not drier", "2 pooled hull"),
     coverage = c(
       weighted.mean(inside_1, w), weighted.mean(inside_1b, w), weighted.mean(inside_2, w)
     )
@@ -372,7 +375,7 @@ write_csv(reference, "output/pl2/climatehistory_reference.csv", append = FALSE)
 ## t* ####
 
 t_star <- curves |>
-  filter(definition %in% c("1 headroom", "1b own range", "2 pooled hull")) |>
+  filter(definition %in% c("1 headroom", "1b not drier", "2 pooled hull")) |>
   group_by(scenario, version, axes, definition) |>
   summarise(
     coverage_t0_0 = coverage[t0 == 0],
