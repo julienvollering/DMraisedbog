@@ -401,48 +401,65 @@ ch_unprec <- ch_cov |>
     record = factor(REC_LAB[version], levels = REC_LAB)
   )
 
-ch_note_t0 <- 4
-ch_at <- function(scen, t0 = ch_note_t0) {
+ch_at <- function(scen, t0) {
   ch_unprec |> filter(scenario == scen, .data$t0 == .env$t0) |> pull(unprecedented)
 }
 ch_pct_range <- function(v) {
   r <- round(100 * range(v))
   if (r[1] == r[2]) sprintf("%d%%", r[1]) else sprintf("%d-%d%%", r[1], r[2])
 }
-ch_126 <- ch_at("SSP1-2.6")
-ch_370 <- ch_at("SSP3-7.0")
+# SSP3-7.0 is read at the OLD edge of the plausible range (the strongest claim: even bogs this
+# old have not lived through it); SSP1-2.6 near the top of the core range, with a bracket
+# spanning the two records' points, because the quoted range IS the gap between them.
+ch_t0_370 <- T0_OUTER[2]
+ch_t0_126 <- 5
+ch_370 <- ch_at("SSP3-7.0", ch_t0_370)
+ch_126 <- ch_at("SSP1-2.6", ch_t0_126)
+ch_brk_x <- ch_t0_126 - 0.28 # reversed axis: smaller t0 is to the right of the points
+ch_brk_tick <- 0.12
 
 p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
   geom_point(aes(colour = scenario, shape = record), size = 1.9, stroke = 0.6) +
   ch_fog(-0.3, 10.3) +
-  ch_label(9, 0.66, "few bogs\nthis old") +
+  ch_label(9.2, 0.6, "few bogs\nthis old") +
   ch_label(0.5, 0.5, "few bogs\nthis young") +
   annotate(
     "segment",
-    x = ch_note_t0 + 2.2, xend = ch_note_t0 + 0.2,
-    y = 0.80, yend = min(ch_370) - 0.015,
+    x = ch_t0_370 - 1.1, xend = ch_t0_370 - 0.05,
+    y = 0.81, yend = min(ch_370) - 0.02,
     linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
   ) +
   annotate(
     "text",
-    x = ch_note_t0 + 2.2, y = 0.78, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    x = ch_t0_370 - 1.6, y = 0.80, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
     label = sprintf(
       "%s of bog pixels face an SSP3-7.0\nclimate no bog has lived through\nin the last %d ka",
-      ch_pct_range(ch_370), ch_note_t0
+      ch_pct_range(ch_370), ch_t0_370
     )
+  ) +
+  # Bracket: a vertical bar between the two records' points with ticks towards them, and a
+  # leader to the label in the empty lower right.
+  annotate(
+    "segment",
+    x = ch_brk_x, xend = ch_brk_x, y = min(ch_126), yend = max(ch_126),
+    linewidth = 0.3
   ) +
   annotate(
     "segment",
-    x = ch_note_t0 + 3.0, xend = ch_note_t0 + 0.2,
-    y = 0.42, yend = mean(ch_126),
-    linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
+    x = ch_brk_x, xend = ch_brk_x + ch_brk_tick, y = range(ch_126), yend = range(ch_126),
+    linewidth = 0.3
+  ) +
+  annotate(
+    "segment",
+    x = ch_brk_x, xend = 3.75, y = mean(ch_126), yend = 0.245,
+    linewidth = 0.3
   ) +
   annotate(
     "text",
-    x = ch_note_t0 + 4.1, y = 0.40, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    x = 2.1, y = 0.225, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
     label = sprintf(
-      "%s face an SSP1-2.6\nclimate no bog has\nlived through in the\nlast %d ka (two records)",
-      ch_pct_range(ch_126), ch_note_t0
+      "%s face an SSP1-2.6 climate\nno bog has lived through\nin the last %d ka",
+      ch_pct_range(ch_126), ch_t0_126
     )
   ) +
   scale_x_reverse(breaks = 0:10, expand = expansion(add = 0.3)) +
