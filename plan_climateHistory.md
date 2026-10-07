@@ -18,8 +18,9 @@ Departures from the plan in the implementation:
   The multidecadal-variability mismatch (3.8) is stated as a Methods caveat, not corrected for.
 - **Literature t0 band**: 3.7a, revised after JV's check to 2-6 ka (outer 1-8 ka).
 - **Figures/tables (step 6)**: `ms/make_figures.R`, section after Fig 2: `fig_climatehistory`,
-  `figS_climatehistory_slices`, `figS_climatehistory_headroom`, `tbl_climatehistory`, `ch_*` study numbers.
+  `figS_climatehistory_slices`, `figS_climatehistory_exceedance`, `tbl_climatehistory`, `ch_*` study numbers.
   Awaiting JV's approval before the manuscript text.
+- **TraCE's weak HTM**: planned fix in 3.9 (proxy-anchored EPOCH-2 track), awaiting JV.
 - **Not done yet**: core-cell sensitivity (step 5).
 
 ## 0. First results (2026-10-06, delta, bio10 x bio12)
@@ -30,14 +31,14 @@ CCSM3 cells (510 in one), so effective n is ~1-6.
 | | t0 = 0 | 6 ka | 10 ka |
 |---|---|---|---|
 | SSP3-7.0, pooled hull | 0.2% | 3.9% | 3.9% |
-| SSP3-7.0, per-pixel headroom (median) | +3.5 C | +2.6 C | +2.6 C |
+| SSP3-7.0, per-pixel exceedance (median) | +3.5 C | +2.6 C | +2.6 C |
 | SSP1-2.6, pooled hull | 37% | 99% (t\* = 6 ka) | 99% |
-| SSP1-2.6, per-pixel coverage / median headroom | 0% / +1.2 C | 11% / +0.3 C | 11% / +0.3 C |
+| SSP1-2.6, per-pixel coverage / median exceedance | 0% / +1.2 C | 11% / +0.3 C | 11% / +0.3 C |
 
 Reference, today's pooled NO+EU bog climate (hull): 21% (SSP3-7.0), 99% (SSP1-2.6).
 
 - TraCE's simulated HTM is weak here: max 8-6 ka bio10 only +0.7 C over the last slice (mean +0.1 C).
-  The SSP1-2.6 verdict (+0.3 C headroom) sits inside any plausible proxy-vs-TraCE bias; the SSP3-7.0
+  The SSP1-2.6 verdict (+0.3 C exceedance) sits inside any plausible proxy-vs-TraCE bias; the SSP3-7.0
   one (+2.6 C) does not.
 - TraCE last slice vs CHELSA 1981-2010: bio10 +0.3 C, bio12 -18%, bio18 -22%. The "near zero by
   construction" expectation (3.3) holds for temperature only.
@@ -147,7 +148,7 @@ For each t0, with E(t0) = the set of (bio10, bio12) points experienced by *any* 
 in its own window, and F = the future points of the same pixels:
 
 1. **Per-pixel (local history)**: is F_i inside the range of *pixel i's own* trajectory?
-   Reported as **headroom** in degrees C: future bio10 minus the historical maximum at that
+   Reported as **exceedance** in degrees C: future bio10 minus the historical maximum at that
    pixel. The most direct reading of "this bog has been this warm before" and it needs no
    multivariate machinery. Map it.
 2. **Pooled hull**: convex hull of E(t0) in bio10 x bio12 (alpha-hull as variant), share of F
@@ -183,7 +184,7 @@ Use each for what it does well, not as the engine:
 - **ENMTools**: identity/background tests answer "is the niche *different* from chance",
   which is not our question (we want containment of a future in a history, not a test of
   equivalence). Leave out unless a reviewer asks; do not install for the base analysis.
-- The transparent **headroom + hull + density-contour** set (3.5) carries the verdict;
+- The transparent **exceedance + hull + density-contour** set (3.5) carries the verdict;
   hypervolume checks it, ecospat puts it in the niche-dynamics vocabulary reviewers expect.
 
 ### 3.7 Bog-age information to narrow t0 (this is the tricky part)
@@ -270,7 +271,7 @@ dated Norwegian onset for every cell, and even then only in the pooled sense.
 **Proxy HTM against TraCE** (plan 3.8). Northernmost Fennoscandia: HTM maximum 1.5 +/- 0.5 C above present,
 stable 8-6 ka (`sjogrenOverviewHoloceneClimate2021`). N European pollen stack: HTM 8.0-4.8 ka (Seppä et al.
 2009, Clim. Past; *web*, amplitude not yet read). TraCE at our pixels: +0.7 C max, +0.1 C mean (8-6 ka minus
-last slice). So TraCE likely understates HTM summer warmth by ~1 C. Read the headroom against that: SSP1-2.6
+last slice). So TraCE likely understates HTM summer warmth by ~1 C. Read the exceedance against that: SSP1-2.6
 (+0.3 C) is inside the gap, SSP3-7.0 (+2.6 C) is beyond the proxy maximum even at its upper end (2.0 C).
 Karger et al. 2023 also note temperature-coupling errors between 10 and 6 ka
 (`kargerCHELSATraCE21kHighresolution1thinspkm2023`).
@@ -304,6 +305,86 @@ would test the 6 ka upper edge in the bogs' core region; the Seppä 2009 HTM amp
   temperature-based demand) is a follow-up, not a base requirement.
 - Present-day-fixed locations: bogs do not move in this analysis; fine for persistence, but
   it cannot say anything about bogs that existed in warmer-climate places and are now gone.
+
+### 3.9 TraCE's mid-Holocene warmth: a proxy-anchored track from EPOCH-2 (option 1, planned 2026-10-07)
+
+**Problem.** At the 614 bog pixels TraCE gives a mid-Holocene (8-6 ka) bio10 only +0.1 C above its last
+slice (warmest single slice +0.7 C). Pollen stacks put July temperature at 8-6 ka about **+1.5 C** above
+present, and annual temperature at +2.0-2.5 C (`seppaLastNinethousandYears2009`; its 36 sites include
+Haugtjern, Svartvatnet, Dalane, Grostjørna and others in the bogs' region). Karger et al. (2023, Fig. 5)
+show both TraCE21k and CHELSA-TraCE21k underestimating the Greenland ice-core HTM, and temperature-coupling
+errors at 10-6 ka. The gap (~1-1.5 C) is larger than the SSP1-2.6 exceedance (+0.3 C at t0 >= 6 ka) and
+smaller than the SSP3-7.0 one (+2.6 C). So the SSP1-2.6 verdict currently depends on TraCE's error, while
+the SSP3-7.0 verdict does not.
+
+**Approach.** Run a second temperature history next to TraCE and report the verdict for both: "model
+(TraCE)" and "proxy-anchored (EPOCH-2)". Neither replaces the other: TraCE is internally consistent and
+centennial; the pollen reconstruction has the HTM amplitude but is millennial and smoothed. If the two
+bracket the answer, the manuscript says so.
+
+**Data.** Mauri, Davis, Collins & Kaplan (2015), *The climate of Europe during the Holocene: a gridded
+pollen-based reconstruction and its multi-proxy evaluation*, QSR 112: 109-127, doi
+10.1016/j.quascirev.2015.01.013 (EPOCH-2; not yet in Zotero). NOAA:
+https://www.ncei.noaa.gov/pub/data/paleo/pollen/epoch2/ — `epoch-2.nc`, `epoch-2_uncertainties.nc` (also
+GeoTIFFs under `tiff_anomalies/`, `tiff_uncertainties/`). 1 degree grid, 28.5-71.5 N, 11.5 W-50.5 E (covers
+all bog pixels); 13 slices at 100, 1000, 2000, ..., 12000 cal BP; anomalies against "preindustrial".
+Variables used: `tanom_jja` (summer temperature, C); kept for sensitivity: `panom_ann`, `anom_p_e`
+(moisture balance). Uncertainties combine transfer-function and interpolation error.
+
+**Construction (per pixel i, centennial slice s at age a_s).**
+1. *EPOCH-2 at the pixels.* Bilinear from the 1 degree grid to pixel centres (nearest valid cell where the
+   coastal cells are NA; count them). Interpolate linearly in age from the 1000-yr steps to every
+   centennial age: a_E(i, s). Ages are cal BP (b1950); TraCE ages are b2k. Shift by 50 years once.
+2. *TraCE anomaly and its millennial mean.* a_T(i, s) = TraCE bio10(i, s) - TraCE bio10(i, t20). Smooth
+   with a centred 1000-yr running mean (11 slices) to m_T(i, s), the TraCE equivalent of a 1000-yr step.
+3. *Hybrid anomaly.* a_H(i, s) = a_E(i, s) + [a_T(i, s) - m_T(i, s)]: EPOCH-2 sets the millennial level,
+   TraCE adds the centennial wiggles around it. This keeps the warmest-century information that a pure
+   1000-yr series would lose (gap 3 in section 2), without TraCE's level.
+4. *Reference period.* EPOCH-2 anomalies are relative to preindustrial; CHELSA current is 1981-2010.
+   bio10_H(i, s) = CHELSA_1981-2010(i) - D_PI(i) + a_H(i, s), where D_PI is the summer warming from
+   preindustrial to 1981-2010 at the pixel. Source for D_PI (decision below): CRU TS JJA 1901-1930 vs
+   1981-2010 at the pixels, which treats the early 20th century as preindustrial and so understates D_PI
+   slightly (bias toward "inside"). A fixed regional value is the fallback. D_PI enters every past slice
+   equally, so it shifts the history as a whole; report it next to the result.
+5. *Precipitation.* Keep TraCE's ratio-delta bio12 for the primary hybrid track: moisture never binds
+   (the future is wetter than every past slice), and pollen precipitation is the weaker reconstruction.
+   Sensitivity: replace it with EPOCH-2 `panom_ann` (as a ratio on CHELSA) to check that a drier HTM does
+   not change the pooled-hull result.
+6. *Uncertainty.* Repeat with a_E +/- 1 SE from `epoch-2_uncertainties.nc` (`tanom_jja`) to give a band
+   on the hybrid track. This is separate from the GCM-cell bootstrap, which stays weak (6 cells).
+
+**Checks before reading results.**
+- EPOCH-2 at the pixels, 8-6 ka, should come out near Seppä's +1.5 C (Tjul) for the same region; if it is
+  far off, find out why before using it.
+- bio10 is the warmest quarter, EPOCH-2 is JJA. Check in CHELSA 1981-2010 which quarter is warmest at the
+  pixels (JJA vs JAS on the coast); if JAS is common, note the mismatch rather than correct it.
+- The proxy HTM is a smoothed, multi-centennial signal; the 30-yr future is not. This is the same
+  smoothing caveat as 3.8, now in the proxy track too (stated in the Methods, not corrected).
+- Model-proxy disagreement on HTM warmth: the argument that proxies are seasonally biased concerns
+  annual means. For a summer variable, the orbital forcing and summer-calibrated proxies agree on a warm
+  HTM summer, which is why the proxy track is credible for bio10. Say this in the Discussion.
+
+**Expected outcome (to test, not assume).** SSP3-7.0 stays novel: +3.5 C above 1981-2010 against an HTM
+of ~+1.5 C above preindustrial, i.e. about 2 C beyond even after D_PI. SSP1-2.6 (+1.2 C above 1981-2010)
+moves to roughly the proxy HTM level, so per-pixel coverage for t0 >= ~5-6 ka could rise from ~11% to a
+large share. If so, the SSP1-2.6 sentence becomes conditional on which record is right and on bog age.
+
+**Pipeline.**
+- New `R/pl0_prepareEPOCH2.R` (after `pl0_prepareCHELSATraceSeries.R` in RUNALL): download the two `.nc`
+  files to `data/EPOCH2/`, crop to the Norway window, write `tanom_jja`, `panom_ann` and their uncertainties
+  as multi-layer GeoTIFFs; record_settings() with source URL and slices.
+- `R/pl2_exploreClimateHistory.R`: add `history$hybrid` (and `hybrid_lo` / `hybrid_hi` for the SE band)
+  built as above; D_PI computed or read in. `coverage()` already loops over versions, so the coverage
+  curves, t*, exceedance per pixel and the bootstrap extend without new machinery. Write `a_E`, `m_T`
+  and D_PI per pixel to `climatehistory_hybrid_inputs.csv` for checking.
+- `ms/make_figures.R`: panel A adds the hybrid median trajectory (and the EPOCH-2 1000-yr points with
+  their SE) over the TraCE one, so the gap is visible; panel B shows both tracks (design after JV's
+  current figure review); `tbl_climatehistory` gains hybrid rows.
+
+**Decisions for JV.** (a) D_PI source: CRU TS 1901-1930 vs 1981-2010 (recommended), or EPOCH-2's own 100
+BP slice, or a fixed regional value. (b) Whether the hybrid (EPOCH-2 level + TraCE wiggles) or the plain
+EPOCH-2 series (interpolated, no wiggles) is the proxy track; the hybrid is recommended, the plain series
+is a check. (c) Whether the verdict figure shows both tracks or the proxy track goes to the supplement.
 
 ## 4. Pipeline changes
 
@@ -340,7 +421,7 @@ edge distance.
      the history, it reads at once.
 2. **Coverage curve**: % future bog pixels inside E(t0) against t0, for definitions
    1-3, delta and raw, with the t0 prior band. This is the headline.
-3. **Headroom map** (definition 1), Norway, one value per pixel at a chosen t0.
+3. **Exceedance map** (definition 1), Norway, one value per pixel at a chosen t0.
 4. **Table**: COUE (expansion / stability / unfilling, Schoener's D) at t0 = 0, 2, 4, 6, 8 ka,
    plus per-definition coverage at the same t0.
 
@@ -367,7 +448,7 @@ edge distance.
 
 1. Download bio10/bio18 (centennial, 10-0 ka); crop to a time-series stack; check the
    `time = 20` period and the baseline mismatch.
-2. Headroom and coverage curve for the delta version, bio10 only (fastest read of the answer).
+2. Exceedance and coverage curve for the delta version, bio10 only (fastest read of the answer).
 3. Add bio12, the hull and density definitions, pixel-level bootstrap.
 4. ecospat COUE; hypervolume sensitivity.
 5. Literature pass for the t0 band; core-cell sensitivity.
