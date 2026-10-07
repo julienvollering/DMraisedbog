@@ -1,6 +1,8 @@
 # Plan: how generous is the bog map, and what counts as "no longer suitable"?
 
-Status: plan only, nothing run (2026-10-07). Background: `notebook.md` 2026-10-07 (b).
+Status: implemented and run 2026-10-07 as `R/pl2_calibrationCheck.R` (results below, under
+"Results 2026-10-07"; to be copied into `notebook.md` as entry 2026-10-07 (c): this session could
+not write to the shared checkout). Background: `notebook.md` 2026-10-07 (b).
 
 ## Why
 
@@ -83,3 +85,56 @@ absolute argmax km2 or switches to "bog-like climate" and relative change.
   present bogs, or calibrated P?
 - Is the footprint prevalence to be treated as the Norwegian prior, given the survey's
   partly-covered cells and the otherpeat definition (AR50 vs EPM)?
+
+## Results 2026-10-07
+
+Calibration check run: the argmax bog map is ~137x too generous, and class flip is the most
+lenient loss criterion. Run once with `Rscript --vanilla` (read-only on the projections, ~5 min).
+Outputs: `output/pl2/calibration_footprint.csv`, `calibration_prior_shift.csv`,
+`calibration_reliability_bins.csv`, `calibration_reliability.png`,
+`scenario_comparison_criteria.csv`, `scenario_comparison_criteria_agreement.csv`.
+
+**Departure from the plan.** Every Norwegian bog cell (and 56k footprint absence cells) is a
+production training row, so the projected current P there is in-sample. Current-climate values
+at those cells are replaced by the production fit's OOB probabilities; the plain projection is
+reported alongside. It matters: at the area-matched cut, precision/recall is 0.41/0.43 OOB vs
+0.77/0.80 in-sample. OOB is still optimistic, because neighbouring bog cells are training rows
+too (a quarter of mapped bog cells have OOB balanced P(bog) = 1). Two extra outputs beyond the
+plan: the reliability bins as their own CSV, and a criteria-agreement table.
+
+**A. Commission** (footprint, 1,563,694 cells with a prediction; 1,137 mapped bog, prevalence
+0.073%). Argmax calls 155,995 cells bog: 137x the mapped bog area, precision 0.7%, recall 0.93
+(OOB). Of the calls, 136k fall on artype_60 nonpeat, 2.7k on other peat, the rest on mixed
+cells. The land-use screen barely changes this (108x). Area-matched cut on balanced P(bog): 0.979.
+
+**B. Prior shift** (priors nonpeat 0.955, otherpeat 0.045, bog 0.00073; the non-bog remainder is
+split by the artype_60-labelled counts, since mixed/unlabelled cells have no model class).
+Calibrated P(bog) at mapped bogs: median 0.115, 41% above 0.5. At argmax-bog cells: median
+0.0026. Reliability: the prior-shift form holds within ~1.5x for balanced P > 0.2 and overstates
+the observed share 2-7x below that. Mean calibrated P over the footprint is 0.00104 against an
+observed 0.00073.
+
+**C. Loss criteria.** Reference = OOB balanced P(bog) at mapped bogs: P10 = 0.556, minimum = 0,
+**so the minimum-training-presence criterion is vacuous (every cell passes) and should be
+dropped.** Share of present bog still suitable, ssp126 / ssp370:
+
+| criterion | mapped bog (footprint) | argmax bog today (Norway) |
+|---|---|---|
+| class flip | 13.6% / 0 | 12.8% (1,530 km2) / 0 |
+| balanced P >= ref P10 | 0.09% (1 cell) / 0 | 0.005% (10 cells) / 0 |
+| calibrated odds >= half ref median | 0 / 0 | 0 / 0 |
+
+The class-flip rows reproduce `pl2_compareScenarios.R` exactly. Every cell the P10 criterion
+keeps, class flip also keeps: **class flip is the most generous criterion**, because argmax can
+call bog at P(bog) ~0.34-0.55, below where most mapped bogs sit today. Under ssp370 every
+criterion loses everything.
+
+**Expected calibrated bog area (Norway):** 121 km2 now, 75 (ssp370), 47 (ssp126). The ordering
+is inverted (the milder scenario loses more), because the sum is dominated by low-P mass spread
+over millions of cells, exactly where the reliability diagram shows the prior shift overstating.
+Do not quote it.
+
+**Bearing on the open decisions.** (1) Headline criterion: the ssp370 conclusion is the same under
+all three; for ssp126 the "stand a chance" number depends entirely on the criterion (12.8% vs
+~0%). (2) The footprint prior looks usable as the Norwegian prior for balanced P > 0.2, not for
+domain-wide sums.

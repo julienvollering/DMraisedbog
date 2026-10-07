@@ -93,7 +93,10 @@ scripts_pl2 <- c(
   "R/pl2_mapReliability.R", # apply those curves to the projection domain
   # Parallel interpretation leg: the production model under the milder scenario (SSP1-2.6)
   # against the primary one. Needs the reliability rasters of both, hence last.
-  "R/pl2_compareScenarios.R" # bog area, transitions and persistence, SSP1-2.6 vs SSP3-7.0
+  "R/pl2_compareScenarios.R", # bog area, transitions and persistence, SSP1-2.6 vs SSP3-7.0
+  # Read-only on the projections: where prevalence is known (Lyngstad footprint), how
+  # generous is the argmax bog map, and which loss criterion to quote.
+  "R/pl2_calibrationCheck.R" # footprint commission, prior-shifted P(bog), loss criteria
 )
 
 scripts <- c(scripts_pl0, scripts_pl2)
