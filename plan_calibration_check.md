@@ -146,3 +146,12 @@ pipeline (CV skill, reliability curves and transitions all use argmax). Check an
 report the P10 criterion (#2) as the strict bound, so ssp126 persistence is a bracket between
 the two. Calibrated odds (#3) is not a headline; it only explains why absolute argmax area is
 not bog area. Reasons for and against each are in `notebook.md` 2026-10-07 (c).
+
+## Note 2026-10-07: equal priors hold, but bog OOB rests on ~15 trees
+
+The training frame is 25:25:1, but `make.wt` (equal total weight per class) plus `make.size`
+(3 x n_bog per tree, `swor`) give near-equal in-bag shares: 33.7 / 33.5 / 32.8% (measured with
+rfsrc's sampler on the real class counts). So the prior shift's 1/3 holds. Each tree takes ~98%
+of the bog rows, though, so a bog row is OOB in ~1.5% of trees (~15 of 1,000; estimate). The
+OOB reference at mapped bogs is coarse (quantiles 3/7, 5/9) and the P10 cut is noisy.
+`samptype = "swr"` or a smaller per-class sample would fix it; needs a refit, not done.
