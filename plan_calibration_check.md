@@ -138,3 +138,11 @@ Do not quote it.
 all three; for ssp126 the "stand a chance" number depends entirely on the criterion (12.8% vs
 ~0%). (2) The footprint prior looks usable as the Norwegian prior for balanced P > 0.2, not for
 domain-wide sums.
+
+## Decision 2026-10-07 (JV)
+
+Headline loss criterion = class flip (#1), mainly for consistency with the rest of the
+pipeline (CV skill, reliability curves and transitions all use argmax). Check and probably
+report the P10 criterion (#2) as the strict bound, so ssp126 persistence is a bracket between
+the two. Calibrated odds (#3) is not a headline; it only explains why absolute argmax area is
+not bog area. Reasons for and against each are in `notebook.md` 2026-10-07 (c).
