@@ -20,7 +20,7 @@ Departures from the plan in the implementation:
 - **Figures/tables (step 6)**: `ms/make_figures.R`, section after Fig 2: `fig_climatehistory`,
   `figS_climatehistory_slices`, `figS_climatehistory_exceedance`, `tbl_climatehistory`, `ch_*` study numbers.
   Awaiting JV's approval before the manuscript text.
-- **TraCE's weak HTM**: planned fix in 3.9 (proxy-anchored EPOCH-2 track), awaiting JV.
+- **TraCE's weak HTM**: 3.9, EPOCH-2 run in parallel (JV 2026-10-07); baseline offsets (decision 1) open.
 - **Not done yet**: core-cell sensitivity (step 5).
 
 ## 0. First results (2026-10-06, delta, bio10 x bio12)
@@ -306,83 +306,76 @@ would test the 6 ka upper edge in the bogs' core region; the Seppä 2009 HTM amp
 - Present-day-fixed locations: bogs do not move in this analysis; fine for persistence, but
   it cannot say anything about bogs that existed in warmer-climate places and are now gone.
 
-### 3.9 TraCE's mid-Holocene warmth: a proxy-anchored track from EPOCH-2 (option 1, planned 2026-10-07)
+### 3.9 A second, independent temperature record: EPOCH-2 in parallel with TraCE (revised 2026-10-07)
 
 **Problem.** At the 614 bog pixels TraCE gives a mid-Holocene (8-6 ka) bio10 only +0.1 C above its last
 slice (warmest single slice +0.7 C). Pollen stacks put July temperature at 8-6 ka about **+1.5 C** above
-present, and annual temperature at +2.0-2.5 C (`seppaLastNinethousandYears2009`; its 36 sites include
-Haugtjern, Svartvatnet, Dalane, Grostjørna and others in the bogs' region). Karger et al. (2023, Fig. 5)
-show both TraCE21k and CHELSA-TraCE21k underestimating the Greenland ice-core HTM, and temperature-coupling
-errors at 10-6 ka. The gap (~1-1.5 C) is larger than the SSP1-2.6 exceedance (+0.3 C at t0 >= 6 ka) and
-smaller than the SSP3-7.0 one (+2.6 C). So the SSP1-2.6 verdict currently depends on TraCE's error, while
-the SSP3-7.0 verdict does not.
+present (`seppaLastNinethousandYears2009`; its sites include several in the bogs' region), and Karger et
+al. (2023, Fig. 5) show TraCE21k and CHELSA-TraCE21k underestimating the Greenland ice-core HTM. That
+error is **not systematic across time** (Karger Fig. 5), so TraCE is not corrected or blended.
 
-**Approach.** Run a second temperature history next to TraCE and report the verdict for both: "model
-(TraCE)" and "proxy-anchored (EPOCH-2)". Neither replaces the other: TraCE is internally consistent and
-centennial; the pollen reconstruction has the HTM amplitude but is millennial and smoothed. If the two
-bracket the answer, the manuscript says so.
+**Decision (JV, 2026-10-07).** Use @mauriClimateEuropeHolocene2015 (EPOCH-2) **as it is, in parallel
+with TraCE**: two independent records of the bogs' past, each run through the same containment analysis,
+both shown in the verdict figure. No hybrid, no bias correction of one by the other. EPOCH-2 is at least as
+trustworthy as TraCE for a summer-temperature question.
 
-**Data.** @mauriClimateEuropeHolocene2015. NOAA:
-https://www.ncei.noaa.gov/pub/data/paleo/pollen/epoch2/ — `epoch-2.nc`, `epoch-2_uncertainties.nc` (also
-GeoTIFFs under `tiff_anomalies/`, `tiff_uncertainties/`). 1 degree grid, 28.5-71.5 N, 11.5 W-50.5 E (covers
-all bog pixels); 13 slices at 100, 1000, 2000, ..., 12000 cal BP; anomalies against "preindustrial".
-Variables used: `tanom_jja` (summer temperature, C); kept for sensitivity: `panom_ann`, `anom_p_e`
-(moisture balance). Uncertainties combine transfer-function and interpolation error.
+**Data.** NOAA, https://www.ncei.noaa.gov/pub/data/paleo/pollen/epoch2/ — `epoch-2.nc`,
+`epoch-2_uncertainties.nc`, downloaded to `data/EPOCH2/` on 2026-10-07. 1 degree grid (63 x 44 cells,
+28.5-71.5 N, 11.5 W-50.5 E); 13 slices at 12000, 11000, ..., 1000, 100 cal BP; anomalies in C (temperature)
+and mm/day (precipitation). Used: `tanom_jja`; for the pooled hull, `panom_ann`; uncertainties
+`tanom_jja_se_*`.
 
-**Construction (per pixel i, centennial slice s at age a_s).**
-1. *EPOCH-2 at the pixels.* Bilinear from the 1 degree grid to pixel centres (nearest valid cell where the
-   coastal cells are NA; count them). Interpolate linearly in age from the 1000-yr steps to every
-   centennial age: a_E(i, s). Ages are cal BP (b1950); TraCE ages are b2k. Shift by 50 years once.
-2. *TraCE anomaly and its millennial mean.* a_T(i, s) = TraCE bio10(i, s) - TraCE bio10(i, t20). Smooth
-   with a centred 1000-yr running mean (11 slices) to m_T(i, s), the TraCE equivalent of a 1000-yr step.
-3. *Hybrid anomaly.* a_H(i, s) = a_E(i, s) + [a_T(i, s) - m_T(i, s)]: EPOCH-2 sets the millennial level,
-   TraCE adds the centennial wiggles around it. This keeps the warmest-century information that a pure
-   1000-yr series would lose (gap 3 in section 2), without TraCE's level.
-4. *Reference period.* EPOCH-2 anomalies are relative to preindustrial; CHELSA current is 1981-2010.
-   bio10_H(i, s) = CHELSA_1981-2010(i) - D_PI(i) + a_H(i, s), where D_PI is the summer warming from
-   preindustrial to 1981-2010 at the pixel. Source for D_PI (decision below): CRU TS JJA 1901-1930 vs
-   1981-2010 at the pixels, which treats the early 20th century as preindustrial and so understates D_PI
-   slightly (bias toward "inside"). A fixed regional value is the fallback. D_PI enters every past slice
-   equally, so it shifts the history as a whole; report it next to the result.
-5. *Precipitation.* Keep TraCE's ratio-delta bio12 for the primary hybrid track: moisture never binds
-   (the future is wetter than every past slice), and pollen precipitation is the weaker reconstruction.
-   Sensitivity: replace it with EPOCH-2 `panom_ann` (as a ratio on CHELSA) to check that a drier HTM does
-   not change the pooled-hull result.
-6. *Uncertainty.* Repeat with a_E +/- 1 SE from `epoch-2_uncertainties.nc` (`tanom_jja`) to give a band
-   on the hybrid track. This is separate from the GCM-cell bootstrap, which stays weak (6 cells).
+**First check (2026-10-07).** Bilinear `tanom_jja` at the 614 pixels, none NA. Median by slice: 8 ka -0.34,
+7 ka +1.24, 6 ka +1.35, 5 ka +1.09, 4 ka +0.81, 3 ka +0.31, 2 ka +0.48, 1 ka +0.42, 100 BP 0.00. The 100 BP
+slice is exactly 0 everywhere over Norway: **the anomalies are relative to ~100 cal BP (~1850 CE)**. The
+6-7 ka values agree with Seppä's +1.5 C; the 8 ka dip is the 8.2 ka event.
 
-**Checks before reading results.**
-- EPOCH-2 at the pixels, 8-6 ka, should come out near Seppä's +1.5 C (Tjul) for the same region; if it is
-  far off, find out why before using it.
-- bio10 is the warmest quarter, EPOCH-2 is JJA. Check in CHELSA 1981-2010 which quarter is warmest at the
-  pixels (JJA vs JAS on the coast); if JAS is common, note the mismatch rather than correct it.
-- The proxy HTM is a smoothed, multi-centennial signal; the 30-yr future is not. This is the same
-  smoothing caveat as 3.8, now in the proxy track too (stated in the Methods, not corrected).
-- Model-proxy disagreement on HTM warmth: the argument that proxies are seasonally biased concerns
-  annual means. For a summer variable, the orbital forcing and summer-calibrated proxies agree on a warm
-  HTM summer, which is why the proxy track is credible for bio10. Say this in the Discussion.
+**Construction (EPOCH-2 track).** For pixel i and slice k: bio10_E(i, k) = CHELSA_1981-2010(i) -
+D_E(i) + tanom_jja(i, k). Only the 13 slices themselves enter the window (ages <= t0, capped by
+deglaciation as for TraCE); nothing is interpolated between them. For the pooled hull, bio12_E(i, k) =
+CHELSA_1981-2010 bio12(i) + 365 x panom_ann(i, k), floored at a small positive value; the preindustrial
+precipitation offset is ignored (moisture never binds, see 0). JJA is taken as bio10's season; check in
+CHELSA which quarter is warmest at the pixels and note any mismatch. Uncertainty band: repeat with
+tanom_jja +/- 1 SE.
 
-**Expected outcome (to test, not assume).** SSP3-7.0 stays novel: +3.5 C above 1981-2010 against an HTM
-of ~+1.5 C above preindustrial, i.e. about 2 C beyond even after D_PI. SSP1-2.6 (+1.2 C above 1981-2010)
-moves to roughly the proxy HTM level, so per-pixel coverage for t0 >= ~5-6 ka could rise from ~11% to a
-large share. If so, the SSP1-2.6 sentence becomes conditional on which record is right and on bog age.
+**Decision 1: putting each record on the 1981-2010 baseline (open).** The future is CHELSA 2071-2100,
+i.e. an absolute climate. Each past record arrives as an anomaly against its own "present": TraCE against
+its last slice (1900-1990 mean), EPOCH-2 against ~1850. To compare with the future, each anomaly must be
+added to the CHELSA 1981-2010 climate *minus the warming between its own present and 1981-2010*:
+- D_E = warming from ~1850 to 1981-2010 (EPOCH-2);
+- D_T = warming from 1900-1990 to 1981-2010 (TraCE). The current analysis silently sets D_T = 0, which
+  makes TraCE's past slightly too warm.
+
+D is not a detail: it moves every past slice by the same amount. With the median numbers above, SSP1-2.6
+is +1.2 C above 1981-2010 and EPOCH-2's 6 ka peak is +1.35 C above ~1850. If D_E = 0, the future is inside
+the HTM; if D_E = 1 C, the HTM is only +0.35 C above 1981-2010 and SSP1-2.6 is ~0.85 C beyond it. Norway's
+observed summer warming since the late 19th century is of this order, so the SSP1-2.6 answer depends on D_E
+about as much as on the record.
+
+Recommended: take both offsets from **one observational dataset** that reaches back to 1850, so the two
+records are treated identically: Berkeley Earth gridded land temperature (1 degree, monthly, from 1850),
+JJA mean at each pixel. D_E = JJA(1981-2010) - JJA(1850-1900) (1850-1900 is the IPCC AR6 preindustrial
+reference); D_T = JJA(1981-2010) - JJA(1900-1990). Report both values. Alternatives: a published
+Norwegian value (simpler to cite, but the station series start ~1900, so ~1850 must be extrapolated); or
+GFDL-ESM4's own historical warming (consistent with the future scenario, but a model, not observations).
+
+**Presentation without making everything conditional.**
+- Panel A: both records' bio10 trajectories (TraCE centennial line, EPOCH-2 millennial points with SE),
+  future ranges at the right.
+- Panel B: the coverage points for both records (two point styles, or two small facets).
+- Text: state what holds under both records once (SSP3-7.0 is outside under both, to be confirmed), then
+  where they disagree once (expected: SSP1-2.6 own-past coverage), with the reason (TraCE's weak HTM).
+  No sentence carries more than one "if".
 
 **Pipeline.**
-- New `R/pl0_prepareEPOCH2.R` (after `pl0_prepareCHELSATraceSeries.R` in RUNALL): download the two `.nc`
-  files to `data/EPOCH2/`, crop to the Norway window, write `tanom_jja`, `panom_ann` and their uncertainties
-  as multi-layer GeoTIFFs; record_settings() with source URL and slices.
-- `R/pl2_exploreClimateHistory.R`: add `history$hybrid` (and `hybrid_lo` / `hybrid_hi` for the SE band)
-  built as above; D_PI computed or read in. `coverage()` already loops over versions, so the coverage
-  curves, t*, exceedance per pixel and the bootstrap extend without new machinery. Write `a_E`, `m_T`
-  and D_PI per pixel to `climatehistory_hybrid_inputs.csv` for checking.
-- `ms/make_figures.R`: panel A adds the hybrid median trajectory (and the EPOCH-2 1000-yr points with
-  their SE) over the TraCE one, so the gap is visible; panel B shows both tracks (design after JV's
-  current figure review); `tbl_climatehistory` gains hybrid rows.
-
-**Decisions for JV.** (a) D_PI source: CRU TS 1901-1930 vs 1981-2010 (recommended), or EPOCH-2's own 100
-BP slice, or a fixed regional value. (b) Whether the hybrid (EPOCH-2 level + TraCE wiggles) or the plain
-EPOCH-2 series (interpolated, no wiggles) is the proxy track; the hybrid is recommended, the plain series
-is a check. (c) Whether the verdict figure shows both tracks or the proxy track goes to the supplement.
+- New `R/pl0_prepareEPOCH2.R` after `pl0_prepareCHELSATraceSeries.R` in RUNALL: downloads the two `.nc`
+  files if absent, records the URL and slices with record_settings().
+- Baseline offsets: a small `R/pl0_prepareBaselineOffsets.R` (Berkeley Earth download, JJA means for the
+  two periods, D at the pixels), if decision 1 goes that way.
+- `R/pl2_exploreClimateHistory.R`: a third `history` version `epoch2` on the 13-slice age grid (the window
+  and coverage functions take the age vector as an argument instead of the TraCE one). TraCE delta gains
+  the D_T offset. Curves, t*, exceedance and bootstrap extend to the new version.
+- `ms/make_figures.R`: panels A and B as above; `tbl_climatehistory` gains EPOCH-2 rows.
 
 ## 4. Pipeline changes
 
