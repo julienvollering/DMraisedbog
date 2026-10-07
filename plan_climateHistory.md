@@ -14,9 +14,10 @@ Departures from the plan in the implementation:
   wetter than every slice of every pixel's past, the safe direction for an ombrotrophic bog.
 - **The GCM-cell bootstrap is weak**: 614 pixels fall in 6 approximate CCSM3 cells, 510 of them in one.
   Bands are reported but are not a confidence statement.
-- **Not done yet**: ecospat/hypervolume (step 4; `ecospat` pulls in retired `biomod2` and `cluster` -
-  COUE could instead be computed directly on the KDE grid), the multidecadal-variability widening (3.8),
-  core-cell sensitivity and the literature t0 band (step 5), `ms/make_figures.R` (step 6).
+- **Decided 2026-10-07 (JV)**: no ecospat / hypervolume / COUE (step 4 dropped; 3.6 is superseded).
+  The multidecadal-variability mismatch (3.8) is stated as a Methods caveat, not corrected for.
+- **Literature t0 band**: first stab in 3.7a (proposed 3-7 ka, outer 2-8 ka), awaiting JV.
+- **Not done yet**: core-cell sensitivity (step 5); figures/tables in `ms/make_figures.R` (step 6).
 
 ## 0. First results (2026-10-06, delta, bio10 x bio12)
 
@@ -204,6 +205,57 @@ Do not pick one t0. Provide:
   Run the whole analysis on "core" cells (large polygons, interior) as a sensitivity: these
   are the cells for which a long history is most plausible, and the ones the question is
   about.
+
+### 3.7a Literature pass, first stab (2026-10-07)
+
+Sources from `ms/ZoteroAnnotations` unless marked *web* (found 2026-10-07; abstract only, not yet in Zotero
+or the `.bib`, so verify before citing). Ages are cal BP as published; "14C BP" where the source is uncalibrated.
+
+**Fen-to-bog (ombrotrophication) ages**
+
+| Site / compilation | Region | Fen-to-bog age | Kind of evidence | Source |
+|---|---|---|---|---|
+| Viss mosse | S Sweden, 55.9 N | ~7.7 ka | onset of Sphagnum peat over fen peat, one core | `edvardssonHolocenePeatlandDevelopment2012` (also thesis 2013) |
+| Viss/Hällaryd/Åbua bog pines | S Sweden | pines in Sphagnum peat 7.2-5.7 ka and 4.6-3.1 ka; Åbuamossen expands laterally 5-3 ka | lower bound on transition (trees grew on a bog that already existed) | `edvardssonHoloceneClimateChange2013` |
+| Bergslagen, 3 bogs | central Sweden, raised-bog N limit | Sphagnum peat 5-4 14C ka (~5.7-4.5 cal ka); fens 8.6-3.5 14C ka | basal Sphagnum peat dates | `almquist-jacobsonIntegratedModelRaisedBog1995` |
+| Søndre Akershus | SE Norway | floating mats from 8.7 ka, tarn overgrown ~6.7 ka, ombrotrophic hummocks after | one basin, pollen/macrofossil | `sorensenHolocenVegetasjonshistorieOg2015` |
+| Sellevollmyra, Andøya | N Norway, northernmost concentric raised bog | 440 cm core spans ~7 ka | *web*; whether all 7 ka is ombrotrophic is not yet confirmed | Vorren et al. 2007, Boreas |
+| Lofoten, two bogs | N Norway | humification record over 7.4 ka | *web*; ombrotrophic peat implied, not confirmed | Vorren et al. 2012, Boreas |
+| Finnish fen-bog ecotone | Finland | mostly late Holocene; final ombrotrophication 3-2 ka | *web*; macrofossils + 14C | Väliranta et al. 2017, The Holocene |
+| Northern peatlands, 7,571 cores (329 transition dates) | circumboreal | peak fen-to-bog 5-3 ka | *web*; AGU abstract only | MacDonald, Holmquist, Kremenetski & Loisel 2015 |
+
+Norwegian context: Lyngstad (2023, p. 24) describes raised bog as the end point of "many thousand years" of
+undisturbed peat accumulation, starting "soon after the last glaciation"; mean mire depth in lowland S Norway
+is ~2 m (p. 11). That is about peat initiation, not ombrotrophication.
+
+**How to read it.** Two things work against a single early date:
+- *Basal is not ombrotrophic.* Peat or fen initiation is often early Holocene (8-10 ka), but ombrotrophic
+  peat starts later, typically 7-3 ka in Fennoscandia (`almquist-jacobsonIntegratedModelRaisedBog1995`: "basal"
+  dates refer to fen peat).
+- *Lateral expansion.* A dome is old at its initiation locus and young at its margins. At Åbuamossen most
+  of the present bog area was covered 5-3 ka. Lyngstad cells cover whole polygons, so most cells are
+  younger than the oldest date for their bog. Granlund et al. 2022 show fen-to-bog fronts still advancing.
+
+**Proposed band** (to be confirmed by JV): **t0 = 3-7 ka**, central ~5 ka. Lower edge: late-Holocene
+transitions (Finland, the 5-3 ka northern peak, Åbuamossen expansion). Upper edge: the earliest dated
+ombrotrophic onsets in the region (Viss mosse 7.7 ka, Akershus ~6.7 ka). An outer 2-8 ka range is drawn
+lighter. The band is for the **typical bog cell**, not the oldest point in a bog.
+
+**Consequence for the verdict.** SSP3-7.0 is novel across the whole band. SSP1-2.6 reaches 95% pooled-hull
+coverage only at t0 = 6 ka, in the upper part of the band, and per-pixel coverage stays at ~11%. So
+"inside" under SSP1-2.6 holds only for the oldest cells and only in the pooled sense.
+
+**Proxy HTM against TraCE** (plan 3.8). Northernmost Fennoscandia: HTM maximum 1.5 +/- 0.5 C above present,
+stable 8-6 ka (`sjogrenOverviewHoloceneClimate2021`). N European pollen stack: HTM 8.0-4.8 ka (Seppä et al.
+2009, Clim. Past; *web*, amplitude not yet read). TraCE at our pixels: +0.7 C max, +0.1 C mean (8-6 ka minus
+last slice). So TraCE likely understates HTM summer warmth by ~1 C. Read the headroom against that: SSP1-2.6
+(+0.3 C) is inside the gap, SSP3-7.0 (+2.6 C) is beyond the proxy maximum even at its upper end (2.0 C).
+Karger et al. 2023 also note temperature-coupling errors between 10 and 6 ka
+(`kargerCHELSATraCE21kHighresolution1thinspkm2023`).
+
+**Still needed (likely help from JV):** Norwegian fen-to-bog dates beyond Akershus (e.g. Rønnåsmyra and
+Trøndelag/Vestlandet stratigraphies from the myrreservatplan era, Kaland's west-Norway work); full text of
+Vorren 2007/2012 and Väliranta 2017; the Seppä 2009 HTM amplitude; add the Edvardsson papers to the `.bib`.
 
 ### 3.8 Known limits of the climate record (state them in the Methods)
 - TraCE21k is one transient simulation, downscaled; GCM-scale (~3.75 degree) forcing means local
