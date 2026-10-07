@@ -193,34 +193,88 @@ cat("\nSimulated HTM (8-6 ka) anomaly against the last slice, median over bog pi
 print(htm_anomaly |> mutate(across(where(is.numeric), \(x) round(x, 2))))
 write_csv(htm_anomaly, "output/pl2/climatehistory_htm_anomaly.csv", append = FALSE)
 
-## Experienced climate: delta and raw versions ####
+## Experienced climate: two records, on the CHELSA 1981-2010 baseline ####
 
-# Temperatures additive; precipitation as a RATIO (an additive delta can go negative at dry
-# sites). Raw TraCE is the sensitivity.
+# Two independent records of the bogs' past, run in parallel and never blended (3.9):
+#   delta   TraCE21k, centennial: CHELSA 1981-2010 + (slice - last slice) - D_trace
+#   epoch2  EPOCH-2 pollen reconstruction, millennial: CHELSA 1981-2010 + anomaly - D_epoch2
+#   raw     TraCE21k as it is (sensitivity)
+# D is the observed JJA warming from each record's own present (TraCE: 1900-1990; EPOCH-2:
+# ~1850, taken as 1850-1900) to 1981-2010, from Berkeley Earth (pl0_prepareBaselineOffsets.R).
+# Without it the past is too warm by D. D is a summer quantity, so it is applied to bio10
+# only; bio06 (winter) keeps the plain delta and is read as a sensitivity.
+# Precipitation: TraCE as a RATIO (an additive delta can go negative at dry sites); EPOCH-2
+# is additive in mm/day by construction, converted to mm/yr and floored. No precipitation
+# offset is applied: moisture never binds here (plan section 0).
+# Each version carries its own age vector (ka): TraCE's 101 centennial slices, EPOCH-2's 13
+# slices (cal BP; the 50-yr b2k/b1950 difference is immaterial at 1000-yr spacing). EPOCH-2 is
+# not interpolated between slices.
+offsets <- rast("data/BerkeleyEarth/baseline_offsets_jja_Norway.tif") |>
+  terra::extract(pix_xy, method = "bilinear") |>
+  as_tibble()
+epoch2 <- c("tanom_jja", "panom_ann", "tanom_jja_se") |>
+  set_names() |>
+  map(\(v) {
+    rast(file.path("data/EPOCH2", paste0("epoch2_", v, "_Norway.tif"))) |>
+      terra::extract(pix_xy, method = "bilinear") |>
+      as.matrix()
+  })
+epoch2_ages_ka <- as.numeric(sub("^a", "", colnames(epoch2$tanom_jja))) / 1000
+stopifnot(!anyNA(offsets), !anyNA(epoch2$tanom_jja), !anyNA(epoch2$panom_ann))
+cat("\nBaseline offsets at the bog pixels (C), median [range]:\n")
+print(summarise(offsets, across(everything(), \(x) sprintf("%.2f [%.2f, %.2f]", median(x), min(x), max(x)))))
+write_csv(
+  bind_cols(tibble(pixel = pixels$pixel), offsets),
+  "output/pl2/climatehistory_baseline_offsets.csv",
+  append = FALSE
+)
+
+# EPOCH-2's HTM next to TraCE's (anomalies against each record's own present, before D).
+epoch2_htm <- epoch2$tanom_jja[, epoch2_ages_ka >= 6 & epoch2_ages_ka <= 8, drop = FALSE]
+htm_anomaly <- add_row(
+  htm_anomaly,
+  variable = "tanom_jja (EPOCH-2, vs ~1850)",
+  median_htm_max_minus_t20 = median(apply(epoch2_htm, 1, max)),
+  median_htm_mean_minus_t20 = median(rowMeans(epoch2_htm))
+)
+print(htm_anomaly |> mutate(across(where(is.numeric), \(x) round(x, 2))))
+write_csv(htm_anomaly, "output/pl2/climatehistory_htm_anomaly.csv", append = FALSE)
+
 is_temperature <- function(v) v %in% c("bio10", "bio06")
+trace_delta <-map(set_names(axis_vars), \(v) {
+  m <- trace_mat[[v]]
+  if (is_temperature(v)) {
+    current[[v]] + (m - m[, last]) - if (v == "bio10") offsets$D_trace else 0
+  } else {
+    current[[v]] * (m / m[, last])
+  }
+})
 history <- list(
-  delta = map(set_names(axis_vars), \(v) {
-    m <- trace_mat[[v]]
-    if (is_temperature(v)) {
-      current[[v]] + (m - m[, last])
-    } else {
-      current[[v]] * (m / m[, last])
-    }
-  }),
-  raw = trace_mat
+  delta = c(trace_delta, list(ages = ages_ka)),
+  epoch2 = list(
+    bio10 = current$bio10 - offsets$D_epoch2 + epoch2$tanom_jja,
+    bio12 = pmax(current$bio12 + 365 * epoch2$panom_ann, 1),
+    ages = epoch2_ages_ka
+  ),
+  raw = c(trace_mat, list(ages = ages_ka))
 )
 
 # The series and the future values at the pixels, for ms/make_figures.R (which draws from
 # pipeline outputs only). Delta version, bog pixels' own ice-free window only.
-series_out <- tibble(
-  pixel = rep(pixels$pixel, times = length(ages_ka)),
-  age_ka = rep(ages_ka, each = n_pix),
-  icefree_ka = rep(pixels$icefree_ka, times = length(ages_ka)),
-  bio10 = as.vector(history$delta$bio10),
-  bio12 = as.vector(history$delta$bio12)
-) |>
-  filter(age_ka <= icefree_ka | age_ka == 0) |>
-  select(-icefree_ka)
+series_out <- map_dfr(c("delta", "epoch2"), \(ver) {
+  h <- history[[ver]]
+  tibble(
+    record = ver,
+    pixel = rep(pixels$pixel, times = length(h$ages)),
+    age_ka = rep(h$ages, each = n_pix),
+    icefree_ka = rep(pixels$icefree_ka, times = length(h$ages)),
+    bio10 = as.vector(h$bio10),
+    bio12 = as.vector(h$bio12),
+    bio10_se = if (ver == "epoch2") as.vector(epoch2$tanom_jja_se) else NA_real_
+  ) |>
+    filter(age_ka <= icefree_ka | age_ka == min(h$ages)) |>
+    select(-icefree_ka)
+})
 write_csv(series_out, "output/pl2/climatehistory_series.csv", append = FALSE)
 
 future_out <- imap_dfr(future, \(f, ssp) tibble(
@@ -230,9 +284,11 @@ write_csv(future_out, "output/pl2/climatehistory_future.csv", append = FALSE)
 
 ## Containment ####
 
-# Window mask for t0: slice ages <= min(t0, deglaciation age). The present slice is always in.
-window_mask <- function(t0) {
-  outer(pmin(t0, pixels$icefree_ka), ages_ka, ">=") | col(matrix(0, n_pix, length(ages_ka))) == last
+# Window mask for t0: slice ages <= min(t0, deglaciation age). The youngest slice (the
+# record's present) is always in.
+window_mask <- function(t0, ages) {
+  outer(pmin(t0, pixels$icefree_ka), ages, ">=") |
+    col(matrix(0, n_pix, length(ages))) == which.min(ages)
 }
 
 row_max_in <- function(m, w) apply(ifelse(w, m, -Inf), 1, max)
@@ -282,7 +338,7 @@ in_hdr <- function(px, py, ex, ey, ew, level = HDR_LEVEL, n_grid = 120) {
 # Coverage of the future pixels for one t0, one history version, one scenario, one axis
 # pair. `w` is a per-pixel multiplicity (bootstrap); 1 everywhere for the point estimate.
 coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) {
-  win <- window_mask(t0)
+  win <- window_mask(t0, hist$ages)
   tx <- hist[[tvar]]
   my <- hist[[mvar]]
   fx <- fut[[tvar]]
@@ -315,7 +371,7 @@ coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) 
 
 # Exceedance-only coverage on a single temperature axis (bio06 sensitivity).
 coverage_exceedance <- function(t0, hist, fut, tvar) {
-  mean(fut[[tvar]] - row_max_in(hist[[tvar]], window_mask(t0)) <= 0)
+  mean(fut[[tvar]] - row_max_in(hist[[tvar]], window_mask(t0, hist$ages)) <= 0)
 }
 
 ## Coverage curves ####
@@ -325,12 +381,14 @@ AXES <- list(
   bio18 = c("bio10", "bio18")
 )
 
+has_axes <- function(ver, ax) all(AXES[[ax]] %in% names(history[[ver]]))
 grid_runs <- expand_grid(
   scenario = FUTURE_SCENARIOS,
   version = names(history),
   axes = names(AXES),
   t0 = T0_GRID
-)
+) |>
+  filter(map2_lgl(version, axes, has_axes))
 
 curves <- grid_runs |>
   mutate(res = pmap(list(scenario, version, axes, t0), \(ssp, ver, ax, t0) {
@@ -338,7 +396,7 @@ curves <- grid_runs |>
   })) |>
   unnest(res)
 
-winter <- expand_grid(scenario = FUTURE_SCENARIOS, version = names(history), t0 = T0_GRID) |>
+winter <- expand_grid(scenario = FUTURE_SCENARIOS, version = c("delta", "raw"), t0 = T0_GRID) |>
   mutate(
     axes = "bio06",
     definition = "1 own past",
@@ -360,16 +418,16 @@ boot_w <- map(seq_len(N_BOOT), \(b) {
   as.numeric(drawn[pixels$gcm_cell])
 })
 
-boot <- expand_grid(scenario = FUTURE_SCENARIOS, t0 = T0_GRID) |>
-  mutate(res = map2(scenario, t0, \(ssp, t0) {
+boot <- expand_grid(version = c("delta", "epoch2"), scenario = FUTURE_SCENARIOS, t0 = T0_GRID) |>
+  mutate(res = pmap(list(version, scenario, t0), \(ver, ssp, t0) {
     map_dfr(boot_w, \(w) coverage(
-      t0, history$delta, future[[ssp]], "bio10", "bio12", w = w, dens = FALSE
+      t0, history[[ver]], future[[ssp]], "bio10", "bio12", w = w, dens = FALSE
     ))
   })) |>
   unnest(res) |>
-  group_by(scenario, t0, definition) |>
+  group_by(version, scenario, t0, definition) |>
   summarise(lo = quantile(coverage, 0.05), hi = quantile(coverage, 0.95), .groups = "drop") |>
-  mutate(version = "delta", axes = "primary")
+  mutate(axes = "primary")
 
 curves <- curves |> left_join(boot, by = c("scenario", "version", "axes", "t0", "definition"))
 write_csv(curves, "output/pl2/climatehistory_coverage.csv", append = FALSE)
@@ -411,23 +469,26 @@ cat("\nt* (smallest t0 with coverage >=", COVERAGE_THRESHOLD, "; NA = never with
 print(t_star |> mutate(across(starts_with("coverage"), \(x) round(x, 3))), n = Inf)
 write_csv(t_star, "output/pl2/climatehistory_tstar.csv", append = FALSE)
 
-cat("\nHeadline (delta, bio10 x bio12):\n")
+cat("\nHeadline (both records, bio10 x bio12):\n")
 curves |>
-  filter(version == "delta", axes == "primary", t0 %in% SLICE_AGES) |>
-  select(scenario, definition, t0, coverage, lo, hi) |>
+  filter(version %in% c("delta", "epoch2"), axes == "primary", t0 %in% SLICE_AGES) |>
+  select(version, scenario, definition, t0, coverage, lo, hi) |>
   mutate(across(c(coverage, lo, hi), \(x) round(x, 3))) |>
-  pivot_wider(names_from = t0, values_from = c(coverage), names_prefix = "t0=", id_cols = c(scenario, definition)) |>
+  pivot_wider(names_from = t0, values_from = c(coverage), names_prefix = "t0=", id_cols = c(version, scenario, definition)) |>
   print(n = Inf)
 
 ## Per-pixel exceedance ####
 
 pixel_out <- expand_grid(scenario = FUTURE_SCENARIOS, t0 = T0_GRID) |>
   mutate(res = map2(scenario, t0, \(ssp, t0) {
-    win <- window_mask(t0)
+    ex <- function(ver) {
+      future[[ssp]]$bio10 - row_max_in(history[[ver]]$bio10, window_mask(t0, history[[ver]]$ages))
+    }
     tibble(
       pixel = pixels$pixel,
-      exceedance_bio10 = future[[ssp]]$bio10 - row_max_in(history$delta$bio10, win),
-      exceedance_bio10_raw = future[[ssp]]$bio10 - row_max_in(history$raw$bio10, win)
+      exceedance_bio10 = ex("delta"),
+      exceedance_bio10_epoch2 = ex("epoch2"),
+      exceedance_bio10_raw = ex("raw")
     )
   })) |>
   unnest(res) |>

@@ -20,10 +20,35 @@ Departures from the plan in the implementation:
 - **Figures/tables (step 6)**: `ms/make_figures.R`, section after Fig 2: `fig_climatehistory`,
   `figS_climatehistory_slices`, `figS_climatehistory_exceedance`, `tbl_climatehistory`, `ch_*` study numbers.
   Awaiting JV's approval before the manuscript text.
-- **TraCE's weak HTM**: 3.9, EPOCH-2 run in parallel (JV 2026-10-07); baseline offsets (decision 1) open.
+- **TraCE's weak HTM**: 3.9, EPOCH-2 run in parallel (JV 2026-10-07); baseline offsets from Berkeley Earth (decision 1, JV), implemented; results in 0.
 - **Not done yet**: core-cell sensitivity (step 5).
 
-## 0. First results (2026-10-06, delta, bio10 x bio12)
+## 0. Current results (2026-10-07: two records, both on the 1981-2010 baseline)
+
+Outputs: `output/pl2/climatehistory_*.csv`; figure `ms/figures/fig_climatehistory.png`, table
+`ms/tables/tbl_climatehistory.csv`. 614 bog pixels in 6 approximate CCSM3 cells (510 in one).
+Records: TraCE21k (delta) and EPOCH-2 (@mauriClimateEuropeHolocene2015), each placed on CHELSA
+1981-2010 with the observed JJA warming from its own present (Berkeley Earth; median at the
+pixels D_trace = +0.41 C for 1900-1990, D_epoch2 = +0.52 C for 1850-1900).
+
+Share of bog pixels facing an **unprecedented** climate (outside the bio10 x bio12 hull of what any
+bog lived through since t0), TraCE / EPOCH-2:
+
+| | t0 = 2 ka | 4 ka | 6 ka |
+|---|---|---|---|
+| SSP3-7.0 | 99.7 / 99.5% | 99.3 / 99.2% | 98.9 / 99.0% |
+| SSP1-2.6 | 56 / 82% | 40 / 58% | 9 / 11% |
+
+- The two records agree on the pooled hull at 6 ka and on SSP3-7.0 everywhere; they differ for
+  SSP1-2.6 at 2-4 ka (EPOCH-2's 1000-yr slices step later than TraCE's centennial ones).
+- EPOCH-2's warmer HTM does not rescue SSP1-2.6 at the pixel level: its 6 ka peak is +1.37 C against
+  ~1850 but only ~+0.8 C against 1981-2010, below the SSP1-2.6 future (+1.2 C). Under both records
+  >= 95% of pixels are warmer in summer than any slice of their own past, by a median +0.4 C
+  (EPOCH-2) to +0.7 C (TraCE) at t0 = 6 ka; SSP3-7.0 by +2.7 to +3.0 C.
+- Applying D_trace lowered TraCE's pooled-hull coverage (SSP1-2.6 at 4 ka: 88% -> 60% inside), which is
+  why the 2026-10-06 numbers below are superseded.
+
+## 0a. First results (2026-10-06, TraCE only, no baseline offset; superseded by 0)
 
 Outputs: `output/pl2/climatehistory_*.csv|png`. 1,116 NO bog cells -> 614 TraCE pixels in 6 approximate
 CCSM3 cells (510 in one), so effective n is ~1-6.

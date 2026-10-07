@@ -59,6 +59,8 @@ scripts_pl0 <- c(
   "R/pl0_downloadCHELSA.R", # fetch CHELSA current + future bioclim
   "R/pl0_prepareCHELSATrace.R", # derive paleo_* predictors from TraCE21k
   "R/pl0_prepareCHELSATraceSeries.R", # TraCE21k centennial series over Norway, 10-0 ka
+  "R/pl0_prepareEPOCH2.R", # EPOCH-2 pollen-based Holocene climate over Norway (2nd record)
+  "R/pl0_prepareBaselineOffsets.R", # Berkeley Earth JJA warming to 1981-2010, both records
   "R/pl0_collatePredictors.R", # assemble the full predictor stack
   # EU domain and its layers
   "R/pl0_buildEUdomain.R", # delimit the EU absence domain
