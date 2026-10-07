@@ -322,9 +322,7 @@ the SSP3-7.0 verdict does not.
 centennial; the pollen reconstruction has the HTM amplitude but is millennial and smoothed. If the two
 bracket the answer, the manuscript says so.
 
-**Data.** Mauri, Davis, Collins & Kaplan (2015), *The climate of Europe during the Holocene: a gridded
-pollen-based reconstruction and its multi-proxy evaluation*, QSR 112: 109-127, doi
-10.1016/j.quascirev.2015.01.013 (EPOCH-2; not yet in Zotero). NOAA:
+**Data.** @mauriClimateEuropeHolocene2015. NOAA:
 https://www.ncei.noaa.gov/pub/data/paleo/pollen/epoch2/ — `epoch-2.nc`, `epoch-2_uncertainties.nc` (also
 GeoTIFFs under `tiff_anomalies/`, `tiff_uncertainties/`). 1 degree grid, 28.5-71.5 N, 11.5 W-50.5 E (covers
 all bog pixels); 13 slices at 100, 1000, 2000, ..., 12000 cal BP; anomalies against "preindustrial".
