@@ -297,21 +297,39 @@ ch_pix <- read_csv("output/pl2/climatehistory_pixels.csv", show_col_types = FALS
 ch_htm <- read_csv("output/pl2/climatehistory_htm_anomaly.csv", show_col_types = FALSE)
 ch_offset <- read_csv("output/pl2/climatehistory_offset.csv", show_col_types = FALSE)
 
-band_layers <- function() {
-  list(
-    annotate("rect",
-      xmin = T0_OUTER[1], xmax = T0_OUTER[2], ymin = -Inf, ymax = Inf,
-      fill = "grey93"
-    ),
-    annotate("rect",
-      xmin = T0_BAND[1], xmax = T0_BAND[2], ymin = -Inf, ymax = Inf,
-      fill = "grey85"
-    )
+# Assumed bog age is shown as a white fog over the parts of an age axis that rest on
+# implausible bog ages, the same in both panels: full weight inside T0_BAND, fading to the
+# T0_OUTER edges and further beyond them. The fog is drawn over the data as thin white
+# strips whose opacity is 1 - weight.
+ch_weight <- function(t) {
+  approx(
+    c(0, T0_OUTER[1], T0_BAND[1], T0_BAND[2], T0_OUTER[2], 10),
+    c(0.12, 0.35, 1, 1, 0.35, 0.12),
+    xout = t, rule = 2
+  )$y
+}
+ch_fog <- function(from, to, step = 0.05) {
+  x0 <- seq(from, to - step, by = step)
+  w <- ch_weight(pmin(pmax(x0 + step / 2, 0), 10))
+  annotate(
+    "rect",
+    xmin = x0, xmax = x0 + step, ymin = -Inf, ymax = Inf,
+    fill = "white", alpha = 1 - w
+  )
+}
+ch_fog_label <- function(x, y, label) {
+  annotate(
+    "text",
+    x = x, y = y, label = label,
+    size = 2.4, colour = "grey45", fontface = "italic", lineheight = 0.9
   )
 }
 
 ### Panel A: warmest-quarter temperature through time ####
 
+# Only the OLD end is fogged here. The x-axis is the age of the climate, not of the bog: the
+# last 2 ka were lived through by every bog, young or old, so they keep full weight; climate
+# older than 6 ka was lived through only by bogs at least that old.
 ch_band <- ch_series |>
   group_by(age_ka) |>
   summarise(
@@ -327,19 +345,22 @@ ch_fut_band <- ch_future |>
   mutate(x = c(-0.55, -1.15)[as.integer(scenario)])
 
 p_ch_a <- ggplot() +
-  band_layers() +
   geom_line(
     data = ch_series, aes(age_ka, bio10, group = pixel),
     colour = "#2b6a3f", alpha = 0.03, linewidth = 0.2
   ) +
   geom_ribbon(data = ch_band, aes(age_ka, ymin = q05, ymax = q95), fill = "#2b6a3f", alpha = 0.25) +
   geom_line(data = ch_band, aes(age_ka, med), colour = "#2b6a3f", linewidth = 0.7) +
+  ch_fog(T0_BAND[2], 10.1) +
+  ch_fog_label(9, max(ch_band$q95) + 0.6, "few bogs
+this old") +
   geom_linerange(
     data = ch_fut_band, aes(x, ymin = q05, ymax = q95, colour = scenario),
     linewidth = 1.6, show.legend = FALSE
   ) +
   geom_point(data = ch_fut_band, aes(x, med, colour = scenario), size = 1.6, show.legend = FALSE) +
-  annotate("text", x = -0.85, y = min(ch_fut_band$q05) - 0.35, label = "2071-\n2100", size = 2.3, lineheight = 0.85) +
+  annotate("text", x = -0.85, y = min(ch_fut_band$q05) - 0.35, label = "2071-
+2100", size = 2.3, lineheight = 0.85) +
   scale_x_reverse(breaks = 0:10, limits = c(10, -1.45), expand = expansion(add = 0.1)) +
   scale_colour_manual(values = SCEN_COL, name = NULL) +
   labs(
@@ -351,84 +372,65 @@ p_ch_a <- ggplot() +
 
 ### Panel B: coverage against the assumed bog age ####
 
-# The x-axis runs the same way as panel A (older to the left). Instead of a band, the points
-# fade with t0: full weight up to the oldest dated Norwegian bog centre (T0_BAND[2]), fading
-# to T0_OUTER[2] and further beyond it, so the reader sees which part of the curve rests on a
-# plausible bog age. Points rather than lines: t0 is a grid of assumptions, not a time series.
-ch_fade <- function(t0) {
-  approx(
-    c(0, T0_BAND[2], T0_OUTER[2], 10), c(1, 1, 0.35, 0.12),
-    xout = t0, rule = 2
-  )$y
-}
-
+# Pooled hull only (bio10 x bio12): has ANY bog lived through this climate since t0. The
+# per-pixel "own past" measure is temperature-only and less relevant to persistence; it stays
+# in the table. Points rather than lines: t0 is a grid of assumptions, not a time series.
+# Both ends are fogged here, because the x-axis IS the assumed bog age.
 ch_cov_main <- ch_cov |>
   filter(version == "delta", axes == "primary", definition %in% names(DEF_LAB)) |>
-  mutate(
-    definition = factor(DEF_LAB[definition], levels = DEF_LAB),
-    fade = ch_fade(t0)
-  )
+  mutate(definition = factor(DEF_LAB[definition], levels = DEF_LAB))
 ch_ref_main <- ch_ref |>
   filter(definition == "2 pooled hull")
+ch_hull <- ch_cov_main |>
+  filter(definition == DEF_LAB[["2 pooled hull"]])
 
-# The two annotated points: the SSP1-2.6 contrast between "some bog" and "this bog" at the
-# centre of the plausible range.
 ch_note_t0 <- 4
-ch_note <- ch_cov_main |>
-  filter(scenario == "SSP1-2.6", t0 == ch_note_t0)
-ch_note_hull <- ch_note$coverage[ch_note$definition == DEF_LAB[["2 pooled hull"]]]
-ch_note_own <- ch_note$coverage[ch_note$definition == DEF_LAB[["1 own past"]]]
+ch_note_126 <- ch_hull$coverage[ch_hull$scenario == "SSP1-2.6" & ch_hull$t0 == ch_note_t0]
+ch_note_370 <- ch_hull$coverage[ch_hull$scenario == "SSP3-7.0" & ch_hull$t0 == ch_note_t0]
+ch_max_370 <- max(ch_hull$coverage[ch_hull$scenario == "SSP3-7.0"])
 
-p_ch_b <- ggplot(ch_cov_main, aes(t0, coverage)) +
-  geom_point(
-    aes(colour = scenario, shape = definition, alpha = fade),
-    size = 1.9, stroke = 0.6
-  ) +
+p_ch_b <- ggplot(ch_hull, aes(t0, coverage)) +
+  geom_point(aes(colour = scenario), size = 2) +
+  ch_fog(-0.3, 10.3) +
+  ch_fog_label(9, 0.5, "few bogs
+this old") +
+  ch_fog_label(0.5, 0.62, "few bogs
+this young") +
   annotate(
     "segment",
     x = ch_note_t0 + 1.9, xend = ch_note_t0 + 0.2,
-    y = ch_note_hull - 0.22, yend = ch_note_hull - 0.02,
+    y = ch_note_126 - 0.22, yend = ch_note_126 - 0.02,
     linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
   ) +
   annotate(
     "text",
-    x = ch_note_t0 + 1.9, y = ch_note_hull - 0.26, hjust = 0.5, vjust = 1,
+    x = ch_note_t0 + 1.9, y = ch_note_126 - 0.26, hjust = 0.5, vjust = 1,
     size = 2.4, lineheight = 0.9,
     label = sprintf("%.0f%%: some bog has had
-this climate since %d ka", 100 * ch_note_hull, ch_note_t0)
+this climate since %d ka", 100 * ch_note_126, ch_note_t0)
   ) +
   annotate(
     "segment",
-    x = ch_note_t0 - 1.5, xend = ch_note_t0 - 0.15,
-    y = ch_note_own + 0.2, yend = ch_note_own + 0.02,
+    x = ch_note_t0 - 1.2, xend = ch_note_t0 - 0.15,
+    y = ch_note_370 + 0.2, yend = ch_note_370 + 0.02,
     linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
   ) +
   annotate(
     "text",
-    x = ch_note_t0 - 1.5, y = ch_note_own + 0.22, hjust = 0.5, vjust = 0,
+    x = ch_note_t0 - 1.2, y = ch_note_370 + 0.22, hjust = 0.5, vjust = 0,
     size = 2.4, lineheight = 0.9,
-    label = sprintf("%.0f%%: the bog itself has been
-this warm since %d ka", 100 * ch_note_own, ch_note_t0)
-  ) +
-  annotate(
-    "text",
-    x = 9, y = 0.5, label = "few bogs
-this old",
-    size = 2.4, colour = "grey45", fontface = "italic", lineheight = 0.9
+    label = sprintf("SSP3-7.0: at most %.0f%%
+at any bog age", 100 * ch_max_370)
   ) +
   scale_x_reverse(breaks = 0:10, expand = expansion(add = 0.3)) +
   scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
   scale_colour_manual(values = SCEN_COL, name = NULL) +
-  scale_shape_manual(values = c(16, 2), name = NULL) +
-  scale_alpha_identity() +
-  guides(
-    colour = guide_legend(order = 1, override.aes = list(size = 2.5, shape = 15)),
-    shape = guide_legend(order = 2, nrow = 1, override.aes = list(size = 2))
-  ) +
+  guides(colour = guide_legend(override.aes = list(size = 2.5, shape = 15))) +
   labs(
     title = "B",
     x = "Assumed bog age (fen-to-bog transition), t0 (ka)",
-    y = "Future bog pixels inside the climate experienced since t0"
+    y = "Future bog pixels inside a climate some bog
+has lived through since t0 (bio10 x bio12)"
   ) +
   theme_ms +
   theme(legend.position = "bottom")
@@ -436,7 +438,7 @@ this old",
 save_fig(
   p_ch_a + p_ch_b +
     plot_layout(widths = c(1.15, 1), guides = "collect") &
-    theme(legend.position = "bottom", legend.box = "horizontal"),
+    theme(legend.position = "bottom"),
   "fig_climatehistory", 7.5, 4.2
 )
 
