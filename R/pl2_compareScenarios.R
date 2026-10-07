@@ -244,11 +244,18 @@ persist_map <- rast(pred[[1]])
 values(persist_map) <- codes
 levels(persist_map) <- data.frame(id = seq_along(persist_levels), persistence = persist_levels)
 
-png("output/pl2/scenario_comparison_persistence.png", width = 900, height = 1100, res = 120)
+# Colours are tied to the class id: only the classes that occur are drawn, and a bare
+# `col` vector would then be matched by position rather than by class.
+coltab(persist_map) <- data.frame(
+  value = seq_along(persist_levels),
+  col = c("#2b6a3f", "#e0a030", "#8a8a8a", "#c1462c")
+)
+
+png("output/pl2/scenario_comparison_persistence.png", width = 1100, height = 1100, res = 120)
 plot(
   persist_map,
-  col = c("#2b6a3f", "#e0a030", "#8a8a8a", "#c1462c"),
-  main = "Present-day predicted bog: persistence under the two scenarios"
+  main = "Present-day predicted bog: persistence under the two scenarios",
+  mar = c(3, 3, 3, 14), plg = list(cex = 0.8)
 )
 dev.off()
 
