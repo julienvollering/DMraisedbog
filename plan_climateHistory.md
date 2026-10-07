@@ -1,7 +1,19 @@
 # Plan: the climate history of today's raised bogs against the future climate
 
-Status: plan written 2026-10-06 on branch `climate-history-plan`, revised after review; steps 1-3 of
-section 7 implemented and run the same day (first results in section 0 below).
+Status (2026-10-07): **analysis done, figure approved by JV, manuscript revision in progress** (section 8).
+- Done: pipeline (3 new pl0 scripts, `R/pl2_exploreClimateHistory.R`, all in RUNALL); two records (TraCE21k,
+  EPOCH-2) on the 1981-2010 baseline with Berkeley Earth offsets; literature t0 band (3.7a, 2-6 ka core,
+  1-8 ka outer); `fig_climatehistory` and `tbl_climatehistory` in `ms/make_figures.R`; current numbers in 0.
+- In progress: `ms/ms.qmd` (plan in section 8). The branch's `ms.qmd` was rebased by hand on `main`'s
+  (which added SSP1-2.6, f2541e2), because merging `main` into the branch was blocked in the agent
+  session. **JV: merge `main` into this branch before rendering**; `ms/make_figures.R` will conflict
+  (main's Fig 7 / S6 Table block and this branch's climate-history block are both new sections; keep both),
+  then rerun `ms/make_figures.R`.
+- Not done: core-cell sensitivity (step 5; proposed to drop unless a reviewer asks, JV to decide: the t0
+  sweep already varies the window that a core/margin split would vary); `notebook.md` entry (text handed to JV, the agent
+  cannot write the main checkout's notebook); Väliranta 2017 and MacDonald 2015 unverified, not cited.
+- Dropped (JV): ecospat / hypervolume / COUE (3.6); correcting for multidecadal variability (3.8, caveat only);
+  any blending of TraCE and EPOCH-2 (3.9); the two supplementary figures (slices, exceedance map).
 
 Departures from the plan in the implementation:
 - **No edit to `pl0_downloadCHELSA.R`.** `R/pl0_prepareCHELSATraceSeries.R` reads the Norway window of
@@ -18,10 +30,10 @@ Departures from the plan in the implementation:
   The multidecadal-variability mismatch (3.8) is stated as a Methods caveat, not corrected for.
 - **Literature t0 band**: 3.7a, revised after JV's check to 2-6 ka (outer 1-8 ka).
 - **Figures/tables (step 6)**: `ms/make_figures.R`, section after Fig 2: `fig_climatehistory`,
-  `figS_climatehistory_slices`, `figS_climatehistory_exceedance`, `tbl_climatehistory`, `ch_*` study numbers.
-  Awaiting JV's approval before the manuscript text.
+  `tbl_climatehistory`, `ch_*` study numbers (the supplementary figures were dropped).
 - **TraCE's weak HTM**: 3.9, EPOCH-2 run in parallel (JV 2026-10-07); baseline offsets from Berkeley Earth (decision 1, JV), implemented; results in 0.
-- **Not done yet**: core-cell sensitivity (step 5).
+- **18 of 614 pixels have no ice-free date** (`icefree_ka` = 0; coastal Helgeland, GCM cell 4_17, TraCE
+  palaeogeography): their window is the youngest slice only, at every t0. Stated in S2 Text, not changed.
 
 ## 0. Current results (2026-10-07: two records, both on the 1981-2010 baseline)
 
@@ -288,7 +300,8 @@ mosse 7.7, Rustadmåsan's possible early start); 1 ka admits the youngest margin
 **typical bog cell**, not the oldest point in a bog. The previous 3-7 ka was pulled up by the rejected
 bog-pine row and the Akershus misreading.
 
-**Consequence for the verdict.** SSP3-7.0 is novel across the whole band (pooled hull <= 4%, per-pixel 0%).
+**Consequence for the verdict** (numbers from the TraCE-only run without baseline offset; superseded by
+section 0, kept for the record). SSP3-7.0 is novel across the whole band (pooled hull <= 4%, per-pixel 0%).
 SSP1-2.6: pooled-hull coverage rises from 76% at 2 ka to 88% at 4 ka and reaches 95% only at ~6 ka, the
 top of the core band; per-pixel coverage stays at 5-11%. So "inside" under SSP1-2.6 needs the oldest
 dated Norwegian onset for every cell, and even then only in the pooled sense.
@@ -470,3 +483,74 @@ edge distance.
 5. Literature pass for the t0 band; core-cell sensitivity.
 6. Figures into `ms/make_figures.R`; text for Methods, Results, and the Discussion caveats
    in 3.8.
+
+## 8. Folding the analysis into the manuscript (2026-10-07)
+
+### 8.1 The argument: three lines of evidence, each covering another's blind spot
+
+| Leg | Question it answers | Reference for "has this climate been seen before" | Its blind spot | Covered by |
+|---|---|---|---|---|
+| 1. Observed occupancy (space, no model) | How common are raised bogs today in the climates the future brings? | all training cells, NO + EU, today | occurrence mixes formation and persistence; the warm analogues are few and clustered; no site-level answer | 3 (persistence at fixed sites); 2 (site level) |
+| 2. Three-class forest + transfer CV (space, model) | Which mapped bogs keep a raised-bog climate, and what do the others become? | the same training data, generalised | extrapolation; learns occurrence, not persistence | 1 (same evidence, no learner); 3 |
+| 3. Climate history (time, no model of bogs) | Have Norway's bogs lived through this climate since they became bogs? | the bogs' own past, at their own sites | t0 unknown; palaeo records coarse and disagree on HTM warmth; centennial vs 30-yr means | 1-2 (no t0, no palaeo record) |
+
+Legs 1-2 share a weakness that only leg 3 addresses: a raised bog is a landform that can persist in a
+climate where it could not form (now Discussion point iii, which concedes "loss of suitability, not a
+disappearance date"). Leg 3 asks the persistence question directly, at the bogs' own sites. Its own
+weaknesses (t0, the record) do not touch legs 1-2. So the three are complementary, not redundant, and the
+paper can say that the conclusion stands on three legs that fail in different ways.
+
+What the legs share, and must not be sold as independent: **the future climate** (CHELSA GFDL-ESM4, both
+scenarios) and the CHELSA 1981-2010 baseline. The independence is in the *reference* (what counts as
+precedent), not in the future. Say this once.
+
+**What they say** (current numbers):
+
+- **SSP3-7.0, all three agree on loss.** Model: 0 of 544 polygons still raised bog (96% non-peat).
+  Occupancy: 75% of the future bog cells land in the > 18 C, wet cell of the grid, where observed
+  prevalence is 10-fold lower than at 16-18 C (0.36 vs 3.63%). History:
+  98.9-99.0% of bog pixels face a climate no bog has lived through in the last 8 ka (both records), and
+  only 21% of the future even lies inside today's pooled NO + EU raised-bog climate (reference hull).
+- **SSP1-2.6, all three put the bogs at the edge, not beyond it.** Model: 104 of 544 polygons (19%) stay
+  raised bog, none lies beyond the warmest training bog, the score still falls at 98%. History: the
+  unprecedented share depends on t0, 56-82% at 2 ka, 40-58% at 4 ka, 26-36% at 5 ka, 9-11% at 6 ka:
+  bogs at least 5-6 ka old have, as a group, lived through comparable summers in the HTM. Occupancy:
+  98.7% of the SSP1-2.6 future lies inside today's pooled raised-bog climate.
+  This is not a contradiction between the legs but the persistence reading: under SSP1-2.6 most mapped
+  bogs lose the climate in which raised bogs are common today (legs 1-2), yet a climate like it has been
+  lived through by bogs during the HTM (leg 3). SSP1-2.6 is where "loss of suitability" and "loss of the
+  bog" can come apart; SSP3-7.0 is where they cannot be told apart on any evidence we have.
+
+**Writing rules.** State each scenario's verdict once, with the legs together, in Results and Discussion;
+no sentence carries more than one "if" (the t0 dependence is carried by the figure and the band, not by
+nested conditionals). No leg is presented as a "validation" of another. The two palaeo records are
+reported as a range ("26-36%"), never as a primary and a check.
+
+### 8.2 Where it goes (to-the-point: about +450 words main-text Methods, +300 Results)
+
+| Place in `ms.qmd` | Change |
+|---|---|
+| YAML abstract skeleton | add the history leg as point (5); the CV point moves to (6) |
+| Study system, question and design | one short paragraph after the five design decisions: three lines of evidence; roadmap sentence updated |
+| Predictors | fill "[TODO cite]" for CHELSA-TraCE21k |
+| New Methods subsection after "Model-free description of the projection problem": **"The climate history of today's raised bogs"** | 4 short paragraphs: question and unit (pixels, bio10 x bio12); two records and the baseline; window, t0 and the measure (pooled hull, "unprecedented"); the t0 band from the literature. Caveats in one sentence each, pointing to S2 Text |
+| New Results subsection after the occupancy subsection: **"The future against the bogs' own past"** | 2 paragraphs + the figure (it becomes Fig 3; Quarto renumbers); sensitivities in one sentence pointing to S7 Table |
+| "A milder scenario" | one sentence tying the 19% kept polygons to the history's SSP1-2.6 reading |
+| Discussion TODO list | (i) rewritten as the three legs; new (viii) persistence vs suitability, sharpened by the history (SSP1-2.6 vs SSP3-7.0); new (ix) the palaeo caveats (TraCE's weak HTM, why two records, centennial smoothing biases toward "unprecedented", rate and CO2, t0 is an assumption) |
+| Supplement | **S2 Text** (records, baseline offsets, window and deglaciation cap incl. the 18 pixels without an ice-free date, t0 literature table, measures and sensitivities, caveats); **S7 Table** (`tbl_climatehistory`) |
+| `setup` chunk | read the `ch_*` study numbers and `tables/tbl_climatehistory.csv`; GUARDS for the qualitative claims (SSP3-7.0 >= 95% unprecedented across the outer band under both records; SSP1-2.6 unprecedented share falls below 50% inside the core band under both records) |
+
+Deliberately left out of the main text: the per-pixel "own past" measure (JV: less relevant to persistence,
+bio10 only; in S7 Table), the density-quantile definition, raw TraCE and bio18 (S7 Table), the GCM-cell
+bootstrap (weak, 6 cells; one sentence in S2 Text), the core-cell sensitivity (not run).
+
+### 8.3 Open for JV
+
+1. Three legs or two? Recommended **three**, because occupancy and model are already presented as
+   separate lines (Discussion point i, "the model-free occupancy table carries the conclusion and the
+   model adds the map"). The history is then the third and the only one in time.
+2. The persistence reading of SSP1-2.6 (8.1) is the main new claim for the Discussion; check that you
+   want to make it.
+3. Title and abstract: the working title is model-centred; a history leg might justify "three lines of
+   evidence" in the title. Not changed.
+4. Figure caption: drafted in the `ms.qmd` (based on the rough draft in chat).

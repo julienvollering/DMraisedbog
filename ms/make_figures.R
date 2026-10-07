@@ -535,8 +535,13 @@ numbers$ch_n_pixels <- n_distinct(ch_pix$pixel)
 numbers$ch_n_gcm_cells <- n_distinct(ch_pix$gcm_cell)
 numbers$ch_max_pixels_one_gcm_cell <- max(table(distinct(ch_pix, pixel, gcm_cell)$gcm_cell))
 numbers$ch_n_low_elevation <- sum(distinct(ch_pix, pixel, low_elevation)$low_elevation)
+numbers$ch_n_no_icefree <- sum(distinct(ch_pix, pixel, icefree_ka)$icefree_ka == 0)
 numbers$ch_t0_band_lo <- T0_BAND[1]
 numbers$ch_t0_band_hi <- T0_BAND[2]
+numbers$ch_t0_outer_lo <- T0_OUTER[1]
+numbers$ch_t0_outer_hi <- T0_OUTER[2]
+numbers$ch_ssp126_t0_annot <- ch_t0_126
+numbers$ch_ssp370_t0_annot <- ch_t0_370
 numbers$ch_htm_trace_bio10_max <- ch_htm$median_htm_max_minus_t20[ch_htm$variable == "bio10"]
 numbers$ch_htm_trace_bio10_mean <- ch_htm$median_htm_mean_minus_t20[ch_htm$variable == "bio10"]
 numbers$ch_htm_epoch2_jja_max <- ch_htm$median_htm_max_minus_t20[grepl("EPOCH-2", ch_htm$variable)]
@@ -552,7 +557,16 @@ for (ssp in names(SCEN_LAB)) {
     numbers[[paste0(key, "_unprec_band_lo")]] <- u$unprecedented[u$t0 == T0_BAND[1]]
     numbers[[paste0(key, "_unprec_band_mid")]] <- u$unprecedented[u$t0 == mean(T0_BAND)]
     numbers[[paste0(key, "_unprec_band_hi")]] <- u$unprecedented[u$t0 == T0_BAND[2]]
+    # the t0 the figure annotates for this scenario, and the lowest share inside the outer range
+    numbers[[paste0(key, "_unprec_annot")]] <- u$unprecedented[u$t0 == numbers[[paste0("ch_", ssp, "_t0_annot")]]]
+    numbers[[paste0(key, "_unprec_min_outer")]] <- min(u$unprecedented[u$t0 <= T0_OUTER[2]])
   }
+  # sensitivities at the old edge of the core band (S7 Table carries the full grid)
+  sens <- ch_cov |> filter(scenario == lab, t0 == T0_BAND[2])
+  numbers[[paste0("ch_", ssp, "_raw_unprec_band_hi")]] <-
+    1 - sens$coverage[sens$version == "raw" & sens$axes == "primary" & sens$definition == "2 pooled hull"]
+  numbers[[paste0("ch_", ssp, "_bio18_unprec_band_hi")]] <-
+    1 - sens$coverage[sens$version == "delta" & sens$axes == "bio18" & sens$definition == "2 pooled hull"]
   hd <- ch_pix |> filter(scenario == lab)
   numbers[[paste0("ch_", ssp, "_exceedance_trace_t0_mid")]] <- median(hd$exceedance_bio10[hd$t0 == mean(T0_BAND)])
   numbers[[paste0("ch_", ssp, "_exceedance_epoch2_t0_mid")]] <- median(hd$exceedance_bio10_epoch2[hd$t0 == mean(T0_BAND)])
