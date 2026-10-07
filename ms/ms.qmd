@@ -448,7 +448,10 @@ Before fitting any model we asked two questions of the data alone. First, where 
 future climate of today's Norwegian raised bogs lie relative to the climates the training
 data sample? Second, among the training cells that already have such a climate, how common
 are raised bogs? The second question is an observational reading of the same evidence the
-model is asked to generalise, and it does not depend on a learner.
+model is asked to generalise, and it does not depend on a learner. This description is
+exploratory and is built on the high-warming scenario alone (SSP3-7.0). The milder scenario
+(SSP1-2.6) enters only where it is named, in the comparison of projected change at the
+mapped raised bogs.
 
 For the first question we carried the `r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells to their 2071--2100
 climate and compared their bio10 with the training data. For the second we cross-tabulated
@@ -613,17 +616,19 @@ quarter, 1981--2010.](figures/fig_studyarea.png){#fig-studyarea}
 
 ## Where the future takes today's raised bogs, and what is observed there
 
-Under SSP3-7.0 the median bio10 at the `r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells rises from
+This section is exploratory and uses the high-warming scenario (SSP3-7.0) throughout; it
+is not repeated under SSP1-2.6, which is compared with it in the subsection on the milder
+scenario below. Under SSP3-7.0 the median bio10 at the `r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells rises from
 `r f1(S("no_bog_bio10_median"))` °C to `r f1(S("future_bog_bio10_median"))` °C (range `r f1(S("future_bog_bio10_min"))`--`r f1(S("future_bog_bio10_max"))` °C), so that `r pc(S("future_bog_share_above_pooled_bog_max"))` of them become
 warmer than the warmest raised bog in the pooled training data (`r f1(S("pooled_bog_bio10_max"))` °C, a European one).
 Growing-season precipitation shifts too, by `r f2(shift("gsp"))` standard deviations of its current spread, so
 moisture is not held constant.
 
-The climates the bogs are moving into are already sampled, by the European block. In the
+The climates the bogs are moving into under SSP3-7.0 are already sampled, by the European block. In the
 wet column of the occupancy grid (growing-season precipitation above 650 mm), which holds
 `r pc(fut_wet)` of the future raised-bog cells, the observed prevalence of raised bog is `r fp(oc("14-16", WET, "prevalence_pct"))` at
 14--16 °C, `r fp(oc("16-18", WET, "prevalence_pct"))` at 16--18 °C and `r fp(oc(">18", WET, "prevalence_pct"))` above 18 °C (@fig-occupancy (B), @tbl-occupancy; the
-full grid is S4 Table). `r pc(oc(">18", WET, "future_bog_pct") / 100)` of all future raised-bog cells fall in that last cell: a
+full grid is S4 Table). `r pc(oc(">18", WET, "future_bog_pct") / 100)` of all future (SSP3-7.0) raised-bog cells fall in that last cell: a
 `r f1(oc("16-18", WET, "prevalence_pct") / oc(">18", WET, "prevalence_pct"), 0)`-fold drop in observed prevalence from the adjacent band at constant moisture, on
 `r n0(oc(">18", WET, "n_cells"))` sampled cells, with the moisture that raised bogs need still present.
 
@@ -634,7 +639,7 @@ the effective sample size is far below the cell count.
 
 ```{r}
 #| label: tbl-occupancy
-#| tbl-cap: !expr 'sprintf("**Observed prevalence of raised bog in the wet column of the climate grid, and where the future raised-bog cells land.** Training cells (current climate) with growing-season precipitation above 650 mm, by mean temperature of the warmest quarter (bio10). The last column is the share of the %s Norwegian raised-bog cells whose 2071--2100 climate falls in that cell of the grid; the other moisture columns together hold %s%% of them (full grid: S4 Table).", format(fr("raised bog", "Norway"), big.mark = ","), round(100 * (1 - fut_wet)))'
+#| tbl-cap: !expr 'sprintf("**Observed prevalence of raised bog in the wet column of the climate grid, and where the future raised-bog cells land.** Training cells (current climate) with growing-season precipitation above 650 mm, by mean temperature of the warmest quarter (bio10). The last column is the share of the %s Norwegian raised-bog cells whose 2071--2100 climate under SSP3-7.0 falls in that cell of the grid; the other moisture columns together hold %s%% of them (full grid: S4 Table).", format(fr("raised bog", "Norway"), big.mark = ","), round(100 * (1 - fut_wet)))'
 occ |>
   filter(gsp_band == WET) |>
   transmute(
@@ -648,13 +653,13 @@ occ |>
   kable(align = "lrrrrr")
 ```
 
-![**The climate the projection moves into, and what is observed there.** (A) Training
+![**The climate the projection moves into (SSP3-7.0), and what is observed there.** (A) Training
 cells in the space of warmest-quarter temperature and growing-season precipitation
 (15,000 cells drawn at random from each absence class; all `r n0(fr("raised bog"))` raised-bog cells), with the
-`r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells at their 2071--2100 climate (red). Dotted lines are the
+`r n0(fr("raised bog", "Norway"))` Norwegian raised-bog cells at their 2071--2100 climate under SSP3-7.0 (red). Dotted lines are the
 bands of panel B. (B) Observed prevalence of raised bog per band, with the number of raised-bog cells
-over the number of training cells, and the share of the future raised-bog cells that land
-in each band.](figures/fig_occupancy.png){#fig-occupancy}
+over the number of training cells, and the share of the future (SSP3-7.0) raised-bog cells
+that land in each band.](figures/fig_occupancy.png){#fig-occupancy}
 
 ## Cross-validated skill
 
@@ -942,7 +947,7 @@ and the false-positive rate is the informative column.
 ::: {.supp}
 ## S4 Table. {#s4-table}
 
-Observed prevalence of raised bog across the full climate grid.
+Observed prevalence of raised bog across the full climate grid. The last column is the share of future raised-bog cells under SSP3-7.0.
 
 ```{r}
 #| label: tbl-occupancy-full
