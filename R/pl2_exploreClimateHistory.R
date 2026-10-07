@@ -64,8 +64,9 @@ GCM_DLAT <- 3.71
 # Flagged, never dropped. A rough stand-in for the Norwegian marine limit.
 LOW_ELEVATION_FLAG_M <- 150
 
-# Ages (ka) at which per-pixel headroom is written out and slices are drawn.
-REPORT_AGES <- c(0, 2, 4, 6, 8, 10)
+# Ages (ka) at which slices are drawn and the headline is printed. Per-pixel headroom is
+# written for every t0 in T0_GRID, so ms/make_figures.R can read it at any t0.
+SLICE_AGES <- c(0, 2, 4, 6, 8, 10)
 
 record_settings(
   "R/pl2_exploreClimateHistory.R",
@@ -209,6 +210,24 @@ history <- list(
   raw = trace_mat
 )
 
+# The series and the future values at the pixels, for ms/make_figures.R (which draws from
+# pipeline outputs only). Delta version, bog pixels' own ice-free window only.
+series_out <- tibble(
+  pixel = rep(pixels$pixel, times = length(ages_ka)),
+  age_ka = rep(ages_ka, each = n_pix),
+  icefree_ka = rep(pixels$icefree_ka, times = length(ages_ka)),
+  bio10 = as.vector(history$delta$bio10),
+  bio12 = as.vector(history$delta$bio12)
+) |>
+  filter(age_ka <= icefree_ka | age_ka == 0) |>
+  select(-icefree_ka)
+write_csv(series_out, "output/pl2/climatehistory_series.csv", append = FALSE)
+
+future_out <- imap_dfr(future, \(f, ssp) tibble(
+  scenario = ssp, pixel = pixels$pixel, bio10 = f$bio10, bio12 = f$bio12
+))
+write_csv(future_out, "output/pl2/climatehistory_future.csv", append = FALSE)
+
 ## Containment ####
 
 # Window mask for t0: slice ages <= min(t0, deglaciation age). The present slice is always in.
@@ -331,6 +350,8 @@ curves <- bind_rows(curves, winter)
 
 ## Bootstrap by GCM cell ####
 
+# Definitions 1 and 2 only: the weighted density costs ~1 s per call, which made the 8,400
+# bootstrap calls take ~3 h (2026-10-07), and definition 3 is a sensitivity, not the headline.
 # Primary axes, delta version only: the headline. Resample GCM cells with replacement; a
 # pixel's multiplicity is the number of times its cell was drawn.
 cells <- unique(pixels$gcm_cell)
@@ -341,7 +362,9 @@ boot_w <- map(seq_len(N_BOOT), \(b) {
 
 boot <- expand_grid(scenario = FUTURE_SCENARIOS, t0 = T0_GRID) |>
   mutate(res = map2(scenario, t0, \(ssp, t0) {
-    map_dfr(boot_w, \(w) coverage(t0, history$delta, future[[ssp]], "bio10", "bio12", w = w))
+    map_dfr(boot_w, \(w) coverage(
+      t0, history$delta, future[[ssp]], "bio10", "bio12", w = w, dens = FALSE
+    ))
   })) |>
   unnest(res) |>
   group_by(scenario, t0, definition) |>
@@ -390,7 +413,7 @@ write_csv(t_star, "output/pl2/climatehistory_tstar.csv", append = FALSE)
 
 cat("\nHeadline (delta, bio10 x bio12):\n")
 curves |>
-  filter(version == "delta", axes == "primary", t0 %in% REPORT_AGES) |>
+  filter(version == "delta", axes == "primary", t0 %in% SLICE_AGES) |>
   select(scenario, definition, t0, coverage, lo, hi) |>
   mutate(across(c(coverage, lo, hi), \(x) round(x, 3))) |>
   pivot_wider(names_from = t0, values_from = c(coverage), names_prefix = "t0=", id_cols = c(scenario, definition)) |>
@@ -398,7 +421,7 @@ curves |>
 
 ## Per-pixel headroom ####
 
-pixel_out <- expand_grid(scenario = FUTURE_SCENARIOS, t0 = REPORT_AGES) |>
+pixel_out <- expand_grid(scenario = FUTURE_SCENARIOS, t0 = T0_GRID) |>
   mutate(res = map2(scenario, t0, \(ssp, t0) {
     win <- window_mask(t0)
     tibble(
@@ -481,7 +504,7 @@ ggsave("output/pl2/climatehistory_trajectories.png", p_traj, width = 9, height =
 
 ### Slices in bio10 x bio12 ####
 
-slice_pts <- map_dfr(REPORT_AGES[REPORT_AGES <= 8], \(a) {
+slice_pts <- map_dfr(SLICE_AGES[SLICE_AGES <= 8], \(a) {
   k <- which.min(abs(ages_ka - a))
   tibble(
     age = paste(a, "ka"),
