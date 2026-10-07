@@ -352,6 +352,15 @@ ch_fut_band <- ch_future |>
   ) |>
   mutate(x = c(-0.55, -1.15)[as.integer(scenario)])
 
+# The "few bogs this ..." labels sit at the same relative height in both panels: a fraction of
+# each panel's data range (panel B runs 0-1).
+CH_LABEL_REL <- 0.68
+ch_a_range <- range(
+  ch_trace$bio10, ch_fut_band$q05, ch_fut_band$q95,
+  ch_epoch$med - ch_epoch$se, ch_epoch$med + ch_epoch$se
+)
+ch_a_label_y <- ch_a_range[1] + CH_LABEL_REL * diff(ch_a_range)
+
 p_ch_a <- ggplot() +
   geom_line(
     data = ch_trace, aes(age_ka, bio10, group = pixel),
@@ -366,7 +375,7 @@ p_ch_a <- ggplot() +
   ) +
   geom_point(data = ch_epoch, aes(age_ka, med), colour = REC_COL[["epoch2"]], shape = 17, size = 1.8) +
   ch_fog(T0_BAND[2], 10.1) +
-  ch_label(9, max(ch_band$q95) + 0.6, "few bogs\nthis old") +
+  ch_label(9, ch_a_label_y, "few bogs\nthis old") +
   ch_label(4.5, min(ch_band$q05) - 0.45, REC_LAB[["delta"]], colour = REC_COL[["delta"]], fontface = "plain") +
   ch_label(
     6.5, max(ch_epoch$med + ch_epoch$se) + 0.35, REC_LAB[["epoch2"]],
@@ -382,7 +391,7 @@ p_ch_a <- ggplot() +
   scale_colour_manual(values = SCEN_COL, name = NULL) +
   labs(
     title = "A",
-    x = "Age (ka)", y = "Mean temperature of the warmest quarter, bio10 (°C)"
+    x = "Time (ka)", y = "Mean temperature of the warmest quarter, bio10 (°C)"
   ) +
   theme_ms +
   theme(legend.position = "bottom")
@@ -421,19 +430,19 @@ ch_brk_tick <- 0.12
 p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
   geom_point(aes(colour = scenario, shape = record), size = 1.9, stroke = 0.6) +
   ch_fog(-0.3, 10.3) +
-  ch_label(9.2, 0.6, "few bogs\nthis old") +
-  ch_label(0.5, 0.5, "few bogs\nthis young") +
+  ch_label(9.2, CH_LABEL_REL, "few bogs\nthis old") +
+  ch_label(0.5, CH_LABEL_REL, "few bogs\nthis young") +
   annotate(
     "segment",
-    x = ch_t0_370 - 1.1, xend = ch_t0_370 - 0.05,
+    x = ch_t0_370 - 1.7, xend = ch_t0_370 - 0.05,
     y = 0.81, yend = min(ch_370) - 0.02,
     linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
   ) +
   annotate(
     "text",
-    x = ch_t0_370 - 1.6, y = 0.80, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    x = ch_t0_370 - 2.5, y = 0.80, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
     label = sprintf(
-      "%s of bog pixels face an SSP3-7.0\nclimate no bog has lived through\nin the last %d ka",
+      "Under SSP3-7.0, %s of bogs\nface a climate unprecedented\nfor any bog in the last %d ka",
       ch_pct_range(ch_370), ch_t0_370
     )
   ) +
@@ -458,7 +467,7 @@ p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
     "text",
     x = 2.1, y = 0.225, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
     label = sprintf(
-      "%s face an SSP1-2.6 climate\nno bog has lived through\nin the last %d ka",
+      "Under SSP1-2.6, %s of bogs\nface a climate unprecedented\nfor any bog in the last %d ka",
       ch_pct_range(ch_126), ch_t0_126
     )
   ) +
