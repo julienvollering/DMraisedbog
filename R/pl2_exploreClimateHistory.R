@@ -22,7 +22,7 @@
 # sits in a handful of GCM cells. Intervals are bootstrapped by GCM cell (3.2).
 #
 # THREE CONTAINMENT DEFINITIONS (3.5), reported together:
-#   1  per-pixel headroom: future bio10 minus the warmest slice in that pixel's own window
+#   1  per-pixel exceedance: future bio10 minus the warmest slice in that pixel's own window (> 0 = warmer than anything since t0)
 #      ("this bog has been this warm before"); 1b adds "and not drier than its driest
 #      slice". One-sided on purpose: the future is WETTER than every slice of every
 #      pixel's own past (bio12 +8% SSP3-7.0, +3% SSP1-2.6), and for an ombrotrophic bog
@@ -64,7 +64,7 @@ GCM_DLAT <- 3.71
 # Flagged, never dropped. A rough stand-in for the Norwegian marine limit.
 LOW_ELEVATION_FLAG_M <- 150
 
-# Ages (ka) at which slices are drawn and the headline is printed. Per-pixel headroom is
+# Ages (ka) at which slices are drawn and the headline is printed. Per-pixel exceedance is
 # written for every t0 in T0_GRID, so ms/make_figures.R can read it at any t0.
 SLICE_AGES <- c(0, 2, 4, 6, 8, 10)
 
@@ -288,8 +288,8 @@ coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) 
   fx <- fut[[tvar]]
   fy <- fut[[mvar]]
 
-  headroom <- fx - row_max_in(tx, win)
-  inside_1 <- headroom <= 0
+  exceedance <- fx - row_max_in(tx, win)
+  inside_1 <- exceedance <= 0
   inside_1b <- inside_1 & fy >= row_min_in(my, win)
 
   sel <- w > 0
@@ -298,7 +298,7 @@ coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) 
   inside_2 <- in_hull(fx, fy, e_x, e_y)
 
   out <- tibble(
-    definition = c("1 headroom", "1b not drier", "2 pooled hull"),
+    definition = c("1 own past", "1b not drier", "2 pooled hull"),
     coverage = c(
       weighted.mean(inside_1, w), weighted.mean(inside_1b, w), weighted.mean(inside_2, w)
     )
@@ -313,8 +313,8 @@ coverage <- function(t0, hist, fut, tvar, mvar, w = rep(1, n_pix), dens = TRUE) 
   out
 }
 
-# Headroom-only coverage on a single temperature axis (bio06 sensitivity).
-coverage_headroom <- function(t0, hist, fut, tvar) {
+# Exceedance-only coverage on a single temperature axis (bio06 sensitivity).
+coverage_exceedance <- function(t0, hist, fut, tvar) {
   mean(fut[[tvar]] - row_max_in(hist[[tvar]], window_mask(t0)) <= 0)
 }
 
@@ -341,9 +341,9 @@ curves <- grid_runs |>
 winter <- expand_grid(scenario = FUTURE_SCENARIOS, version = names(history), t0 = T0_GRID) |>
   mutate(
     axes = "bio06",
-    definition = "1 headroom",
+    definition = "1 own past",
     coverage = pmap_dbl(list(scenario, version, t0), \(ssp, ver, t0) {
-      coverage_headroom(t0, history[[ver]], future[[ssp]], "bio06")
+      coverage_exceedance(t0, history[[ver]], future[[ssp]], "bio06")
     })
   )
 curves <- bind_rows(curves, winter)
@@ -398,7 +398,7 @@ write_csv(reference, "output/pl2/climatehistory_reference.csv", append = FALSE)
 ## t* ####
 
 t_star <- curves |>
-  filter(definition %in% c("1 headroom", "1b not drier", "2 pooled hull")) |>
+  filter(definition %in% c("1 own past", "1b not drier", "2 pooled hull")) |>
   group_by(scenario, version, axes, definition) |>
   summarise(
     coverage_t0_0 = coverage[t0 == 0],
@@ -419,15 +419,15 @@ curves |>
   pivot_wider(names_from = t0, values_from = c(coverage), names_prefix = "t0=", id_cols = c(scenario, definition)) |>
   print(n = Inf)
 
-## Per-pixel headroom ####
+## Per-pixel exceedance ####
 
 pixel_out <- expand_grid(scenario = FUTURE_SCENARIOS, t0 = T0_GRID) |>
   mutate(res = map2(scenario, t0, \(ssp, t0) {
     win <- window_mask(t0)
     tibble(
       pixel = pixels$pixel,
-      headroom_bio10 = future[[ssp]]$bio10 - row_max_in(history$delta$bio10, win),
-      headroom_bio10_raw = future[[ssp]]$bio10 - row_max_in(history$raw$bio10, win)
+      exceedance_bio10 = future[[ssp]]$bio10 - row_max_in(history$delta$bio10, win),
+      exceedance_bio10_raw = future[[ssp]]$bio10 - row_max_in(history$raw$bio10, win)
     )
   })) |>
   unnest(res) |>
@@ -531,24 +531,24 @@ p_slices <- ggplot(slice_pts, aes(bio10, bio12)) +
 print(p_slices)
 ggsave("output/pl2/climatehistory_slices.png", p_slices, width = 11, height = 3.8, dpi = 150)
 
-### Headroom map ####
+### Exceedance map ####
 
 p_map <- pixel_out |>
   filter(scenario == FUTURE_SCENARIO, t0 %in% c(0, 6, 10)) |>
   mutate(t0 = paste("t0 =", t0, "ka")) |>
-  ggplot(aes(lon, lat, colour = headroom_bio10)) +
+  ggplot(aes(lon, lat, colour = exceedance_bio10)) +
   geom_point(size = 0.8) +
   facet_wrap(~t0) +
   scale_colour_gradient2(low = "#2166ac", mid = "grey85", high = "#b2182b", midpoint = 0) +
   coord_quickmap() +
   labs(
-    title = paste("Headroom:", FUTURE_SCENARIO, "bio10 minus the warmest slice since t0 (delta)"),
+    title = paste("Exceedance:", FUTURE_SCENARIO, "bio10 minus the warmest slice since t0 (delta)"),
     subtitle = "> 0: warmer than anything this pixel has experienced since t0",
     colour = "degC", x = NULL, y = NULL
   ) +
   theme_minimal()
 print(p_map)
-ggsave("output/pl2/climatehistory_headroom_map.png", p_map, width = 10, height = 5.5, dpi = 150)
+ggsave("output/pl2/climatehistory_exceedance_map.png", p_map, width = 10, height = 5.5, dpi = 150)
 
 # sessionInfo ####
 

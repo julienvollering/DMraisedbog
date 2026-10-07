@@ -273,17 +273,16 @@ save_tbl(
 # t0 is the unknown age at which a bog became a bog. The band is a reading of the literature
 # (plan 3.7a, revised with JV 2026-10-07): dated Norwegian ombrotrophic onsets run from
 # 6.4-5.9 ka at the centre of Sellevollmyra to after 2 ka at a Lofoten margin, and lateral
-# expansion makes most of a bog's present area younger than its oldest date. Drawn as a shaded band,
-# never as a single line, and only for reading the curves: nothing is computed from it except
-# the band-edge rows of the table.
+# expansion makes most of a bog's present area younger than its oldest date. Shaded in panel A,
+# a fade in panel B; nothing is computed from it except the band-edge rows of the table.
 T0_BAND <- c(2, 6)
 T0_OUTER <- c(1, 8)
 
 SCEN_LAB <- c(ssp370 = "SSP3-7.0", ssp126 = "SSP1-2.6")
 SCEN_COL <- c("SSP3-7.0" = "#c1462c", "SSP1-2.6" = "#e39a3b")
 DEF_LAB <- c(
-  "1 headroom" = "own past: as warm before",
-  "2 pooled hull" = "any bog's past: bio10 x bio12 hull"
+  "1 own past" = "inside its own past (bio10)",
+  "2 pooled hull" = "inside any bog's past (bio10 x bio12)"
 )
 
 ch_series <- read_csv("output/pl2/climatehistory_series.csv", show_col_types = FALSE)
@@ -350,38 +349,90 @@ p_ch_a <- ggplot() +
   theme_ms +
   theme(legend.position = "bottom")
 
-### Panel B: coverage against the assumed transition age ####
+### Panel B: coverage against the assumed bog age ####
+
+# The x-axis runs the same way as panel A (older to the left). Instead of a band, the points
+# fade with t0: full weight up to the oldest dated Norwegian bog centre (T0_BAND[2]), fading
+# to T0_OUTER[2] and further beyond it, so the reader sees which part of the curve rests on a
+# plausible bog age. Points rather than lines: t0 is a grid of assumptions, not a time series.
+ch_fade <- function(t0) {
+  approx(
+    c(0, T0_BAND[2], T0_OUTER[2], 10), c(1, 1, 0.35, 0.12),
+    xout = t0, rule = 2
+  )$y
+}
 
 ch_cov_main <- ch_cov |>
   filter(version == "delta", axes == "primary", definition %in% names(DEF_LAB)) |>
-  mutate(definition = factor(DEF_LAB[definition], levels = DEF_LAB))
+  mutate(
+    definition = factor(DEF_LAB[definition], levels = DEF_LAB),
+    fade = ch_fade(t0)
+  )
 ch_ref_main <- ch_ref |>
   filter(definition == "2 pooled hull")
 
-p_ch_b <- ggplot(ch_cov_main, aes(t0, coverage, colour = scenario, linetype = definition)) +
-  band_layers() +
-  geom_hline(
-    data = ch_ref_main, aes(yintercept = coverage, colour = scenario),
-    linetype = 3, linewidth = 0.4, show.legend = FALSE
+# The two annotated points: the SSP1-2.6 contrast between "some bog" and "this bog" at the
+# centre of the plausible range.
+ch_note_t0 <- 4
+ch_note <- ch_cov_main |>
+  filter(scenario == "SSP1-2.6", t0 == ch_note_t0)
+ch_note_hull <- ch_note$coverage[ch_note$definition == DEF_LAB[["2 pooled hull"]]]
+ch_note_own <- ch_note$coverage[ch_note$definition == DEF_LAB[["1 own past"]]]
+
+p_ch_b <- ggplot(ch_cov_main, aes(t0, coverage)) +
+  geom_point(
+    aes(colour = scenario, shape = definition, alpha = fade),
+    size = 1.9, stroke = 0.6
   ) +
-  geom_step(linewidth = 0.6, direction = "hv") +
-  scale_x_continuous(breaks = 0:10, expand = expansion(add = 0.1)) +
+  annotate(
+    "segment",
+    x = ch_note_t0 + 1.9, xend = ch_note_t0 + 0.2,
+    y = ch_note_hull - 0.22, yend = ch_note_hull - 0.02,
+    linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
+  ) +
+  annotate(
+    "text",
+    x = ch_note_t0 + 1.9, y = ch_note_hull - 0.26, hjust = 0.5, vjust = 1,
+    size = 2.4, lineheight = 0.9,
+    label = sprintf("%.0f%%: some bog has had
+this climate since %d ka", 100 * ch_note_hull, ch_note_t0)
+  ) +
+  annotate(
+    "segment",
+    x = ch_note_t0 - 1.5, xend = ch_note_t0 - 0.15,
+    y = ch_note_own + 0.2, yend = ch_note_own + 0.02,
+    linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
+  ) +
+  annotate(
+    "text",
+    x = ch_note_t0 - 1.5, y = ch_note_own + 0.22, hjust = 0.5, vjust = 0,
+    size = 2.4, lineheight = 0.9,
+    label = sprintf("%.0f%%: the bog itself has been
+this warm since %d ka", 100 * ch_note_own, ch_note_t0)
+  ) +
+  annotate(
+    "text",
+    x = 9, y = 0.5, label = "few bogs
+this old",
+    size = 2.4, colour = "grey45", fontface = "italic", lineheight = 0.9
+  ) +
+  scale_x_reverse(breaks = 0:10, expand = expansion(add = 0.3)) +
   scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
   scale_colour_manual(values = SCEN_COL, name = NULL) +
-  scale_linetype_manual(values = c(1, 2), name = NULL) +
+  scale_shape_manual(values = c(16, 2), name = NULL) +
+  scale_alpha_identity() +
   guides(
-    colour = guide_legend(order = 1),
-    linetype = guide_legend(order = 2, nrow = 1)
+    colour = guide_legend(order = 1, override.aes = list(size = 2.5, shape = 15)),
+    shape = guide_legend(order = 2, nrow = 1, override.aes = list(size = 2))
   ) +
   labs(
     title = "B",
-    x = "Assumed fen-to-bog transition age, t0 (ka)",
+    x = "Assumed bog age (fen-to-bog transition), t0 (ka)",
     y = "Future bog pixels inside the climate experienced since t0"
   ) +
   theme_ms +
-  theme(legend.position = "bottom", legend.box = "vertical")
+  theme(legend.position = "bottom")
 
-# One legend row: the scenario colours are shared, so the two panels' guides merge.
 save_fig(
   p_ch_a + p_ch_b +
     plot_layout(widths = c(1.15, 1), guides = "collect") &
@@ -389,69 +440,18 @@ save_fig(
   "fig_climatehistory", 7.5, 4.2
 )
 
-### Supplement: single slices in bio10 x bio12 ####
-
-ch_slice_ages <- c(0, 2, 4, 6, 8)
-ch_slices <- ch_series |>
-  filter(age_ka %in% ch_slice_ages) |>
-  mutate(panel = factor(paste(age_ka, "ka"), levels = paste(ch_slice_ages, "ka")))
-ch_fut_rep <- tidyr::crossing(ch_future, panel = levels(ch_slices$panel)) |>
-  mutate(panel = factor(panel, levels = levels(ch_slices$panel)))
-
-p_ch_s1 <- ggplot(ch_slices, aes(bio10, bio12)) +
-  geom_point(data = ch_fut_rep, aes(colour = scenario), size = 0.3, alpha = 0.35) +
-  geom_point(colour = "#2b6a3f", size = 0.3, alpha = 0.5) +
-  facet_wrap(~panel, nrow = 1) +
-  scale_colour_manual(values = SCEN_COL, name = NULL) +
-  scale_y_log10() +
-  guides(colour = guide_legend(override.aes = list(size = 2, alpha = 1))) +
-  labs(
-    x = "bio10 (°C)", y = "Annual precipitation, bio12 (mm, log scale)"
-  ) +
-  theme_ms +
-  theme(legend.position = "bottom")
-save_fig(p_ch_s1, "figS_climatehistory_slices", 7.5, 3)
-
-### Supplement: headroom map at the band centre ####
-
-ch_map_t0 <- mean(T0_BAND)
-ch_map <- ch_pix |>
-  filter(t0 == ch_map_t0) |>
-  st_as_sf(coords = c("lon", "lat"), crs = 4326) |>
-  st_transform(CRS)
-ch_map_lim <- max(abs(ch_map$headroom_bio10))
-
-p_ch_s2 <- ggplot() +
-  geom_sf(data = countries, fill = "grey88", colour = "grey70", linewidth = 0.15) +
-  geom_sf(data = norway, fill = "grey97", colour = "grey70", linewidth = 0.15) +
-  geom_sf(data = ch_map, aes(colour = headroom_bio10), size = 0.5) +
-  facet_wrap(~scenario) +
-  scale_colour_gradient2(
-    low = "#2166ac", mid = "grey80", high = "#b2182b", midpoint = 0,
-    limits = c(-ch_map_lim, ch_map_lim),
-    name = paste0("Headroom (°C)\nt0 = ", ch_map_t0, " ka")
-  ) +
-  coord_sf(
-    xlim = st_bbox(ch_map)[c("xmin", "xmax")] + c(-1, 1) * 1e5,
-    ylim = st_bbox(ch_map)[c("ymin", "ymax")] + c(-1, 1) * 1e5,
-    expand = FALSE
-  ) +
-  theme_map +
-  theme(legend.position = "right")
-save_fig(p_ch_s2, "figS_climatehistory_headroom", 7.5, 4.6)
-
 ### Table: coverage at the band edges ####
 
 ch_tbl_t0 <- c(0, T0_OUTER[1], T0_BAND[1], mean(T0_BAND), T0_BAND[2], T0_OUTER[2], 10)
 ch_rows <- tribble(
   ~version, ~axes, ~definition, ~measure,
-  "delta", "primary", "1 headroom", "own past: as warm before",
+  "delta", "primary", "1 own past", "own past: as warm before",
   "delta", "primary", "2 pooled hull", "any bog's past: bio10 x bio12 hull",
   "delta", "primary", "3 pooled density", "any bog's past: 95% density region",
   "delta", "bio18", "2 pooled hull", "sensitivity: hull on bio10 x bio18",
-  "raw", "primary", "1 headroom", "sensitivity: raw TraCE, own past",
+  "raw", "primary", "1 own past", "sensitivity: raw TraCE, own past",
   "raw", "primary", "2 pooled hull", "sensitivity: raw TraCE, hull",
-  "delta", "bio06", "1 headroom", "sensitivity: winter (bio06), own past"
+  "delta", "bio06", "1 own past", "sensitivity: winter (bio06), own past"
 )
 ch_tbl_cov <- ch_cov |>
   inner_join(ch_rows, by = c("version", "axes", "definition")) |>
@@ -460,10 +460,10 @@ ch_tbl_cov <- ch_cov |>
 ch_tbl_head <- ch_pix |>
   filter(t0 %in% ch_tbl_t0) |>
   group_by(scenario, t0) |>
-  summarise(value = round(median(headroom_bio10), 1), .groups = "drop") |>
-  mutate(measure = "median headroom, bio10 (°C)")
+  summarise(value = round(median(exceedance_bio10), 1), .groups = "drop") |>
+  mutate(measure = "median exceedance, bio10 (°C)")
 ch_tbl <- bind_rows(ch_tbl_cov, ch_tbl_head) |>
-  mutate(measure = factor(measure, levels = c(ch_rows$measure, "median headroom, bio10 (°C)"))) |>
+  mutate(measure = factor(measure, levels = c(ch_rows$measure, "median exceedance, bio10 (°C)"))) |>
   arrange(scenario, measure, t0) |>
   pivot_wider(names_from = t0, values_from = value, names_prefix = "t0_")
 save_tbl(ch_tbl, "tbl_climatehistory")
@@ -484,8 +484,8 @@ for (ssp in names(SCEN_LAB)) {
   lab <- SCEN_LAB[[ssp]]
   hd <- ch_pix |> filter(scenario == lab)
   cv <- ch_cov_main |> filter(scenario == lab)
-  numbers[[paste0("ch_", ssp, "_headroom_t0_0")]] <- median(hd$headroom_bio10[hd$t0 == 0])
-  numbers[[paste0("ch_", ssp, "_headroom_t0_10")]] <- median(hd$headroom_bio10[hd$t0 == 10])
+  numbers[[paste0("ch_", ssp, "_exceedance_t0_0")]] <- median(hd$exceedance_bio10[hd$t0 == 0])
+  numbers[[paste0("ch_", ssp, "_exceedance_t0_10")]] <- median(hd$exceedance_bio10[hd$t0 == 10])
   for (d in names(DEF_LAB)) {
     cvd <- cv |> filter(definition == DEF_LAB[[d]])
     key <- paste0("ch_", ssp, "_", sub(" .*", "", d))
