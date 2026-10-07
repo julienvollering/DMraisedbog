@@ -17,7 +17,10 @@ Departures from the plan in the implementation:
 - **Decided 2026-10-07 (JV)**: no ecospat / hypervolume / COUE (step 4 dropped; 3.6 is superseded).
   The multidecadal-variability mismatch (3.8) is stated as a Methods caveat, not corrected for.
 - **Literature t0 band**: 3.7a, revised after JV's check to 2-6 ka (outer 1-8 ka).
-- **Not done yet**: core-cell sensitivity (step 5); figures/tables in `ms/make_figures.R` (step 6).
+- **Figures/tables (step 6)**: `ms/make_figures.R`, section after Fig 2: `fig_climatehistory`,
+  `figS_climatehistory_slices`, `figS_climatehistory_headroom`, `tbl_climatehistory`, `ch_*` study numbers.
+  Awaiting JV's approval before the manuscript text.
+- **Not done yet**: core-cell sensitivity (step 5).
 
 ## 0. First results (2026-10-06, delta, bio10 x bio12)
 
