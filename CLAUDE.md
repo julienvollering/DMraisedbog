@@ -17,7 +17,7 @@ and extrapolation (area-of-applicability) analysis.
 ## Development Environment
 
 - **Language**: R (prefer the native pipe `|>`)
-- **Project Type**: RStudio project (DMraisedbog.Rproj)
+- **IDE**: Positron (https///posit.co/products/positron/)
 - **Coordinate systems**: EPSG:25833 (UTM 33N) for Norwegian data; EPSG:3035 for modelling
 - Core install: `install.packages(c('tidyverse', 'sf', 'terra'))`
 
@@ -163,6 +163,10 @@ only JV touches; everything else happens on task branches.
 - **Branch and worktree per task.** Work on a branch in a git worktree (`EnterWorktree`),
   never directly on `main` in the main checkout. One task per branch; name it after the
   task, not the date.
+- **Small tasks reuse the scratch worktree** (`.claude/worktrees/scratch`, `EnterWorktree`
+  with `path`) instead of making a new one: start each task with
+  `git switch -c <task> main`, commit before stopping, and leave the worktree on a clean
+  branch. One agent at a time there; use a separate worktree for parallel work.
 - **Commit before stopping.** A session can end at any moment, and an uncommitted change
   is invisible to everyone else. Small commits, each a complete step, with a message that
   says what changed and why. Do not leave work only in the working tree.
