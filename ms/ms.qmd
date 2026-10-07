@@ -47,7 +47,8 @@ abstract: |
   bogs with European raised-bog records and mapped peatland, so the model could learn where
   raised bogs stop on the warm side; (3) a three-class model (raised bog, other peatland,
   non-peat) projects that 96% of mapped Norwegian raised bogs lose climatic suitability by
-  2071-2100 under SSP3-7.0; (4) the same conclusion follows without any model, from the
+  2071-2100 under SSP3-7.0, and a milder scenario (SSP1-2.6) shows how much of that loss
+  is avoided and which bogs keep their climate; (4) the same conclusion follows without any model, from the
   observed prevalence of raised bogs in the climates the future brings; (5) cross-validation
   organised along the warming axis shows how far the model can be trusted and where it
   cannot.
@@ -216,6 +217,29 @@ rel <- rd(OUT, "pl2", "reliability_summary.csv")
 rl <- function(scn, col) rel[[col]][rel$scenario == scn]
 relL <- rd(OUT, "pl2", "reliability_at_lyngstad.csv")
 rL <- function(scn, col) relL[[col]][relL$scenario == scn]
+## The milder scenario (SSP1-2.6) against the primary one (SSP3-7.0)
+MILD <- "ssp126"
+HARSH <- "ssp370"
+sc_clim <- rd(OUT, "pl2", "scenario_comparison_climate.csv")
+scc <- function(s, col) sc_clim[[col]][sc_clim$scenario == s]
+sc_area <- rd(OUT, "pl2", "scenario_comparison_area.csv")
+sca <- function(s, cls, col = "argmax_km2") {
+  sc_area[[col]][sc_area$scenario == s & sc_area$class == cls]
+}
+sc_cells <- rd(OUT, "pl2", "scenario_comparison_persistence_cells.csv")
+trs <- rd("tables", "tbl_transitions_scenarios.csv")
+stopifnot(
+  # GUARDS: claims the milder-scenario prose relies on
+  "SSP1-2.6 does not warm the raised-bog cells less than SSP3-7.0" = scc(MILD, "shift_bog_cells") <
+    scc(HARSH, "shift_bog_cells"),
+  "a raised-bog polygon keeps its class under SSP3-7.0 (the prose says none)" = S("n_bog_kept_harsh") == 0,
+  "a raised-bog cell keeps its class under SSP3-7.0 (the prose says none)" = all(
+    sc_cells$persist == "bog under ssp126 only" | grepl("neither", sc_cells$persist)
+  ),
+  "SSP1-2.6 has more cells outside the applicability threshold than SSP3-7.0" = rl(
+    "future_ssp126", "pct_outside_aoa"
+  ) <= rl("future", "pct_outside_aoa")
+)
 part <- rd("tables", "tbl_partitions.csv")
 wts <- rd(OUT, "pl2", "weights_feature_data_partitioning.csv") |>
   filter(method == "Balanced Random Forest")
@@ -404,16 +428,19 @@ standard bioclimatic variables and 13 CHELSA-BIOCLIM+ variables with future proj
 [@brunGlobalClimaterelatedPredictors2022; @kargerBIOCLIMNovelSet2022] (growing degree
 days and growing days, growing-season length, temperature and precipitation, frost
 frequency, snow cover and productivity). Current climate is the 1981--2010 climatology;
-future climate is the 2071--2100 climatology under SSP3-7.0 from the GFDL-ESM4 model. Two
+future climate is the 2071--2100 climatology from the GFDL-ESM4 model under two scenarios:
+SSP3-7.0, a high-warming pathway that is the focus of the analysis, and SSP1-2.6, a
+strong-mitigation pathway that shows how sensitive the projected loss is to the degree of
+warming. Two
 terrain variables (elevation and slope at 250 m) came from the Norwegian 50 m terrain model
 [TODO cite: Kartverket DTM50] for Norway and from AWS terrain tiles via the elevatr
 package for Europe [TODO cite]. Nine variables summarising time since deglaciation and
 long-term climate history came from the CHELSA-TraCE21k palaeoclimate series [TODO cite]
-and were the same in both scenarios. Both blocks are bilinear samples of the same native
+and were the same in every scenario. Both blocks are bilinear samples of the same native
 climate grids at a 250 m cell centre (S1 Text).
 
-<!-- TODO(JV): only one general circulation model and one scenario are used; notebook
-2026-09-12 raises adding a milder scenario. State the choice of GFDL-ESM4. -->
+<!-- TODO(JV): only one general circulation model is used (two scenarios, one GCM). State
+the choice of GFDL-ESM4. -->
 
 ## Model-free description of the projection problem
 
@@ -510,7 +537,7 @@ training cell in standardised, importance-weighted predictor space, divided by t
 distance between training cells. Weights and standardisation were frozen once from the
 production fit and reused for every fold and for the projection. Only the 32 climate
 predictors entered the distance: terrain and palaeoclimate are identical in both
-scenarios, cannot register projected change, and would only dilute the distance (they
+scenarios (and so cannot register projected change) and would only dilute the distance (they
 carry `r pc(static_share)` of the importance mass). The applicability threshold was the Tukey upper
 fence of the pairwise arm's held-out distances, as in the original method. The index was
 used only as a mask; expected skill was read on the signed temperature offset.
@@ -518,10 +545,14 @@ used only as a mask; expected skill was read on the signed temperature offset.
 ## Projection and reliability mapping
 
 The production forest, fitted on all `r n0(n_all)` cells, was applied to every 250 m land cell of
-mainland Norway under current and future climate, giving three class-probability layers
-per scenario. Change at the mapped raised bogs was summarised per polygon as the mean of
-each layer over the polygon's cells, the predicted class before and after, and the change
-in the raised-bog score. For every projected cell we also computed its signed bio10 offset
+mainland Norway under current climate and under each 2071--2100 scenario, giving three
+class-probability layers per scenario. Neither scenario enters the fit, so the two
+projections differ only in the climate they are given. Change at the mapped raised bogs
+was summarised per polygon as the mean of each layer over the polygon's cells, the
+predicted class before and after, and the change in the raised-bog score. To compare the
+scenarios we followed the polygons predicted raised bog today (and, in S6 Table, the 250 m
+cells) to their predicted class under each. For every projected cell, under each scenario,
+we also computed its signed bio10 offset
 from the production model's training bogs (median `r f2(S("axis_ref_bio10"))` °C), its dissimilarity index, and
 the cross-validated recall and false-positive rate for raised bog interpolated from the
 offset bins to the cell's offset; cells beyond the last bin inherit that bin's values, and
@@ -678,7 +709,7 @@ warmer than its training bogs thus extends the raised-bog label rather than with
 consistent with the held-out warmest partition above, and ranks raised bogs somewhat less well.
 
 The `r n0(S("n_lyngstad_polygons"))` mapped raised bogs sit today at a median offset of `r sg(S("lyngstad_offset_current_median"))` °C, inside bin
-`r bin_of(S("lyngstad_offset_current_median"))`. Under the 2071--2100 climate they sit at a median offset of `r sg(S("lyngstad_offset_future_median"))` °C, inside the warm bin,
+`r bin_of(S("lyngstad_offset_current_median"))`. Under the SSP3-7.0 climate of 2071--2100 they sit at a median offset of `r sg(S("lyngstad_offset_future_median"))` °C, inside the warm bin,
 and `r pc(S("lyngstad_share_beyond_bog_edge"))` of the polygons lie beyond the warmest raised bog in the production training set
 (`r sg(S("bog_edge_offset"))` °C). The skill the map can attach to them is the warm bin's.
 
@@ -690,17 +721,18 @@ raised-bog cells called raised bog (recall) and share of non-bog cells wrongly c
 bog (false-positive rate), at the argmax operating point. (B) One-vs-rest AUC for raised bog
 and macro AUC. Ribbons are 95% cluster-bootstrap intervals over the 20 folds. Thin dashed
 lines: point estimates of the leave-one-partition-out arm, whose training sets are the
-production model's size, for reference. Dashed vertical line: the warmest training bog. Grey
-band: 10th--90th percentile of the 2071--2100 offset of the `r n0(S("n_lyngstad_polygons"))`
-mapped raised bogs; their current offsets lie near zero.](figures/fig_skill_offset.png){#fig-skill}
+production model's size, for reference. Dashed vertical line: the warmest training bog.
+Shaded bands: 10th--90th percentile of the 2071--2100 offset of the `r n0(S("n_lyngstad_polygons"))`
+mapped raised bogs under SSP1-2.6 (amber) and SSP3-7.0 (red); their current offsets lie near
+zero.](figures/fig_skill_offset.png){#fig-skill}
 
 ## Projected change at the mapped raised bogs
 
 Under current climate the model reproduces the mapped distribution: `r n0(tr_n(cur = "raised bog"))` of the `r n0(sum(trans$n_polygons))` polygons
-(`r pc(tr_n(cur = "raised bog") / sum(trans$n_polygons))`) are predicted raised bog (@fig-projection (A, C)). Under the 2071--2100 climate the
+(`r pc(tr_n(cur = "raised bog") / sum(trans$n_polygons))`) are predicted raised bog (@fig-projection (A, C)). Under the SSP3-7.0 climate of 2071--2100 the
 raised-bog score falls at `r pc(S("lyngstad_share_declining"))` of the polygons (median change `r f2(S("lyngstad_pbog_change_median"))`), and `r n0(tr_n(cur = "raised bog", fut = "non-peat"))` of
 the `r n0(tr_n(cur = "raised bog"))` predicted raised bogs are predicted non-peat and `r n0(tr_n(cur = "raised bog", fut = "other peatland"))` other peatland
-(@tbl-transitions; @fig-projection (B, D); S1 Fig). The direction of the transition is the
+(@tbl-transitions; @fig-projection (B, D); S1 Fig; the milder scenario is in the next subsection). The direction of the transition is the
 point of the three-class response: the mapped raised bogs are not projected to become other
 kinds of mire but to leave the peat-supporting climate altogether. Over mainland Norway as a
 whole, the share of 250 m cells whose majority class is raised bog falls from `r pc(sh("current", "bog"), 1)` to
@@ -712,25 +744,50 @@ question. -->
 
 ```{r}
 #| label: tbl-transitions
-#| tbl-cap: !expr 'sprintf("**Predicted class of the %s mapped raised bogs under current and 2071--2100 climate** (argmax of the polygon-mean class probabilities).", format(sum(trans$n_polygons), big.mark = ","))'
-trans |>
+#| tbl-cap: !expr 'sprintf("**Predicted class of the %s mapped raised bogs under current and 2071--2100 climate, by scenario** (argmax of the polygon-mean class probabilities). Cells are numbers of polygons, with the share of all polygons in parentheses.", format(sum(trans$n_polygons), big.mark = ","))'
+trs |>
   transmute(
     `Predicted today` = cap1(class_current),
     `Predicted 2071–2100` = cap1(class_future),
-    Polygons = n0(n_polygons),
-    Share = sprintf("%.1f%%", share_pct)
+    `SSP1-2.6` = sprintf("%s (%.1f%%)", n0(n_ssp126), share_ssp126),
+    `SSP3-7.0` = sprintf("%s (%.1f%%)", n0(n_ssp370), share_ssp370)
   ) |>
   kable(align = "llrr")
 ```
 
-![**Projected class probabilities over mainland Norway.** Raised-bog score under
+![**Projected class probabilities over mainland Norway under SSP3-7.0.** Raised-bog score under
 (A) 1981--2010 and (B) 2071--2100 climate, and the majority class under (C) 1981--2010 and
 (D) 2071--2100. Rasters aggregated to 2 km for display; outlines show the survey
 footprint.](figures/fig_projection.png){#fig-projection}
 
+## A milder scenario
+
+Under SSP1-2.6 the median bio10 at the cells predicted raised bog today rises by `r f1(scc(MILD, "shift_bog_cells"))` °C,
+against `r f1(scc(HARSH, "shift_bog_cells"))` °C under SSP3-7.0. The mapped bogs then sit at a median offset of
+`r sg(S("lyngstad_offset_mild_median"))` °C from the typical training bog (SSP3-7.0: `r sg(S("lyngstad_offset_future_median"))` °C; @fig-skill), and
+`r pc(S("lyngstad_share_beyond_bog_edge_mild"))` of them lie beyond the warmest training bog, against `r pc(S("lyngstad_share_beyond_bog_edge"))`. The projection
+is also better supported by the applicability mask: `r f1(rl("future_ssp126", "pct_outside_aoa"), 1)`% of the cells exceed the
+threshold, against `r f1(rl("future", "pct_outside_aoa"), 1)`%.
+
+The loss is smaller but remains the rule (@tbl-transitions, @fig-scenarios). Of the
+`r n0(S("n_bog_today_polygons"))` polygons predicted raised bog today, `r n0(S("n_bog_kept_mild"))` (`r pc(S("n_bog_kept_mild") / S("n_bog_today_polygons"))`) are still predicted raised bog under
+SSP1-2.6, and none under SSP3-7.0. These are the sites whose climate stays within the
+raised-bog class if warming stays near SSP1-2.6. They are not a distinct set: they are somewhat
+cooler today (median bio10 `r f1(S("kept_bio10_current_median"))` against `r f1(S("lost_bio10_current_median"))` °C) and lie further north (median `r f1(S("kept_lat_median"))`
+against `r f1(S("lost_lat_median"))` °N), but the two groups overlap (the map is @fig-scenarios B). The raised-bog score still falls at
+`r pc(S("polygon_share_declining_mild"))` of all polygons (mean change `r f2(S("polygon_pbog_change_mean_mild"))`, against `r f2(S("polygon_pbog_change_mean_harsh"))` under SSP3-7.0), so
+the milder scenario moves most polygons less far but not out of decline. Cell-level areas
+and the climate shift under each scenario are in S6 Table.
+
+![**What the two scenarios do to the mapped raised bogs.** (A) Predicted class in 2071--2100 of
+the `r n0(S("n_bog_today_polygons"))` polygons predicted raised bog today, under SSP1-2.6 and SSP3-7.0
+(numbers are polygons). (B) The same polygons (centroids) in the survey area: those still
+predicted raised bog under SSP1-2.6 (amber) and those predicted raised bog under neither
+scenario (red). No polygon is predicted raised bog under SSP3-7.0 alone or under both.](figures/fig_scenarios.png){#fig-scenarios}
+
 ## Reliability of the projection where it is read
 
-By the multivariate dissimilarity index the future projection domain is not extreme: only
+By the multivariate dissimilarity index the SSP3-7.0 projection domain is not extreme: only
 `r f1(rl("future", "pct_outside_aoa"), 1)`% of the future cells exceed the applicability threshold (`r f2(S("aoa_threshold"))`), mostly in the western
 mountains, and `r f1(rL("future", "pct_outside_aoa"), 0)`% of the mapped-bog polygons do. That reading is
 optimistic in a specific way: the index measures distance to any training cell, and the future
@@ -749,7 +806,7 @@ which makes the non-peat verdict at these polygons stronger evidence than the sa
 from a neutral operating point would be. The interval on the future recall is wide, however (`r f2(rL("future", "exp_recall_bog_lo"))`--`r f2(rL("future", "exp_recall_bog_hi"))`), so the verdict
 is weaker than the point estimate suggests.
 
-![**Reliability layers over the 2071--2100 projection domain.** (A) Warmest-quarter
+![**Reliability layers over the 2071--2100 projection domain (SSP3-7.0).** (A) Warmest-quarter
 temperature offset from the production model's training raised bogs. (B) Expected recall of
 raised bog, read from the offset bins of @fig-skill; grey cells lie beyond the applicability
 threshold of the dissimilarity index (`r f2(S("aoa_threshold"))`; `r f1(rl("future", "pct_outside_aoa"), 1)`% of cells) and carry no estimate.
@@ -766,7 +823,8 @@ says which climates maintain raised bogs today, existing bogs are landforms with
 self-maintaining hydrology, so the projection is a loss of climatic suitability as currently
 expressed, not a disappearance date (notebook 2026-08-21; @joostenMiresPeatlandsEurope2017
 p. 135); (iv) the warm evidence is European, southern and geographically clustered; (v) one
-scenario and one climate model; (vi) the other-peatland weakness in Norway is a terrain-source
+climate model (two scenarios; the milder one keeps about a fifth of the polygons in the
+raised-bog class, which is what to discuss as "still stand a chance"); (vi) the other-peatland weakness in Norway is a terrain-source
 confound, not a climatic one; (vii) the absence-draw stratification on temperature shapes
 observed prevalence across temperature bins (notebook 2026-10-05).
 
@@ -935,6 +993,59 @@ ci |>
     `Macro AUC` = macro_auc
   ) |>
   kable(align = "rlrrrllll")
+```
+:::
+
+::: {.supp}
+## S6 Table. {#s6-table}
+
+The two scenarios over mainland Norway (250 m cells, argmax class). The bio10 rows refer to the
+cells predicted raised bog today. Areas are areas of cells *predicted* to be each class, not estimates of raised-bog extent: the
+forest is fitted under a rebalanced prior and over-calls raised bog relative to its prevalence
+in the landscape (see the description of the model). The comparison between scenarios, not the
+level, is the result.
+Percentages in parentheses are changes against current climate.
+
+```{r}
+#| label: tbl-scenarios
+#| echo: false
+cls3 <- c(bog = "Raised bog", otherpeat = "Other peatland", nonpeat = "Non-peat")
+area_row <- function(cls) {
+  cell <- function(s) {
+    a <- n0(sca(s, cls))
+    if (s == "current") a else sprintf("%s (%s%%)", a, sg(sca(s, cls, "argmax_change_pct"), 0))
+  }
+  tibble(
+    Quantity = paste0("Area predicted ", tolower(cls3[[cls]]), " (km²)"),
+    Current = cell("current"), `SSP1-2.6` = cell(MILD), `SSP3-7.0` = cell(HARSH)
+  )
+}
+kept <- sc_cells[sc_cells$persist == "bog under ssp126 only", ]
+bind_rows(
+  tibble(
+    Quantity = "Median bio10 at these cells (°C)",
+    Current = f1(scc("current", "bio10_median_bog_cells")),
+    `SSP1-2.6` = f1(scc(MILD, "bio10_median_bog_cells")),
+    `SSP3-7.0` = f1(scc(HARSH, "bio10_median_bog_cells"))
+  ),
+  tibble(
+    Quantity = "Median shift in bio10 (°C)", Current = "–",
+    `SSP1-2.6` = sg(scc(MILD, "shift_bog_cells")), `SSP3-7.0` = sg(scc(HARSH, "shift_bog_cells"))
+  ),
+  area_row("bog"), area_row("otherpeat"), area_row("nonpeat"),
+  tibble(
+    Quantity = "Of today's raised-bog cells, still predicted raised bog (km²)", Current = "–",
+    `SSP1-2.6` = sprintf("%s (%s%%)", n0(kept$km2), f1(kept$pct_of_current_bog)),
+    `SSP3-7.0` = "0 (0.0%)"
+  ),
+  tibble(
+    Quantity = "Cells beyond the applicability threshold (%)",
+    Current = f1(rl("current", "pct_outside_aoa")),
+    `SSP1-2.6` = f1(rl("future_ssp126", "pct_outside_aoa")),
+    `SSP3-7.0` = f1(rl("future", "pct_outside_aoa"))
+  )
+) |>
+  kable(align = "lrrr")
 ```
 :::
 

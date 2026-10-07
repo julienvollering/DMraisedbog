@@ -40,6 +40,10 @@ CLASS_COL <- c(
   "raised bog, future climate" = "#c1462c"
 )
 
+# One colour per scenario, in every figure that shows both: amber for the milder SSP1-2.6,
+# the red already used for "future climate" for SSP3-7.0. Classes keep CLASS_COL.
+SCEN_COL <- c("SSP1-2.6" = "#e0a030", "SSP3-7.0" = "#c1462c")
+
 theme_ms <- theme_minimal(base_size = 9) +
   theme(
     panel.grid.minor = element_blank(),
@@ -280,6 +284,9 @@ stopifnot(
 )
 lyng_off_fut <- terra::extract(rel_fut[["offset"]], vect(bogs), fun = mean, na.rm = TRUE)$offset
 lyng_off_cur <- terra::extract(rel_cur[["offset"]], vect(bogs), fun = mean, na.rm = TRUE)$offset
+rel_mild <- rast("output/pl2/reliability_future_ssp126.tif")
+stopifnot(as.numeric(global(rel_mild[["offset"]], "notNA")) > 0)
+lyng_off_mild <- terra::extract(rel_mild[["offset"]], vect(bogs), fun = mean, na.rm = TRUE)$offset
 
 numbers$axis_ref_bio10 <- axis_ref
 numbers$bog_edge_offset <- bog_edge
@@ -288,6 +295,10 @@ numbers$lyngstad_offset_future_median <- median(lyng_off_fut, na.rm = TRUE)
 numbers$lyngstad_offset_future_q90 <- quantile(lyng_off_fut, 0.90, na.rm = TRUE)
 numbers$lyngstad_offset_current_median <- median(lyng_off_cur, na.rm = TRUE)
 numbers$lyngstad_share_beyond_bog_edge <- mean(lyng_off_fut > bog_edge, na.rm = TRUE)
+numbers$lyngstad_offset_mild_q10 <- quantile(lyng_off_mild, 0.10, na.rm = TRUE)
+numbers$lyngstad_offset_mild_median <- median(lyng_off_mild, na.rm = TRUE)
+numbers$lyngstad_offset_mild_q90 <- quantile(lyng_off_mild, 0.90, na.rm = TRUE)
+numbers$lyngstad_share_beyond_bog_edge_mild <- mean(lyng_off_mild > bog_edge, na.rm = TRUE)
 numbers$aoa_threshold <- ep$aoa_threshold
 
 metric_lab <- c(
@@ -316,12 +327,23 @@ offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
     annotate("rect",
       xmin = quantile(lyng_off_fut, 0.1, na.rm = TRUE),
       xmax = quantile(lyng_off_fut, 0.9, na.rm = TRUE),
-      ymin = -Inf, ymax = Inf, fill = "grey50", alpha = 0.18
+      ymin = -Inf, ymax = Inf, fill = SCEN_COL[["SSP3-7.0"]], alpha = 0.18
+    ) +
+    annotate("rect",
+      xmin = quantile(lyng_off_mild, 0.1, na.rm = TRUE),
+      xmax = quantile(lyng_off_mild, 0.9, na.rm = TRUE),
+      ymin = -Inf, ymax = Inf, fill = SCEN_COL[["SSP1-2.6"]], alpha = 0.25
     ) +
     annotate("text",
       x = mean(quantile(lyng_off_fut, c(0.1, 0.9), na.rm = TRUE)),
       y = ylim[1] + 0.01 * diff(ylim),
-      label = "mapped bogs\n2071-2100", hjust = 0.5, vjust = 0,
+      label = "mapped bogs\nSSP3-7.0", hjust = 0.5, vjust = 0,
+      size = 2.1, lineheight = 0.9, colour = "grey25"
+    ) +
+    annotate("text",
+      x = mean(quantile(lyng_off_mild, c(0.1, 0.9), na.rm = TRUE)),
+      y = ylim[1] + 0.01 * diff(ylim),
+      label = "mapped bogs\nSSP1-2.6", hjust = 0.5, vjust = 0,
       size = 2.1, lineheight = 0.9, colour = "grey25"
     ) +
     geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, colour = NA) +
@@ -507,6 +529,135 @@ p6b <- ggplot() +
   labs(title = "B") +
   theme_map
 save_fig(p6a + p6b, "fig_reliability", 7.5, 3.6)
+
+## Fig 7 and table: the milder scenario ####
+
+# Polygon-level comparison written by pl2_compareScenarios.R (ID = row of the Lyngstad
+# layer). The SSP3-7.0 classes must be the ones pl2_interpret.R wrote, or the two legs
+# are not comparable.
+poly_sc <- read_csv("output/pl2/scenario_comparison_polygons.csv", show_col_types = FALSE)
+stopifnot(
+  nrow(lyng_pred) == nrow(bogs),
+  identical(lyng_pred$class_future[poly_sc$ID], poly_sc$class_harsh),
+  identical(lyng_pred$class_current[poly_sc$ID], poly_sc$class_current)
+)
+today_bog <- poly_sc |> filter(class_current == "bog")
+
+# A: what the polygons predicted raised bog today become, per scenario.
+outcome <- bind_rows(
+  today_bog |> count(outcome = class_mild) |> mutate(scenario = "SSP1-2.6"),
+  today_bog |> count(outcome = class_harsh) |> mutate(scenario = "SSP3-7.0")
+) |>
+  group_by(scenario) |>
+  mutate(share = n / sum(n)) |>
+  ungroup() |>
+  mutate(
+    outcome = factor(CLASS_LAB[outcome], levels = CLASS_LAB[c("bog", "otherpeat", "nonpeat")]),
+    scenario = factor(scenario, levels = c("SSP3-7.0", "SSP1-2.6"))
+  )
+p7a <- ggplot(outcome, aes(share, scenario, fill = outcome)) +
+  geom_col(width = 0.6, position = position_stack(reverse = TRUE)) +
+  geom_text(
+    data = filter(outcome, share >= 0.04),
+    aes(label = n), position = position_stack(vjust = 0.5, reverse = TRUE),
+    size = 2.6, colour = "white"
+  ) +
+  scale_fill_manual(values = CLASS_COL, name = "predicted class\nin 2071-2100") +
+  scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
+  labs(
+    title = "A",
+    x = sprintf("share of the %d polygons predicted raised bog today", nrow(today_bog)),
+    y = NULL
+  ) +
+  theme_ms +
+  theme(
+    axis.text.y = element_text(colour = SCEN_COL[c("SSP3-7.0", "SSP1-2.6")], face = "bold"),
+    legend.position = "bottom"
+  ) +
+  guides(fill = guide_legend(nrow = 3))
+
+# B: where the polygons that keep the class are.
+persist_lab <- c(
+  both = "raised bog under both scenarios",
+  mild = "raised bog under SSP1-2.6 only",
+  none = "not raised bog under either"
+)
+map_sc <- lyng_pts |>
+  mutate(ID = row_number()) |>
+  inner_join(
+    today_bog |>
+      transmute(
+        ID,
+        persist = case_when(
+          class_mild == "bog" & class_harsh == "bog" ~ "both",
+          class_mild == "bog" ~ "mild",
+          class_harsh == "bog" ~ "harsh",
+          TRUE ~ "none"
+        )
+      ),
+    by = "ID"
+  ) |>
+  mutate(persist = factor(persist_lab[persist], levels = persist_lab)) |>
+  arrange(desc(persist)) # kept polygons are drawn last, on top
+stopifnot(!anyNA(map_sc$persist)) # "SSP3-7.0 only" is not a class this figure draws
+p7b <- ggplot() +
+  geom_sf(data = norway_crop, fill = "grey95", colour = "grey60", linewidth = 0.2) +
+  geom_sf(data = footprint, fill = NA, colour = "grey30", linewidth = 0.2) +
+  geom_sf(data = map_sc, aes(colour = persist), size = 0.9, alpha = 0.8) +
+  scale_colour_manual(
+    values = c(
+      "#2b6a3f", SCEN_COL[["SSP1-2.6"]], SCEN_COL[["SSP3-7.0"]]
+    ) |> setNames(persist_lab),
+    name = "polygons predicted raised\nbog today", drop = TRUE
+  ) +
+  coord_sf(
+    xlim = c(st_bbox(footprint)["xmin"] - 50000, st_bbox(footprint)["xmax"] + 50000),
+    ylim = c(st_bbox(footprint)["ymin"] - 50000, st_bbox(footprint)["ymax"] + 50000),
+    expand = FALSE
+  ) +
+  labs(title = "B") +
+  theme_map +
+  theme(legend.position = "bottom") +
+  guides(colour = guide_legend(nrow = 3, override.aes = list(size = 2, alpha = 1)))
+save_fig(p7a + p7b + plot_layout(widths = c(1, 1.1)), "fig_scenarios", 7.5, 4.6)
+
+# The transition table with the two scenarios side by side, one row per
+# (class today, class under the scenario) that occurs under either.
+sc_n <- function(col) {
+  poly_sc |> count(class_current, class_future = .data[[col]], name = "n")
+}
+tbl_sc <- full_join(
+  sc_n("class_mild"), sc_n("class_harsh"),
+  by = c("class_current", "class_future"), suffix = c("_ssp126", "_ssp370")
+) |>
+  mutate(
+    across(starts_with("n_"), ~ replace_na(.x, 0L)),
+    share_ssp126 = round(100 * n_ssp126 / nrow(poly_sc), 1),
+    share_ssp370 = round(100 * n_ssp370 / nrow(poly_sc), 1),
+    class_current = factor(CLASS_LAB[class_current], levels = CLASS_LAB[c("bog", "otherpeat", "nonpeat")]),
+    class_future = CLASS_LAB[class_future]
+  ) |>
+  arrange(class_current, desc(n_ssp126 + n_ssp370)) |>
+  mutate(class_current = as.character(class_current))
+save_tbl(tbl_sc, "tbl_transitions_scenarios")
+
+# What the polygons that keep the class have in common (a gradient, not a split: the ranges
+# overlap), and how far the raised-bog score falls under each scenario.
+lat <- st_coordinates(st_transform(bog_pts, 4326))[, 2]
+kept_cmp <- today_bog |>
+  mutate(kept = class_mild == "bog", lat = lat[ID])
+numbers$n_polygons_scenario <- nrow(poly_sc)
+numbers$n_bog_today_polygons <- nrow(today_bog)
+numbers$n_bog_kept_mild <- sum(today_bog$class_mild == "bog")
+numbers$n_bog_kept_harsh <- sum(today_bog$class_harsh == "bog")
+numbers$kept_bio10_current_median <- median(kept_cmp$bio10_current[kept_cmp$kept])
+numbers$lost_bio10_current_median <- median(kept_cmp$bio10_current[!kept_cmp$kept])
+numbers$kept_lat_median <- median(kept_cmp$lat[kept_cmp$kept])
+numbers$lost_lat_median <- median(kept_cmp$lat[!kept_cmp$kept])
+numbers$polygon_pbog_change_mean_mild <- mean(poly_sc$pbog_mild - poly_sc$pbog_current)
+numbers$polygon_pbog_change_mean_harsh <- mean(poly_sc$pbog_harsh - poly_sc$pbog_current)
+numbers$polygon_share_declining_mild <- mean(poly_sc$pbog_mild < poly_sc$pbog_current)
+numbers$polygon_share_declining_harsh <- mean(poly_sc$pbog_harsh < poly_sc$pbog_current)
 
 ## Table 1: training frame ####
 
