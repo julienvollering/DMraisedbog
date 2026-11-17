@@ -1,0 +1,171 @@
+key,claim_id,relevance,role,note
+BeslutningsgrunnlagSentriskHogmyr2018,I5,2,support,Norwegian decision basis for protecting typical (concentric) raised bog
+ForslagOmTypisk,I5,2,support,Proposal: typical raised bog as a selected habitat type; definition of typisk høgmyr
+ForslagOmTypisk,I1,1,support,Norwegian definition of typical raised bog (domed peat)
+EUNISFactsheetRaised,I1,1,data,EUNIS raised-bog habitat definition
+Tegetmeyer2025,M6,3,data,EPM2025 technical description: closes the [TODO cite: EPM2025 technical description]
+almquist-jacobsonIntegratedModelRaisedBog1995,D3,2,support,Raised-bog development controlled by climate and site geomorphology/history
+almquist-jacobsonIntegratedModelRaisedBog1995,I1,1,support,Fen-to-bog succession; climate and geomorphology in raised-bog distribution
+bakerEffectiveStrategiesCorrecting2024,M5,1,method,Sampling-bias correction in SDMs; background design
+balogunLongTermResponsePeatland2024,I4,1,support,Long-term peatland carbon exchange response to climate (Hudson Bay)
+barretoUnderstandingEffectsClimate,I4,2,support,BRACE warming experiment on bogs and fens; bogs precipitation-fed
+baurClimatechangeinducedDegradationMires2026,I4,3,support,Resampling of 200 Alpine mires after 35 years: observed climate-induced degradation (no highlights yet)
+baurClimatechangeinducedDegradationMires2026,D3,2,support,Observed change in existing mires over decades
+belyeaLimitsPeatBog2006,D3,3,support,Cross-scale feedbacks in peatland development; limits to bog growth
+benkendorfCorrectingEffectsClass2023,M2,2,method,Class-imbalance correction in machine-learning SDMs
+bouchetDsmextraExtrapolationAssessment2020,M4,2,method,ExDet extrapolation assessment (alternative to DI)
+bragazzaClimaticThresholdTriggers2008,I4,3,support,2003 heat wave: climatic threshold for Sphagnum die-off
+brancoSurveyPredictiveModeling2016,M2,1,method,Survey of imbalanced-domain learning
+brunGlobalClimaterelatedPredictors2022,M6,3,data,CHELSA-BIOCLIM+ predictors (already cited)
+chaudharyModellingHolocenePeatland2017,D3,1,method,Process-based peatland dynamics in LPJ-GUESS
+chenUsingRandomForest,M2,3,method,Balanced random forest (already cited)
+chevalierAccountingNicheTruncation2022,I6,3,support,Niche truncation in regional SDMs inflates projected range change
+chevalierDataIntegrationMethods2021,I6,3,support,Data integration to counter spatial niche truncation (country-level data)
+chytryEUNISHabitatClassification2020,M6,3,data,EUNIS expert system / Q11 plots (already cited)
+clarkAssessingVulnerabilityBlanket2010,I3,3,support,Ensemble of 8 bioclimatic envelope models for blanket peat in Britain (no highlights)
+clarkAssessingVulnerabilityBlanket2010,D8,3,comparison,Projected loss of blanket peat climate space in Britain
+clarkModelIntercomparisonStatistical2010,I3,2,support,Statistical envelope vs dynamic process models for blanket peat (no highlights)
+clarkModelIntercomparisonStatistical2010,D3,2,contrast,Process models project more stability than envelope models: persistence vs suitability
+collProjectedLossActive2014,I3,3,support,Bioclimatic envelope models of active blanket bog in Ireland
+collProjectedLossActive2014,D8,3,comparison,Projected loss of active blanket bog in Ireland
+diaz-uriarteGeneSelectionClassification2006,M2,2,method,Random-forest defaults are adequate (mtry and nodesize effects negligible)
+durouxImpactSubsamplingTree2018,M2,1,method,Subsampling rate and tree depth in random forests
+edvardssonHoloceneClimateChange2013,D3,2,support,Bog-pine phases record past bog-surface drying and recovery in southern Sweden
+edvardssonHolocenePeatlandDevelopment2012,D3,2,support,Holocene hydrological variability of a south Swedish bog
+edvardssonSouthSwedishBog2012,D3,2,support,Mid-Holocene climate variability recorded in raised-bog pines (no highlights)
+edvardsson2010development,D3,1,support,Bog-pine chronologies from south Swedish peat bogs
+egorovDinamikaOblesennostiVerhovyh2024,I4,2,support,Increasing forest cover of raised bogs in southern taiga linked to climate
+esslVulnerabilityMiresClimate2012,I3,3,support,Vulnerability of mires to climate change in Austria (no highlights)
+esslVulnerabilityMiresClimate2012,D8,3,comparison,Projected climatic suitability loss for mires
+esslVulnerabilityMiresClimate2012,I5,2,support,Implications for conservation and adaptation
+fandremTypiskHogmyrSom,I3,3,support,ENM of typical raised bog in Norway (Naturindeks indicator): the closest predecessor
+fandremTypiskHogmyrSom,D8,3,comparison,Earlier Norwegian projection to compare against
+fandremTypiskHogmyrSom,I5,2,support,Typical raised bog as a Nature Index indicator
+flatbergMyrundersokelserSognOg1976,I2,1,support,West Norwegian mire surveys (raised bogs in the west)
+moenMyrundersokelserAgderfylkeneOg1981,I2,1,support,Mire surveys for the Norwegian mire reserve plan
+moenMyrundersokelserSognOg1983,I2,1,support,Mire surveys for the Norwegian mire reserve plan
+moenVerneplanMyrNorge2010,I5,2,support,Norwegian mire conservation plan
+fletcherjr.PracticalGuideCombining2019,I6,2,contrast,Guide to combining data; warns against simple pooling of data sources
+fosterRISDMSpeciesDistribution2024,I6,1,method,Multi-source SDM package
+furukawaHydrologicalFeedbacksNorthern2025,D3,3,support,Hydrological feedbacks and peat depth as control on resilience
+gallego-salaBioclimaticEnvelopeModel2010,I3,3,support,PeatStash envelope model for British blanket peat (already cited)
+gallego-salaBioclimaticEnvelopeModel2010,D8,3,comparison,Projected blanket-peat loss in Britain
+gallego-salaBlanketPeatBiome2013,I3,3,support,Global blanket peat biome envelope
+gallego-salaBlanketPeatBiome2013,D8,3,comparison,Blanket peat biome endangered by climate change
+gallego-salaPeatlandsClimateChange2016,I1,3,support,How climate controls peat accumulation
+gallego-salaPeatlandsClimateChange2016,I4,3,support,Climate-change impacts on peatlands; damaged peatlands more vulnerable
+gallego-salaPeatlandsClimateChange2016,D3,2,support,Present climate vs persistence of peatlands
+gignacBioclimaticModelDistribution2000,I3,3,support,Bioclimatic model of Sphagnum-dominated peatlands in North America (no highlights)
+gignacBioclimaticModelDistribution2000,D8,2,comparison,North American comparison
+granlundRecentLateralExpansion2022,I4,2,contrast,Recent lateral expansion of Sphagnum bogs over aapa fens
+granlundRecentLateralExpansion2022,D3,2,contrast,Bogs expanding in boreal Finland
+guisanSpatiallyNestedSpecies2025,I6,3,support,N-SDM to overcome niche truncation
+guisanUnifyingNicheShift2014,I6,1,support,Niche unfilling and truncation concepts
+heijmansLongtermEffectsClimate2008,I4,2,support,NUCOM-BOG: long-term climate effects on bog vegetation and carbon
+heijmansLongtermEffectsClimate2008,D3,2,support,Process-model view of bog response
+heijmansPersistentTransientTree2013,I4,3,support,Warming from +1 °C shifts temperate bogs to tree dominance
+heijmansPersistentTransientTree2013,D3,3,support,Persistent vs transient tree encroachment: thresholds
+heikkinenClimateChangeLand2023,D8,2,comparison,Aapa mire species threatened by climate and land use
+heikkinenClimateChangeLand2023,I5,2,support,EU priority mire habitat and climate-informed conservation
+heikkinenExposureBorealAapa2022,D8,1,data,Data for aapa-mire climate exposure
+heikkinenQuantifyingClimateExposure2022,D8,3,comparison,Climate exposure of Finnish aapa mires
+heikkinenQuantifyingClimateExposure2022,I3,2,support,Habitat-level climate exposure for mires
+hennekensDistributionHabitatSuitability2019,I3,2,support,EUNIS wetland habitat suitability maps (incl. raised bog)
+hennekensDistributionHabitatSuitability2019,D8,2,comparison,European habitat suitability for raised bog
+hilbertModellingAnalysisPeatlands2000,D3,3,support,Peatlands as dynamical systems with water-table/peat feedback and equilibria
+horvathDistributionModellingVegetation2019,M1,2,method,Distribution modelling of vegetation types (not species)
+isaacDataIntegrationLargeScale2020,I6,2,method,Data integration for large-scale distribution models
+millerRecentPromisingFuture2019,I6,2,method,Data integration methods for distributions
+pacificiResolvingMisalignedSpatial2019,D6,1,method,Misaligned data sources in integrated models
+jimenez-valverdeDiscriminationCapacitySpecies2013,D7,3,support,Discrimination depends on the environmental domain sampled
+jimenez-valverdeDiscriminationCapacitySpecies2013,M3,1,method,Evaluation depends on the test domain
+joostenMiresPeatlandsEurope2017,I1,3,support,European mires and their climatic distribution (already cited)
+joostenMiresPeatlandsEurope2017,I2,3,support,Mire regions of Europe
+joostenMiresPeatlandsEurope2017,D3,3,support,p. 135 cited in the Discussion note on formation vs persistence
+kargerBIOCLIMNovelSet2022,M6,3,data,CHELSA-BIOCLIM+ technical specification (already cited)
+kargerCHELSAV21Technical2021,M6,3,data,CHELSA V2.1 (already cited)
+kargerClimatologiesHighResolution2017,M6,3,data,CHELSA (already cited)
+kargerCHELSATraCE21kHighresolution1thinspkm2023,M6,3,data,CHELSA-TraCE21k: closes the [TODO cite] for palaeoclimate
+kargerCHELSATraCE21kV10Technical2021,M6,2,data,CHELSA-TraCE21k technical specification
+klima-ogmiljodepartementetHoringAvForslag2022,I5,3,support,Typical raised bog proposed as selected habitat; EN red-list status; drainage the main threat
+kokkonenDeepenedWaterTable,I4,2,support,Deeper water table increases Sphagnum vulnerability to drought
+kubatLearningWhenNegative1997,M2,1,method,Learning with abundant negatives; G-mean
+lalechereNonEquilibriumSpeciesDistribution2025,D3,2,support,Non-equilibrium SDM: long time lags behind environmental change (no highlights)
+lindsayInventoryLowlandRaised1996,I1,1,support,Lowland raised bogs of Britain
+linnenbrinkKNNDMCVKfold2024,M3,3,method,kNNDM CV (already cited)
+liuApparentTemperatureSensitivity2024,I4,1,support,Temperature sensitivity of peat respiration
+loiselEcologicalResilienceRestored2022,D3,2,support,Resilience of restored peatlands to climate change
+loiselEcologicalResilienceRestored2022,I5,2,support,Restoration under climate change
+ludwigAssessingImprovingTransferability2023,M4,3,method,Transferability and pixel-wise skill (already cited)
+ludwigAssessingImprovingTransferability2023,M2,2,method,Hyperparameter tuning has marginal impact for RF (already cited)
+lyngstadBeskrivelserAvTorvmassivenheter2023,I1,2,support,NiN 3.0 mire-massif units; Norwegian mire area
+lyngstadBeskrivelserAvTorvmassivenheter2023,I2,2,support,Raised bogs in the Norwegian mire typology
+lyngstadFlybildetolkingAvHogmyr2012,M6,3,data,Inventory report (already cited)
+lyngstadKartleggingAvTypisk2015,M6,3,data,Inventory report (already cited)
+lyngstadKartleggingAvTypisk2016,M6,3,data,Inventory report (already cited)
+lyngstadKartleggingAvTypisk2017,M6,3,data,Inventory report (already cited)
+lyngstadKartleggingAvTypisk2021,M6,3,data,Inventory report (already cited)
+maWillClimateChange2022,D8,3,comparison,Global Sphagnum habitat shift: peatland expansion or contraction (no highlights)
+maWillClimateChange2022,I3,2,support,Distribution models of peat-forming mosses
+mateoHierarchicalSpeciesDistribution2019,I6,2,method,Hierarchical SDMs combining regional and landscape data
+mateoLookingOptimalHierarchical2019,I6,2,method,Hierarchical niche models
+mateoSabinaNSDMPackageSpatially2024,I6,2,method,Nested SDM package (approach tried and retired here)
+addeNSDMHighperformanceComputing2023,I6,2,method,Nested SDM pipeline
+meyerCASTPackageTraining2024,M4,2,method,CAST package (DI/AOA implementation)
+meyerCASTPackageTraining2026,M4,1,method,CAST package (book chapter)
+meyerPredictingUnknownSpace2021,M4,3,method,Dissimilarity index and AOA (already cited)
+meyerPredictingUnknownSpace2021,M3,3,method,Random CV overoptimistic under transfer (already cited)
+milaNearestNeighbourDistance2022,M3,2,method,NNDM LOO CV for map validation
+milaRandomForestsSpatial2024,D2,2,support,RF extrapolates poorly to new areas
+miljodirektoratetPlanRestaureringAv2020,I5,3,support,Norwegian wetland restoration plan (already cited)
+morrisEcohydrologicalFeedbacksPeatland2011,D3,2,support,Ecohydrological feedbacks in peatland development
+naasChoicePredictorsComplexity2024,M1,3,method,Ecosystem-level distribution models: performance and transferability (Norway)
+nowakowskaDrainageDitchesEnhance2021,I4,1,support,Tree encroachment on a Baltic raised bog
+obrienRandomForestsQuantile2019,M2,1,method,RFQ (two-class; not used)
+oeserBestTwoWorlds,I6,1,method,Integrating range maps into SDMs
+parviainenClimateEnvelopesMire2007,I3,3,support,Climate envelopes of Fennoscandian mire complex types (already cited)
+parviainenClimateEnvelopesMire2007,I1,3,support,Raised-bog limits primarily thermal
+parviainenClimateEnvelopesMire2007,D8,3,comparison,Fennoscandian mire-type projections to compare against
+pattersonTransferringSpeciesDistribution2025,I6,2,support,Data integration and transfer to understudied systems
+pattersonTransferringSpeciesDistribution2025,D2,2,support,Transfer failure under environmental dissimilarity
+pearsonModellingSpeciesDistributions2004,I6,1,method,Hierarchical climate + land cover integration
+ritsonClimateChangeImpacts2025,I3,3,support,Three bioclimatic envelope models for British blanket bog
+ritsonClimateChangeImpacts2025,D8,3,comparison,Future suitability for blanket bog and Sphagnum in Britain
+ritsonClimateChangeImpacts2025,D3,2,support,Thresholds of irreversible Sphagnum desiccation
+robertsMethodSelectionSpecies2012,M3,2,contrast,Non-independent and independent evaluations correlate: independent tests may be unnecessary
+salimiImpactClimateChange2021,I4,1,support,Experimental wetlands under climate change
+schneiderMovingBioclimaticEnvelope2016,D3,3,support,Beyond envelopes: peatland processes and ecosystem transitions (no highlights)
+schneiderMovingBioclimaticEnvelope2016,I3,2,support,Envelope limits for peatland projections
+schumacherEstimationLocalTraining2025,M4,2,method,Local training-data density as uncertainty measure
+seppaLastNinethousandYears2009,D3,2,support,Holocene Thermal Maximum in northern Europe: bogs persisted through warmer summers
+sjogrenOverviewHoloceneClimate2021,D3,1,support,Holocene climate of northern Fennoscandia
+mauriClimateEuropeHolocene2015,D3,1,support,Holocene climate of Europe
+simensenCompositeLandscapePredictors2020,M1,2,method,Distribution models of ecosystem types (Norway)
+sorensenHolocenVegetasjonshistorieOg2015,D3,1,support,Holocene development of a bog in Akershus
+speranskayaPeatlandEvaporationHemispheres2024,I4,2,support,Peatland evaporation sensitivity to warming
+steenSpatialThinningClass2021,M2,1,method,Class balancing in SDMs
+steenvoordenThereBackAgain2022,I4,1,support,Forty years of vegetation change in Irish peatlands
+suttonShallowPeatlandsSentinels2025,I4,2,support,Shallow peatlands as sentinels of drying
+swindlesWidespreadDryingEuropean2019,I4,3,support,Widespread drying of European peatlands in recent centuries
+tahituShiftingClimateBoundaries2025,D8,3,comparison,Shifting climate boundaries for European peatlands: the most direct comparison
+tahituShiftingClimateBoundaries2025,I3,3,support,Recent European peatland climate-boundary model
+tannebergerMiresEuropeRegional2021,I1,3,support,Mire regions of Europe (already cited)
+tannebergerMiresEuropeRegional2021,I2,3,support,Typical raised bog region IV (already cited)
+tannebergerMiresEuropeRegional2021,I5,2,support,Condition and protection of European mires
+tannebergerPeatlandMapEurope2017,M6,3,data,Peatland map of Europe (already cited)
+valaviModellingSpeciesPresenceonly2021,M2,2,method,RF with class imbalance; down-sampling
+valaviModellingSpeciesPresenceonly2021,M5,1,method,Background must represent all environments
+valaviPredictivePerformancePresenceonly2022,M2,2,method,Benchmark of SDM methods (already cited)
+vandengoorberghHarmClassImbalance2022,M2,2,contrast,Imbalance corrections distort calibration: supports treating the score as a score (no highlights)
+vanvuurenScenarioModelIntercomparison2026,M7,3,support,Scenario framework; plausibility of high-emission scenarios
+vanvuurenScenarioModelIntercomparison2026,D5,2,support,Scenario choice in impact studies
+velazcoHowFarCan,M4,2,method,SHAPE extrapolation metric
+velazcoHowFarCan,D2,2,support,Truncating projections in non-analogue conditions
+vloonVegetationDynamicsBoreal2025,I4,2,contrast,Boreal raised bog getting wetter over 34 years
+vorrenHighresolutionStratigraphyNorthernmost2007,I2,2,support,Northernmost concentric raised bog in Europe (Andøya)
+vorrenClimateChangesLast2012,D3,1,support,Peat humification record of Holocene climate in Lofoten
+weltzinResponseBogFen2000,I4,2,support,Warming and water-table manipulation of bog and fen communities
+wongGridded112016,D5,1,support,Norwegian climate projections and GCM/RCM bias
+yuPeatlandsTheirRole2011,I1,1,support,Peatlands and the carbon cycle
+zhangRecentClimateChange2022,I4,2,support,Divergent hydrological shifts in high-latitude peatlands (no highlights)
+stroevenDeglaciationFennoscandia2016,M6,1,data,Deglaciation chronology behind the palaeo predictors

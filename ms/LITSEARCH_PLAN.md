@@ -230,6 +230,10 @@ Quarto document if wanted.
    `.bib` to OpenAlex; tag existing entries with claims, starting from
    `ms/ZoteroAnnotations/`. **Checkpoint:** show JV the register and the coverage that the
    existing library already gives.
+   *Done 2026-11-17* (`claims.csv`, `01_resolve_bib.R` → `library.csv`,
+   `library_tags.csv`, `02_coverage.R` → `coverage.md`). Tagging is per paper, from
+   title, abstract and JV's highlights; mapping individual highlights to claims is left to
+   the evidence cards in step 4, where only shortlisted papers need it.
 3. Keyword searches + chaining per block; screening → `candidates.csv`.
    **Checkpoint:** JV skims the top ~30 per block and vetoes or adds items.
 4. Full-text pass (OA only) on the shortlist → evidence cards, claim matrix, DOI list.
