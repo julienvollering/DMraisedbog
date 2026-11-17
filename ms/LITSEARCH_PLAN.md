@@ -247,6 +247,13 @@ Quarto document if wanted.
 6. Commit each step on the task branch; record the search in `notebook.md` if it changes
    the manuscript's framing.
 
+*Steps 3-6 done 2026-11-17, checkpoint skipped at JV's request.* Deviations from the plan
+above: screening covered the top 12-20 automatically ranked new records per claim (297),
+not every pooled record; candidate passages were machine-ranked by claim vocabulary and
+then hand-picked, so a relevant sentence that the ranking missed can be absent from a card;
+full text was reachable for 20 of 70 shortlisted records, so most new cards are
+abstract-level. See the 2026-11-17 entry in `notebook.md` and `claim_matrix.md`.
+
 The blocks are independent, so steps 3–4 could run as parallel sub-agents (one per block)
 if JV wants it faster. By default I'll run them in sequence in one session.
 
