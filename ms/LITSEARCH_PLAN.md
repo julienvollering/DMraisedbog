@@ -148,6 +148,11 @@ about 23 keys, so the search should yield roughly 40–65 more, drawn from the e
 about two-thirds; methods blocks (I6, M1–M5, D2, D6, D7) about one-third; M6 data/software
 citations on top as needed.
 
+**Effort across claims (JV, 2026-11-17).** Every claim gets its keyword searches and
+chaining, including those `coverage.md` marks *covered*: important papers missing from the
+library should surface there too. Gap and thin claims get extra rounds on top, not
+instead. Hits already in the `.bib` are flagged, not re-screened.
+
 **Stopping rule.** Iterate per claim block until a new round of chaining adds < 5% new
 relevant records, or the block has its share of the budget in strong references
 (typically 2–4 per methods claim, 3–6 per ecological claim).
