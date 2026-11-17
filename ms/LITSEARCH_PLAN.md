@@ -1,9 +1,10 @@
 # Literature search plan for `ms/ms.qmd`
 
-Drafted 2026-11-17 in a cloud session; §1 revised the same day after checking access on
-JV's machine, where the search will run. A plan for finding the literature the manuscript
-needs and for showing JV *which part* of each paper matters, so that reading time goes on
-the passages that will actually be cited. Nothing here has been run yet.
+Drafted 2026-11-17 in a cloud session; revised the same day after checking access on JV's
+machine (where the search will run) and after JV answered the questions at the end. A plan
+for finding the literature the manuscript needs and for showing JV *which part* of each
+paper matters, so that reading time goes on the passages that will actually be cited.
+Nothing here has been run yet.
 
 ## 0. What the search has to serve
 
@@ -12,15 +13,21 @@ manuscript needs support, context or a counter-argument. The search starts from 
 register** taken from `ms.qmd`. Each claim has an ID, and every paper found is tagged with
 the claim IDs it bears on.
 
-My reading of the aims, to be confirmed by JV (see questions at the end):
+The aims, as confirmed by JV (answer 1):
 
-- **RQ1 (ecological).** Which of Norway's mapped typical raised bogs keep a climate that
-  supports raised bogs by 2071–2100 (SSP3-7.0; SSP1-2.6 as the milder case)?
-- **RQ2 (evidence without a model).** Is the same answer visible in the observed prevalence
-  of raised bogs in the climates the future brings, without fitting any model?
-- **RQ3 (methodological).** How far can a model trained on pooled data, with European
-  warm-flank evidence, be trusted when it is moved into warmer climates? This is measured
-  as skill against the signed bio10 offset, plus a DI applicability mask.
+- **RQ1 (ecological; the paper's question).** Which of Norway's mapped typical raised bogs
+  keep a climate that supports raised bogs by 2071–2100 (SSP3-7.0; SSP1-2.6 as the milder
+  case)?
+- **RQ2 (a second, independent leg for RQ1).** Is the same answer visible in the observed
+  prevalence of raised bogs in the climates the future brings, without fitting any model?
+- **Validation step (not a research question).** How far the pooled model can be trusted
+  when moved into warmer climates: skill against the signed bio10 offset, plus a DI
+  applicability mask.
+
+**Weighting of the search.** Most effort goes to the ecological blocks (I1–I5, D1, D3, D8)
+and to the evidence-without-a-model framing (D1). The methods blocks (I6, M1–M4, D2) get
+only what a GCB reader needs to accept the validation step: a few well-chosen references
+each, not a review of the transferability literature.
 
 Draft claim register (to be completed from `ms.qmd` before searching):
 
@@ -55,41 +62,37 @@ The search runs locally on JV's Windows machine. Access was checked on 2026-11-1
 
 - `api.openalex.org`: the search, chaining and metadata backbone;
 - `api.crossref.org`: metadata fallback and reference lists missing from OpenAlex;
-- `www.ebi.ac.uk` (Europe PMC): full-text XML for OA papers;
-- `api.unpaywall.org`: reachable, but every request must carry a real email address
-  (rejected otherwise). It is optional: it only cross-checks OpenAlex's own OA links, and
-  is used only if JV agrees to the email being sent (question 5).
+- `www.ebi.ac.uk` (Europe PMC): full-text XML for OA papers.
 
-**OpenAlex budget / API key.** Without a key, requests share one free daily budget (about
-$0.10/day) with everyone on the same IP address, which is too little for the planned
-volume (§3: 1,500–3,000 records plus chaining). A free personal key gives $1/day.
-Getting one sends JV's email to OpenAlex, so JV either creates it at
-<https://openalex.org/settings/api> or approves me requesting it. The key is kept outside
-the repo, in `~/.Renviron` as `openalexR.apikey`, and is never committed or logged.
+Unpaywall is **not used**: it requires an email address in every request, and JV declined
+that (answer 5). OpenAlex's own OA links cover the same ground.
 
-**Full text.** Two local sources, so paywalls matter less than first assumed:
+**OpenAlex API key.** JV's personal key is in the user `.Renviron` as `openalexR.apikey`
+(tested 2026-11-17: status 200, no shared-budget notice). That file lives in
+`OneDrive - Høgskulen på Vestlandet/Documents/.Renviron`, which is where Positron's R looks;
+`Rscript --vanilla` reads no `.Renviron` at all, and command-line R's home on this machine
+is `C:\Users\julienv\Home`. So every search script starts with an explicit
+`readRenviron("<that path>")`. The file stays where it is (it also sets `HOME`, `PATH` and
+`R_LIBS` for Positron). The key is never printed, logged or committed.
 
-- **JV's Zotero PDFs** in `OneDrive - Høgskulen på Vestlandet/ZoteroLibrary/` (about
-  3,750 PDFs, readable directly; 162 of the 168 `.bib` entries have a `file =` path into
-  it). New papers JV adds to Zotero during the search land there too.
-- **OA copies** that OpenAlex (or Europe PMC) points to, downloaded to a scratch folder
-  outside the repo.
+**Full text.** From **OA copies only**: those OpenAlex or Europe PMC points to, downloaded
+to a scratch folder outside the repo. JV's Zotero PDF folder (`ZoteroLibrary/`) is
+**not read** (answer 4); the `file =` paths in the `.bib` are ignored.
 
 **JV's existing reading notes.** `ms/ZoteroAnnotations/` holds one Markdown export per
 `.bib` entry (168 files, named by Better BibTeX citekey) with JV's own highlights and page
-numbers: 133 files contain highlights, 2,773 quotes in total. These are the first
-evidence source for the existing library (§2.1). The folder is currently untracked in git
-and exists only in the main checkout; it is read from there, not copied.
+numbers: 133 files contain highlights, 2,773 quotes in total. These are the evidence
+source for the existing library (§2.1) and, together with OA full text, the only text read
+beyond abstracts. The folder is untracked in git and exists only in the main checkout; it
+is read from there, not copied.
 
-**Code.** R, to match the repo: R 4.6.2 is installed. The search uses `openalexR` (to be
-installed from CRAN; it reads the key from the option `openalexR.apikey`) and `httr2` for
-Crossref / Europe PMC; text is extracted with `pdftotext -layout` (Rtools/ucrt64, already on
-PATH) or `pdftools`. Scripts live in `ms/litsearch/`, are run with `Rscript --vanilla`
-from the repository root, and sit outside `R/RUNALL.R`, like `ms/make_figures.R`. Every
-query is logged with its timestamp and hit count, so the search can be reported
-(PRISMA-style counts in S1 Text if the journal or reviewers want it). The one exception is
-the optional highlighted-PDF output (§4.4), which needs PyMuPDF: Python 3.13 is installed,
-and `pip install pymupdf` would be the only addition.
+**Code.** R, to match the repo: R 4.6.2 with `openalexR` 3.1.2 (installed in the user
+library, which `Rscript --vanilla` finds), and `httr2` for Crossref / Europe PMC. Text is
+extracted with `pdftotext -layout` (ucrt64, on PATH) or `pdftools`. Scripts live in
+`ms/litsearch/`, are run with `Rscript --vanilla` from the repository root, and sit outside
+`R/RUNALL.R`, like `ms/make_figures.R`. Every query is logged with its timestamp and hit
+count, so the search can be reported (PRISMA-style counts in S1 Text if the journal or
+reviewers want it). No Python is needed.
 
 ## 2. Finding papers
 
@@ -103,9 +106,9 @@ win: several Discussion points can be supported from papers already in the `.bib
 
 Tagging starts from JV's own highlights in `ms/ZoteroAnnotations/<citekey>.md`: each
 highlight is mapped to the claim IDs it bears on, so the evidence cards for papers JV has
-already read are built from passages JV chose, with their page numbers. Only the 35
-entries without highlights (and any claim a paper's highlights do not cover) need a fresh
-full-text pass.
+already read are built from passages JV chose, with their page numbers. The 35 entries
+without highlights (and any claim a paper's highlights do not cover) get an OA full-text
+pass where an OA copy exists, and an abstract-level card otherwise.
 
 ### 2.2 Keyword searches per claim block
 Use OpenAlex `search` (title + abstract + fulltext where indexed) and
@@ -136,16 +139,23 @@ A paper reached from two or more anchors is ranked up (co-citation signal).
 ### 2.4 Targeted look-ups
 For M6 (data and software citations) and named items, I look each one up directly
 (DOI / exact title, or the data provider's recommended citation) rather than searching.
-Norwegian and Nordic grey literature (NINA, NIBIO and Miljødirektoratet reports) is poorly
-indexed in OpenAlex. For that I'll list what is missing and ask JV, rather than guess.
+Scandinavian-language and grey literature are out of scope (answer 3); data-provider
+documentation needed for M6 is the only exception.
+
+**Reference budget.** GCB, 60–90 references in total (answer 2). `ms.qmd` currently cites
+about 23 keys, so the search should yield roughly 40–65 more, drawn from the existing
+`.bib` first and new papers second. Rough split: ecological blocks (I1–I5, D1, D3–D5, D8)
+about two-thirds; methods blocks (I6, M1–M5, D2, D6, D7) about one-third; M6 data/software
+citations on top as needed.
 
 **Stopping rule.** Iterate per claim block until a new round of chaining adds < 5% new
-relevant records, or the block has 3–5 strong references.
+relevant records, or the block has its share of the budget in strong references
+(typically 2–4 per methods claim, 3–6 per ecological claim).
 
 ## 3. Screening and ranking
 
-1. **Automatic de-duplication and pre-filter**: drop retracted, non-English/non-Scandinavian,
-   and out-of-scope types; flag preprints that have a published version.
+1. **Automatic de-duplication and pre-filter**: drop retracted, non-English and
+   out-of-scope types (incl. grey reports); flag preprints that have a published version.
 2. **Title/abstract screen** (by me, from the OpenAlex abstract). Each record gets:
    - `relevance` 0–3 against the claim register,
    - `claims` (one or more IDs),
@@ -162,16 +172,19 @@ relevant records, or the block has 3–5 strong references.
    rather than be surprised by a reviewer.
 
 Expected volume (rough): 1,500–3,000 unique records → 150–250 pass title/abstract →
-40–70 read in full text → perhaps 30–50 new references.
+40–70 get a card (OA full text where available, abstract otherwise) → perhaps 20–40 new
+references, the rest of the budget coming from the existing `.bib`.
 
 ## 4. Highlighting the relevant parts of each paper
 
 This is the part that saves JV's time. For each paper that reaches full-text review:
 
 ### 4.1 Extraction
-Get full text from JV's Zotero PDF or the OA copy; extract text **with page numbers**
-(`pdftotext -layout`, page by page; section headings detected where possible). Extracted
-text goes to a scratch folder outside the repo.
+For papers already in the `.bib`, start from JV's highlights in `ms/ZoteroAnnotations/`.
+Otherwise get the OA copy (PDF or Europe PMC XML); extract text **with page numbers**
+(`pdftotext -layout`, page by page; section headings detected where possible). Downloads
+and extracted text go to a scratch folder outside the repo. No OA copy → abstract-level
+card.
 
 ### 4.2 Passage finding
 Read the paper against its tagged claim IDs and pick the 2–6 passages that bear on them.
@@ -181,8 +194,9 @@ mirror or depart from, or an explicit disagreement.
 ### 4.3 Verbatim and verified
 Every highlighted passage is an **exact quote**. A script checks that each quote occurs in
 the extracted text of the cited page (after normalising whitespace and hyphenation), and
-drops any that do not. No paraphrase is presented as a quote. If only the abstract was
-available, the card says so.
+drops any that do not. Quotes taken from JV's own highlights are marked as such and keep
+JV's page number (they are not re-verified, since the PDF is not read). No paraphrase is
+presented as a quote. If only the abstract was available, the card says so.
 
 ### 4.4 Deliverables, in the repo (`ms/litsearch/`)
 
@@ -202,27 +216,23 @@ available, the card says so.
 - `new_refs_dois.txt`: DOIs for Zotero's *Add Item by Identifier*, so new references enter
   JV's Zotero library (and thus the Better BibTeX export) instead of being hand-edited into
   the `.bib`.
-- **Optional: highlighted PDFs.** Copies of the PDFs with the selected passages highlighted
-  (PyMuPDF), colour-coded by role (e.g. yellow = support, red = contrast, blue = method,
-  green = data). Each highlight carries a comment with the claim ID. Zotero shows
-  annotations embedded in a PDF and can import them into its own annotation layer, so the
-  highlights land where JV already reads. These go to a folder JV chooses (not the repo:
-  copyright), never overwriting the originals in `ZoteroLibrary/`. Needs PyMuPDF (§1).
+
+No highlighted-PDF output: the evidence cards are the deliverable (answer 4).
 
 The cards and matrix are plain Markdown, so they diff in git and can be pulled into a
 Quarto document if wanted.
 
 ## 5. Order of work
 
-1. JV answers the questions below; the OpenAlex key is in place; `openalexR` is installed.
+1. ~~JV answers the questions below; the OpenAlex key is in place; `openalexR` is
+   installed.~~ Done 2026-11-17.
 2. Build the claim register from `ms.qmd` (including its 25 `TODO` markers); resolve the
    `.bib` to OpenAlex; tag existing entries with claims, starting from
    `ms/ZoteroAnnotations/`. **Checkpoint:** show JV the register and the coverage that the
    existing library already gives.
 3. Keyword searches + chaining per block; screening → `candidates.csv`.
    **Checkpoint:** JV skims the top ~30 per block and vetoes or adds items.
-4. Full-text pass on the shortlist → evidence cards, claim matrix, DOI list,
-   optional highlighted PDFs.
+4. Full-text pass (OA only) on the shortlist → evidence cards, claim matrix, DOI list.
 5. Fill M6 (data/software citations) directly and close those `[TODO cite]` markers on a
    branch.
 6. Commit each step on the task branch; record the search in `notebook.md` if it changes
@@ -235,29 +245,42 @@ if JV wants it faster. By default I'll run them in sequence in one session.
 
 - OpenAlex abstracts are missing for part of the publisher catalogue; title-only screening is
   weaker, and those papers rely more on chaining.
-- Grey literature (Norwegian reports, EU habitat reports) is under-indexed; JV's knowledge
-  fills that gap.
-- Highlights are only as complete as the full text I can reach; paywalled papers that are
-  neither OA nor in JV's Zotero get abstract-level cards only (JV can add them to Zotero
-  at the step-3 checkpoint).
-- Without an OpenAlex API key the shared daily budget would stall the search part-way.
+- Grey and Scandinavian-language literature is out of scope by choice.
+- Full text is OA only. New paywalled papers get abstract-level cards; for papers already
+  in the `.bib`, JV's highlights stand in. If a paywalled paper turns out to be essential,
+  JV can highlight it in Zotero and re-export its annotations at the step-3 checkpoint.
+- Quotes from JV's highlights are not re-verified against the PDF.
 - Relevance judgements are mine. The checkpoints in §5 are where JV corrects them.
 
-## Questions for JV before starting
+## Questions for JV before starting (answered 2026-11-17; folded into the plan above)
 
 1. **Aims/RQs.** Are RQ1–RQ3 above right? And is the paper primarily ecological (fate of
    Norway's bogs) with the transfer evaluation as support, or are the two equal
    contributions? `ms/PLAN.md` ("Audience and stance") already leans ecological: lead with
    the model-free evidence, then the model, then how far it can be trusted. This sets how
    much of the search goes to blocks M3/M4/D2 versus I1–I5/D3/D8.
+
+> Its really mainly RQ1, with RQ2 as an alternative leg to stand on, and RQ3 just as a validating step (not a RQ).
+
 2. **Target journal.** GCB or PLOS ONE (or other)? `ms.qmd` still has this as a
    `TODO(JV)`, with GCB as the working guess. This sets the reference budget (roughly
    60–90 vs no hard limit) and how much methods literature belongs in the main text.
+
+> GCB is the target journal, and the reference budget is 60–90. The methods literature should be in the main text, but not too much.
+
 3. **Scope.** Include Scandinavian-language literature and grey reports via your input?
    Any time window?
+
+> Not necessary.
+
 4. **Full text and highlights.** I can read `ZoteroLibrary/` and `ms/ZoteroAnnotations/`
    directly. Is it fine to use both? Do you want the highlighted-PDF output (needs
    `pip install pymupdf`), or are the evidence cards enough?
+
+> Use only ZoteroAnnotations, do not read ZoteroLibrary. I do not need the highlighted-PDF output, the evidence cards are enough.
+
 5. **Email-bearing services.** Will you create the OpenAlex API key yourself, or may I
    request it with your email? And may your email go in Unpaywall requests (optional;
    skipped otherwise)?
+
+> I have added the OpenAlex API key to my .Renviron file, and I do not want my email to go in Unpaywall requests.
