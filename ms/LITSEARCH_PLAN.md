@@ -1,8 +1,9 @@
 # Literature search plan for `ms/ms.qmd`
 
-Drafted 2026-11-17. A plan for finding the literature the manuscript needs and for showing
-JV *which part* of each paper matters, so that reading time goes on the passages that will
-actually be cited. Nothing here has been run yet.
+Drafted 2026-11-17 in a cloud session; §1 revised the same day after checking access on
+JV's machine, where the search will run. A plan for finding the literature the manuscript
+needs and for showing JV *which part* of each paper matters, so that reading time goes on
+the passages that will actually be cited. Nothing here has been run yet.
 
 ## 0. What the search has to serve
 
@@ -48,31 +49,47 @@ Draft claim register (to be completed from `ms.qmd` before searching):
 
 ## 1. Access and tooling
 
-**Network.** `api.openalex.org` is currently **blocked** by this cloud environment's
-network policy (proxy 403). Before running anything, the host must be added to the
-environment's allowed hosts (I can propose that change and JV approves it on a card).
-Optional extras, each an exact host:
+The search runs locally on JV's Windows machine. Access was checked on 2026-11-17.
 
-- `api.unpaywall.org`: open-access PDF locations, as a cross-check on OpenAlex's own OA links
-- `www.ebi.ac.uk`: Europe PMC full-text XML for OA papers
-- `api.crossref.org`: metadata fallback and reference lists missing from OpenAlex
+**Network.** All of these respond from this machine; no allowlisting is needed:
 
-**Publisher PDF hosts are too many to allowlist one by one.** Full text will therefore come
-from (a) OA copies that OpenAlex points to on hosts we allow, and (b) **JV's own Zotero
-PDFs**. The `.bib` `file =` fields show they sit in `OneDrive/ZoteroLibrary` on JV's
-computer. That folder can be attached to this session through Remote Control, or JV can
-drop the relevant PDFs into a folder I can read. This also covers paywalled papers JV
-already has access to.
+- `api.openalex.org`: the search, chaining and metadata backbone;
+- `api.crossref.org`: metadata fallback and reference lists missing from OpenAlex;
+- `www.ebi.ac.uk` (Europe PMC): full-text XML for OA papers;
+- `api.unpaywall.org`: reachable, but every request must carry a real email address
+  (rejected otherwise). It is optional: it only cross-checks OpenAlex's own OA links, and
+  is used only if JV agrees to the email being sent (question 5).
 
-**API key / polite pool.** OpenAlex now asks heavy users for a free API key. If it is
-needed I'll request it through the secure credential form. I will not put JV's email in
-request headers without asking.
+**OpenAlex budget / API key.** Without a key, requests share one free daily budget (about
+$0.10/day) with everyone on the same IP address, which is too little for the planned
+volume (§3: 1,500–3,000 records plus chaining). A free personal key gives $1/day.
+Getting one sends JV's email to OpenAlex, so JV either creates it at
+<https://openalex.org/settings/api> or approves me requesting it. The key is kept outside
+the repo, in `~/.Renviron` as `openalexR.apikey`, and is never committed or logged.
 
-**Code.** There is no R in this container. The search runs from a small Python script in
-`ms/litsearch/` (stdlib + `requests`), writes plain CSVs, and so can be re-read or re-run
-in R (`openalexR`) on JV's machine. The script sits outside `R/RUNALL.R`, like
-`ms/make_figures.R`. Every query is logged with its timestamp and hit count, so the search
-can be reported (PRISMA-style counts in S1 Text if the journal or reviewers want it).
+**Full text.** Two local sources, so paywalls matter less than first assumed:
+
+- **JV's Zotero PDFs** in `OneDrive - Høgskulen på Vestlandet/ZoteroLibrary/` (about
+  3,750 PDFs, readable directly; 162 of the 168 `.bib` entries have a `file =` path into
+  it). New papers JV adds to Zotero during the search land there too.
+- **OA copies** that OpenAlex (or Europe PMC) points to, downloaded to a scratch folder
+  outside the repo.
+
+**JV's existing reading notes.** `ms/ZoteroAnnotations/` holds one Markdown export per
+`.bib` entry (168 files, named by Better BibTeX citekey) with JV's own highlights and page
+numbers: 133 files contain highlights, 2,773 quotes in total. These are the first
+evidence source for the existing library (§2.1). The folder is currently untracked in git
+and exists only in the main checkout; it is read from there, not copied.
+
+**Code.** R, to match the repo: R 4.6.2 is installed. The search uses `openalexR` (to be
+installed from CRAN; it reads the key from the option `openalexR.apikey`) and `httr2` for
+Crossref / Europe PMC; text is extracted with `pdftotext -layout` (Rtools/ucrt64, already on
+PATH) or `pdftools`. Scripts live in `ms/litsearch/`, are run with `Rscript --vanilla`
+from the repository root, and sit outside `R/RUNALL.R`, like `ms/make_figures.R`. Every
+query is logged with its timestamp and hit count, so the search can be reported
+(PRISMA-style counts in S1 Text if the journal or reviewers want it). The one exception is
+the optional highlighted-PDF output (§4.4), which needs PyMuPDF: Python 3.13 is installed,
+and `pip install pymupdf` would be the only addition.
 
 ## 2. Finding papers
 
@@ -83,6 +100,12 @@ Resolve all 168 entries of `Repeat-raisedbogDM.bib` (131 have DOIs) to OpenAlex 
 (a) prevents re-recommending what JV already has, (b) gives the seed papers for citation
 chaining, and (c) lets me tag existing entries with claim IDs, which is often the fastest
 win: several Discussion points can be supported from papers already in the `.bib`.
+
+Tagging starts from JV's own highlights in `ms/ZoteroAnnotations/<citekey>.md`: each
+highlight is mapped to the claim IDs it bears on, so the evidence cards for papers JV has
+already read are built from passages JV chose, with their page numbers. Only the 35
+entries without highlights (and any claim a paper's highlights do not cover) need a fresh
+full-text pass.
 
 ### 2.2 Keyword searches per claim block
 Use OpenAlex `search` (title + abstract + fulltext where indexed) and
@@ -146,8 +169,9 @@ Expected volume (rough): 1,500–3,000 unique records → 150–250 pass title/a
 This is the part that saves JV's time. For each paper that reaches full-text review:
 
 ### 4.1 Extraction
-Get full text from the OA copy or JV's PDF; extract text **with page numbers**
-(`pdftotext -layout`, page by page; section headings detected where possible).
+Get full text from JV's Zotero PDF or the OA copy; extract text **with page numbers**
+(`pdftotext -layout`, page by page; section headings detected where possible). Extracted
+text goes to a scratch folder outside the repo.
 
 ### 4.2 Passage finding
 Read the paper against its tagged claim IDs and pick the 2–6 passages that bear on them.
@@ -183,16 +207,17 @@ available, the card says so.
   green = data). Each highlight carries a comment with the claim ID. Zotero shows
   annotations embedded in a PDF and can import them into its own annotation layer, so the
   highlights land where JV already reads. These go to a folder JV chooses (not the repo:
-  copyright).
+  copyright), never overwriting the originals in `ZoteroLibrary/`. Needs PyMuPDF (§1).
 
 The cards and matrix are plain Markdown, so they diff in git and can be pulled into a
 Quarto document if wanted.
 
 ## 5. Order of work
 
-1. JV answers the questions below; network access is approved.
-2. Build the claim register from `ms.qmd`; resolve the `.bib` to OpenAlex; tag existing
-   entries with claims. **Checkpoint:** show JV the register and the coverage that the
+1. JV answers the questions below; the OpenAlex key is in place; `openalexR` is installed.
+2. Build the claim register from `ms.qmd` (including its 25 `TODO` markers); resolve the
+   `.bib` to OpenAlex; tag existing entries with claims, starting from
+   `ms/ZoteroAnnotations/`. **Checkpoint:** show JV the register and the coverage that the
    existing library already gives.
 3. Keyword searches + chaining per block; screening → `candidates.csv`.
    **Checkpoint:** JV skims the top ~30 per block and vetoes or adds items.
@@ -212,23 +237,27 @@ if JV wants it faster. By default I'll run them in sequence in one session.
   weaker, and those papers rely more on chaining.
 - Grey literature (Norwegian reports, EU habitat reports) is under-indexed; JV's knowledge
   fills that gap.
-- Highlights are only as complete as the full text I can reach; paywalled papers not in
-  JV's Zotero get abstract-level cards only.
+- Highlights are only as complete as the full text I can reach; paywalled papers that are
+  neither OA nor in JV's Zotero get abstract-level cards only (JV can add them to Zotero
+  at the step-3 checkpoint).
+- Without an OpenAlex API key the shared daily budget would stall the search part-way.
 - Relevance judgements are mine. The checkpoints in §5 are where JV corrects them.
 
 ## Questions for JV before starting
 
 1. **Aims/RQs.** Are RQ1–RQ3 above right? And is the paper primarily ecological (fate of
    Norway's bogs) with the transfer evaluation as support, or are the two equal
-   contributions? This sets how much of the search goes to blocks M3/M4/D2 versus
-   I1–I5/D3/D8.
-2. **Target journal.** GCB or PLOS ONE (or other)? This sets the reference budget (roughly
+   contributions? `ms/PLAN.md` ("Audience and stance") already leans ecological: lead with
+   the model-free evidence, then the model, then how far it can be trusted. This sets how
+   much of the search goes to blocks M3/M4/D2 versus I1–I5/D3/D8.
+2. **Target journal.** GCB or PLOS ONE (or other)? `ms.qmd` still has this as a
+   `TODO(JV)`, with GCB as the working guess. This sets the reference budget (roughly
    60–90 vs no hard limit) and how much methods literature belongs in the main text.
 3. **Scope.** Include Scandinavian-language literature and grey reports via your input?
    Any time window?
-4. **Full text.** May I attach your Zotero PDF folder (via Remote Control), or will you
-   drop PDFs in a folder? Do you want the highlighted-PDF output, or are the evidence cards
-   enough?
-5. **Network.** OK to add `api.openalex.org` (and optionally `api.unpaywall.org`,
-   `www.ebi.ac.uk`, `api.crossref.org`) to your Default cloud environment? That environment
-   is used by all your sessions.
+4. **Full text and highlights.** I can read `ZoteroLibrary/` and `ms/ZoteroAnnotations/`
+   directly. Is it fine to use both? Do you want the highlighted-PDF output (needs
+   `pip install pymupdf`), or are the evidence cards enough?
+5. **Email-bearing services.** Will you create the OpenAlex API key yourself, or may I
+   request it with your email? And may your email go in Unpaywall requests (optional;
+   skipped otherwise)?
