@@ -169,3 +169,10 @@ wongGridded112016,D5,1,support,Norwegian climate projections and GCM/RCM bias
 yuPeatlandsTheirRole2011,I1,1,support,Peatlands and the carbon cycle
 zhangRecentClimateChange2022,I4,2,support,Divergent hydrological shifts in high-latitude peatlands (no highlights)
 stroevenDeglaciationFennoscandia2016,M6,1,data,Deglaciation chronology behind the palaeo predictors
+ilterCMIP6basedProjectionsClimatedriven2026,I3,3,support,Ensemble habitat-suitability model of German peatlands under CMIP6 (2041-2060)
+ilterCMIP6basedProjectionsClimatedriven2026,D8,3,comparison,Projected peatland-suitability loss in Germany: about 57-59% under both SSP1-2.6 and SSP3-7.0
+ilterCMIP6basedProjectionsClimatedriven2026,D9,2,contrast,Topographic refugia; loss nearly as large under SSP1-2.6 as SSP3-7.0 (by 2041-2060)
+ilterCMIP6basedProjectionsClimatedriven2026,D5,2,method,Four-GCM ensemble means: the multi-GCM design we do not use
+mooreClimateChangeIncreases2026,I4,2,support,Climate change increases northern peatland burning and smouldering carbon loss
+williamsClimateSensitivityEcoclimate2022,D4,1,support,Ecoclimate sensitivity; past responses as guide to future ones (no highlights)
+williamsClimateSensitivityEcoclimate2022,D3,1,support,Lags and timescales of biospheric response to climate change
