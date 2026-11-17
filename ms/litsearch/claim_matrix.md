@@ -132,9 +132,21 @@ Also in the library (relevance >= 2, no passage selected): `bouchetDsmextraExtra
 
 ## M6 — Data and software citations: Natura 2000 end-2021 dataset; NIBIO AR50; EPM2025 technical description; ESA WorldCover 2021 (Zanaga et al.); Kartverket DTM50; elevatr / AWS terrain tiles; CHELSA-TraCE21k; R; sf; terra; randomForestSRC (Ishwaran & Kogalur); Zenodo release
 
-*No passage selected.*
-
-Also in the library (relevance >= 2, no passage selected): `Tegetmeyer2025`, `brunGlobalClimaterelatedPredictors2022`, `chytryEUNISHabitatClassification2020`, `kargerBIOCLIMNovelSet2022`, `kargerCHELSAV21Technical2021`, `kargerClimatologiesHighResolution2017`, `kargerCHELSATraCE21kHighresolution1thinspkm2023`, `kargerCHELSATraCE21kV10Technical2021`, `lyngstadFlybildetolkingAvHogmyr2012`, `lyngstadKartleggingAvTypisk2015`, `lyngstadKartleggingAvTypisk2016`, `lyngstadKartleggingAvTypisk2017`, `lyngstadKartleggingAvTypisk2021`, `tannebergerPeatlandMapEurope2017`
+| Item | Citation | DOI | Status |
+|---|---|---|---|
+| EPM2025 technical description | Tegetmeyer et al. 2025 (in .bib as Tegetmeyer2025) |  | closed in ms.qmd |
+| CHELSA-TraCE21k | Karger et al. 2023 (in .bib as kargerCHELSATraCE21kHighresolution1thinspkm2023) | 10.5194/cp-19-439-2023 | closed in ms.qmd |
+| Natura 2000 end-2021 | European Environment Agency & European Commission (2022). Natura 2000 (vector) - version 2021 revision 1, Oct. 2022 (Version 12.01) [Dataset] | 10.5281/zenodo.23167201 | DOI verified; JV to confirm this is the release used |
+| ESA WorldCover 2021 | Zanaga, D. et al. (2022). ESA WorldCover 10 m 2021 v200 [Dataset]. Zenodo | 10.5281/zenodo.7254221 | DOI verified |
+| elevatr | Hollister, J. elevatr: Access Elevation Data from Various APIs [R package]. CRAN | 10.32614/CRAN.package.elevatr | DOI verified; add version used |
+| randomForestSRC | Ishwaran, H. & Kogalur, U. B. randomForestSRC: Fast Unified Random Forests for Survival, Regression, and Classification [R package]. CRAN | 10.32614/CRAN.package.randomForestSRC | DOI verified; add version used |
+| randomForestSRC (method paper) | Ishwaran, H., Kogalur, U. B., Blackstone, E. H. & Lauer, M. S. (2008). Random survival forests. Annals of Applied Statistics 2: 841-860 | 10.1214/08-AOAS169 | DOI verified; the package's own recommended reference |
+| sf | Pebesma, E. (2018). Simple Features for R: Standardized Support for Spatial Vector Data. The R Journal 10(1): 439-446 | 10.32614/RJ-2018-009 | DOI verified |
+| terra | Hijmans, R. J. et al. terra: Spatial Data Analysis [R package]. CRAN | 10.32614/CRAN.package.terra | DOI verified; add version used |
+| R | R Core Team (2026). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna |  | no DOI; JV to state version from the pipeline sessionInfo |
+| NIBIO AR50 | NIBIO. AR50 arealressurskart 1:50 000 [dataset], version ? |  | no DOI found (DataCite); JV to supply |
+| Kartverket DTM50 | Kartverket. DTM 50 (digital terrengmodell 50 m) [dataset] |  | no DOI found (DataCite); JV to supply |
+| Zenodo release of the pipeline | TODO(JV): archive a release |  | JV |
 
 ## M7 — Justification for using a single GCM (GFDL-ESM4) and the two scenarios (SSP1-2.6, SSP3-7.0)
 

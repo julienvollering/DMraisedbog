@@ -168,6 +168,12 @@ for (i in seq_len(nrow(claims))) {
   d <- first_quote |> filter(claim_id == cid) |> left_join(meta |> select(key, in_bib, year), by = "key")
   lib_only <- tags |> filter(claim_id == cid, relevance >= 2, !key %in% d$key) |> pull(key)
   mx <- c(mx, sprintf("## %s — %s", cid, claims$claim[i]), "")
+  if (cid == "M6") {
+    m6 <- read_csv(file.path(LS, "m6_citations.csv"), show_col_types = FALSE)
+    mx <- c(mx, "| Item | Citation | DOI | Status |", "|---|---|---|---|",
+            sprintf("| %s | %s | %s | %s |", m6$item, m6$citation, coalesce(m6$doi, ""), m6$status), "")
+    next
+  }
   if (nrow(d)) {
     d <- d |> arrange(match(role, c("support", "comparison", "method", "contrast", "data")), desc(year))
     mx <- c(mx, "| Reference | Role | Passage | Where |", "|---|---|---|---|")
@@ -194,6 +200,11 @@ write_lines(
   c(
     "# New references with a verified passage in the claim matrix (paste into Zotero: Add Item by Identifier)",
     na.omit(new_used$doi),
+    "",
+    "# Data and software citations for the [TODO cite] markers (m6_citations.csv)",
+    read_csv(file.path(LS, "m6_citations.csv"), show_col_types = FALSE) |>
+      filter(!is.na(doi), !str_detect(status, "closed")) |>
+      pull(doi),
     "",
     "# Further candidates (relevance >= 2, no passage selected); see candidates.csv",
     paste0("# ", na.omit(new_rest$doi))

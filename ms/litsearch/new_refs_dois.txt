@@ -57,6 +57,15 @@
 10.1016/j.ecolmodel.2024.110754
 10.1016/j.gloenvcha.2016.05.009
 
+# Data and software citations for the [TODO cite] markers (m6_citations.csv)
+10.5281/zenodo.23167201
+10.5281/zenodo.7254221
+10.32614/CRAN.package.elevatr
+10.32614/CRAN.package.randomForestSRC
+10.1214/08-AOAS169
+10.32614/RJ-2018-009
+10.32614/CRAN.package.terra
+
 # Further candidates (relevance >= 2, no passage selected); see candidates.csv
 # 10.1111/j.1472-4642.2010.00716.x
 # 10.1016/j.ecolmodel.2012.03.007
