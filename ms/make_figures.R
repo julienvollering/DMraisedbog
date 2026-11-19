@@ -268,6 +268,315 @@ save_tbl(
   "tbl_occupancy"
 )
 
+## Fig: climate history of today's bogs against the future ####
+
+# From R/pl2_exploreClimateHistory.R (plan_climateHistory.md). Two independent records of
+# the bogs' past, run in parallel and never blended (plan 3.9): TraCE21k (a transient climate
+# simulation, centennial) and EPOCH-2 (a pollen-based reconstruction, millennial). Both are
+# placed on the CHELSA 1981-2010 baseline with the observed summer warming from each record's
+# own present (Berkeley Earth). The future is CHELSA GFDL-ESM4 2071-2100 at the 614 TraCE
+# pixels holding the Norwegian bog cells.
+#
+# t0 is the unknown age at which a bog became a bog. The band is a reading of the literature
+# (plan 3.7a, revised with JV 2026-10-07): dated Norwegian ombrotrophic onsets run from
+# 6.4-5.9 ka at the centre of Sellevollmyra to after 2 ka at a Lofoten margin, and lateral
+# expansion makes most of a bog's present area younger than its oldest date. Shown as a fog
+# over implausible bog ages; nothing is computed from it except the band-edge table columns.
+T0_BAND <- c(2, 6)
+T0_OUTER <- c(1, 8)
+
+SCEN_LAB <- c(ssp370 = "SSP3-7.0", ssp126 = "SSP1-2.6")
+SCEN_COL <- c("SSP3-7.0" = "#c1462c", "SSP1-2.6" = "#e39a3b")
+REC_LAB <- c(delta = "TraCE21k (model)", epoch2 = "EPOCH-2 (pollen)")
+REC_COL <- c(delta = "#2b6a3f", epoch2 = "#3b5f99")
+
+ch_series <- read_csv("output/pl2/climatehistory_series.csv", show_col_types = FALSE)
+ch_future <- read_csv("output/pl2/climatehistory_future.csv", show_col_types = FALSE) |>
+  mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
+ch_cov <- read_csv("output/pl2/climatehistory_coverage.csv", show_col_types = FALSE) |>
+  mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
+ch_ref <- read_csv("output/pl2/climatehistory_reference.csv", show_col_types = FALSE) |>
+  mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
+ch_pix <- read_csv("output/pl2/climatehistory_pixels.csv", show_col_types = FALSE) |>
+  mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
+ch_htm <- read_csv("output/pl2/climatehistory_htm_anomaly.csv", show_col_types = FALSE)
+ch_offset <- read_csv("output/pl2/climatehistory_offset.csv", show_col_types = FALSE)
+ch_baseline <- read_csv("output/pl2/climatehistory_baseline_offsets.csv", show_col_types = FALSE)
+
+# Assumed bog age is shown as a white fog over the parts of an age axis that rest on
+# implausible bog ages, the same in both panels: full weight inside T0_BAND, fading to the
+# T0_OUTER edges and further beyond them. The fog is drawn over the data as thin white
+# strips whose opacity is 1 - weight.
+ch_weight <- function(t) {
+  approx(
+    c(0, T0_OUTER[1], T0_BAND[1], T0_BAND[2], T0_OUTER[2], 10),
+    c(0.12, 0.35, 1, 1, 0.35, 0.12),
+    xout = t, rule = 2
+  )$y
+}
+ch_fog <- function(from, to, step = 0.05) {
+  x0 <- seq(from, to - step, by = step)
+  w <- ch_weight(pmin(pmax(x0 + step / 2, 0), 10))
+  annotate(
+    "rect",
+    xmin = x0, xmax = x0 + step, ymin = -Inf, ymax = Inf,
+    fill = "white", alpha = 1 - w
+  )
+}
+ch_label <- function(x, y, label, colour = "grey45", fontface = "italic", ...) {
+  annotate(
+    "text",
+    x = x, y = y, label = label,
+    size = 2.4, colour = colour, fontface = fontface, lineheight = 0.9, ...
+  )
+}
+
+### Panel A: warmest-quarter temperature through time ####
+
+# Only the OLD end is fogged here. The x-axis is the age of the climate, not of the bog: the
+# last 2 ka were lived through by every bog, young or old, so they keep full weight; climate
+# older than 6 ka was lived through only by bogs at least that old.
+ch_trace <- ch_series |> filter(record == "delta")
+ch_band <- ch_trace |>
+  group_by(age_ka) |>
+  summarise(
+    q05 = quantile(bio10, 0.05), med = median(bio10), q95 = quantile(bio10, 0.95),
+    .groups = "drop"
+  )
+# EPOCH-2: per-slice median over the pixels, with the median of the pixels' own +/- 1 SE.
+ch_epoch <- ch_series |>
+  filter(record == "epoch2") |>
+  group_by(age_ka) |>
+  summarise(med = median(bio10), se = median(bio10_se), .groups = "drop")
+ch_fut_band <- ch_future |>
+  group_by(scenario) |>
+  summarise(
+    q05 = quantile(bio10, 0.05), med = median(bio10), q95 = quantile(bio10, 0.95),
+    .groups = "drop"
+  ) |>
+  mutate(x = c(-0.55, -1.15)[as.integer(scenario)])
+
+# The "few bogs this ..." labels sit at the same relative height in both panels: a fraction of
+# each panel's data range (panel B runs 0-1).
+CH_LABEL_REL <- 0.68
+ch_a_range <- range(
+  ch_trace$bio10, ch_fut_band$q05, ch_fut_band$q95,
+  ch_epoch$med - ch_epoch$se, ch_epoch$med + ch_epoch$se
+)
+ch_a_label_y <- ch_a_range[1] + CH_LABEL_REL * diff(ch_a_range)
+
+p_ch_a <- ggplot() +
+  geom_line(
+    data = ch_trace, aes(age_ka, bio10, group = pixel),
+    colour = REC_COL[["delta"]], alpha = 0.03, linewidth = 0.2
+  ) +
+  geom_ribbon(data = ch_band, aes(age_ka, ymin = q05, ymax = q95), fill = REC_COL[["delta"]], alpha = 0.25) +
+  geom_line(data = ch_band, aes(age_ka, med), colour = REC_COL[["delta"]], linewidth = 0.7) +
+  geom_line(data = ch_epoch, aes(age_ka, med), colour = REC_COL[["epoch2"]], linewidth = 0.4, linetype = 2) +
+  geom_errorbar(
+    data = ch_epoch, aes(age_ka, ymin = med - se, ymax = med + se),
+    colour = REC_COL[["epoch2"]], width = 0.15, linewidth = 0.4
+  ) +
+  geom_point(data = ch_epoch, aes(age_ka, med), colour = REC_COL[["epoch2"]], shape = 17, size = 1.8) +
+  ch_fog(T0_BAND[2], 10.1) +
+  ch_label(9, ch_a_label_y, "few bogs\nthis old") +
+  ch_label(4.5, min(ch_band$q05) - 0.45, REC_LAB[["delta"]], colour = REC_COL[["delta"]], fontface = "plain") +
+  ch_label(
+    6.5, max(ch_epoch$med + ch_epoch$se) + 0.35, REC_LAB[["epoch2"]],
+    colour = REC_COL[["epoch2"]], fontface = "plain"
+  ) +
+  geom_linerange(
+    data = ch_fut_band, aes(x, ymin = q05, ymax = q95, colour = scenario),
+    linewidth = 1.6, show.legend = FALSE
+  ) +
+  geom_point(data = ch_fut_band, aes(x, med, colour = scenario), size = 1.6, show.legend = FALSE) +
+  annotate("text", x = -0.85, y = min(ch_fut_band$q05) - 0.35, label = "2071-\n2100", size = 2.3, lineheight = 0.85) +
+  scale_x_reverse(breaks = 0:10, limits = c(10.2, -1.45), expand = expansion(add = 0.1)) +
+  scale_colour_manual(values = SCEN_COL, name = NULL) +
+  labs(
+    title = "A",
+    x = "Time (ka)", y = "Mean temperature of the warmest quarter, bio10 (°C)"
+  ) +
+  theme_ms +
+  theme(legend.position = "bottom")
+
+### Panel B: share of bog pixels facing an unprecedented climate ####
+
+# 100% minus the pooled-hull coverage: the share of bog pixels whose future climate lies
+# outside the bio10 x bio12 range that any bog has lived through since t0. Flipped so that
+# higher is worse, as in panel A. The per-pixel, temperature-only "own past" measure stays in
+# the table. Points rather than lines: t0 is a grid of assumptions, not a time series. Both
+# ends are fogged here, because the x-axis IS the assumed bog age.
+ch_unprec <- ch_cov |>
+  filter(version %in% names(REC_LAB), axes == "primary", definition == "2 pooled hull") |>
+  mutate(
+    unprecedented = 1 - coverage,
+    record = factor(REC_LAB[version], levels = REC_LAB)
+  )
+
+ch_at <- function(scen, t0) {
+  ch_unprec |> filter(scenario == scen, .data$t0 == .env$t0) |> pull(unprecedented)
+}
+ch_pct_range <- function(v) {
+  r <- round(100 * range(v))
+  if (r[1] == r[2]) sprintf("%d%%", r[1]) else sprintf("%d-%d%%", r[1], r[2])
+}
+# SSP3-7.0 is read at the OLD edge of the plausible range (the strongest claim: even bogs this
+# old have not lived through it); SSP1-2.6 near the top of the core range, with a bracket
+# spanning the two records' points, because the quoted range IS the gap between them.
+ch_t0_370 <- T0_OUTER[2]
+ch_t0_126 <- 5
+ch_370 <- ch_at("SSP3-7.0", ch_t0_370)
+ch_126 <- ch_at("SSP1-2.6", ch_t0_126)
+ch_brk_x <- ch_t0_126 - 0.28 # reversed axis: smaller t0 is to the right of the points
+ch_brk_tick <- 0.12
+
+p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
+  geom_point(aes(colour = scenario, shape = record), size = 1.9, stroke = 0.6) +
+  ch_fog(-0.3, 10.3) +
+  ch_label(9.2, CH_LABEL_REL, "few bogs\nthis old") +
+  ch_label(0.5, CH_LABEL_REL, "few bogs\nthis young") +
+  annotate(
+    "segment",
+    x = ch_t0_370 - 1.7, xend = ch_t0_370 - 0.05,
+    y = 0.81, yend = min(ch_370) - 0.02,
+    linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
+  ) +
+  annotate(
+    "text",
+    x = ch_t0_370 - 2.5, y = 0.80, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    label = sprintf(
+      "Under SSP3-7.0, %s of bogs\nface a climate unprecedented\nfor any bog in the last %d ka",
+      ch_pct_range(ch_370), ch_t0_370
+    )
+  ) +
+  # Bracket: a vertical bar between the two records' points with ticks towards them, and a
+  # leader to the label in the empty lower right.
+  annotate(
+    "segment",
+    x = ch_brk_x, xend = ch_brk_x, y = min(ch_126), yend = max(ch_126),
+    linewidth = 0.3
+  ) +
+  annotate(
+    "segment",
+    x = ch_brk_x, xend = ch_brk_x + ch_brk_tick, y = range(ch_126), yend = range(ch_126),
+    linewidth = 0.3
+  ) +
+  annotate(
+    "segment",
+    x = ch_brk_x, xend = 3.75, y = mean(ch_126), yend = 0.245,
+    linewidth = 0.3
+  ) +
+  annotate(
+    "text",
+    x = 2.1, y = 0.225, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    label = sprintf(
+      "Under SSP1-2.6, %s of bogs\nface a climate unprecedented\nfor any bog in the last %d ka",
+      ch_pct_range(ch_126), ch_t0_126
+    )
+  ) +
+  scale_x_reverse(breaks = 0:10, expand = expansion(add = 0.3)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_colour_manual(values = SCEN_COL, name = NULL) +
+  scale_shape_manual(values = c(16, 17), name = NULL) +
+  guides(
+    colour = guide_legend(order = 1, override.aes = list(size = 2.5, shape = 15)),
+    shape = guide_legend(order = 2, override.aes = list(size = 2))
+  ) +
+  labs(
+    title = "B",
+    x = "Assumed bog age (fen-to-bog transition), t0 (ka)",
+    y = "Bog pixels facing an unprecedented climate"
+  ) +
+  theme_ms +
+  theme(legend.position = "bottom")
+
+save_fig(
+  p_ch_a + p_ch_b +
+    plot_layout(widths = c(1.15, 1), guides = "collect") &
+    theme(legend.position = "bottom"),
+  "fig_climatehistory", 7.5, 4.2
+)
+
+### Table: unprecedented share at the band edges ####
+
+# Same flip as panel B: % of bog pixels whose future climate lies outside the past range.
+ch_tbl_t0 <- c(0, T0_OUTER[1], T0_BAND[1], mean(T0_BAND), T0_BAND[2], T0_OUTER[2], 10)
+ch_rows <- tribble(
+  ~version, ~axes, ~definition, ~measure,
+  "delta", "primary", "2 pooled hull", "TraCE21k: outside any bog's past (bio10 x bio12)",
+  "epoch2", "primary", "2 pooled hull", "EPOCH-2: outside any bog's past (bio10 x bio12)",
+  "delta", "primary", "1 own past", "TraCE21k: warmer than its own past (bio10)",
+  "epoch2", "primary", "1 own past", "EPOCH-2: warmer than its own past (bio10)",
+  "delta", "primary", "3 pooled density", "sensitivity, TraCE21k: outside 95% density region",
+  "epoch2", "primary", "3 pooled density", "sensitivity, EPOCH-2: outside 95% density region",
+  "delta", "bio18", "2 pooled hull", "sensitivity, TraCE21k: hull on bio10 x bio18",
+  "raw", "primary", "2 pooled hull", "sensitivity, raw TraCE21k: hull",
+  "delta", "bio06", "1 own past", "sensitivity, TraCE21k: winter (bio06) warmer than own past"
+)
+ch_tbl_cov <- ch_cov |>
+  inner_join(ch_rows, by = c("version", "axes", "definition")) |>
+  filter(t0 %in% ch_tbl_t0) |>
+  transmute(scenario, measure, t0, value = round(100 * (1 - coverage), 1))
+ch_tbl_exc <- ch_pix |>
+  filter(t0 %in% ch_tbl_t0) |>
+  group_by(scenario, t0) |>
+  summarise(
+    `TraCE21k: median exceedance of warmest past slice, bio10 (°C)` = round(median(exceedance_bio10), 1),
+    `EPOCH-2: median exceedance of warmest past slice, bio10 (°C)` = round(median(exceedance_bio10_epoch2), 1),
+    .groups = "drop"
+  ) |>
+  pivot_longer(-c(scenario, t0), names_to = "measure", values_to = "value")
+ch_tbl <- bind_rows(ch_tbl_cov, ch_tbl_exc) |>
+  mutate(measure = factor(measure, levels = c(ch_rows$measure, unique(ch_tbl_exc$measure)))) |>
+  arrange(scenario, measure, t0) |>
+  pivot_wider(names_from = t0, values_from = value, names_prefix = "t0_")
+save_tbl(ch_tbl, "tbl_climatehistory")
+
+### Numbers for the text ####
+
+numbers$ch_n_pixels <- n_distinct(ch_pix$pixel)
+numbers$ch_n_gcm_cells <- n_distinct(ch_pix$gcm_cell)
+numbers$ch_max_pixels_one_gcm_cell <- max(table(distinct(ch_pix, pixel, gcm_cell)$gcm_cell))
+numbers$ch_n_low_elevation <- sum(distinct(ch_pix, pixel, low_elevation)$low_elevation)
+numbers$ch_n_no_icefree <- sum(distinct(ch_pix, pixel, icefree_ka)$icefree_ka == 0)
+numbers$ch_t0_band_lo <- T0_BAND[1]
+numbers$ch_t0_band_hi <- T0_BAND[2]
+numbers$ch_t0_outer_lo <- T0_OUTER[1]
+numbers$ch_t0_outer_hi <- T0_OUTER[2]
+numbers$ch_ssp126_t0_annot <- ch_t0_126
+numbers$ch_ssp370_t0_annot <- ch_t0_370
+numbers$ch_htm_trace_bio10_max <- ch_htm$median_htm_max_minus_t20[ch_htm$variable == "bio10"]
+numbers$ch_htm_trace_bio10_mean <- ch_htm$median_htm_mean_minus_t20[ch_htm$variable == "bio10"]
+numbers$ch_htm_epoch2_jja_max <- ch_htm$median_htm_max_minus_t20[grepl("EPOCH-2", ch_htm$variable)]
+numbers$ch_htm_epoch2_jja_mean <- ch_htm$median_htm_mean_minus_t20[grepl("EPOCH-2", ch_htm$variable)]
+numbers$ch_offset_bio12_ratio <- ch_offset$median_ratio_trace_over_chelsa[ch_offset$variable == "bio12"]
+numbers$ch_D_epoch2_median <- median(ch_baseline$D_epoch2)
+numbers$ch_D_trace_median <- median(ch_baseline$D_trace)
+for (ssp in names(SCEN_LAB)) {
+  lab <- SCEN_LAB[[ssp]]
+  for (rec in names(REC_LAB)) {
+    u <- ch_unprec |> filter(scenario == lab, version == rec)
+    key <- paste0("ch_", ssp, "_", rec)
+    numbers[[paste0(key, "_unprec_band_lo")]] <- u$unprecedented[u$t0 == T0_BAND[1]]
+    numbers[[paste0(key, "_unprec_band_mid")]] <- u$unprecedented[u$t0 == mean(T0_BAND)]
+    numbers[[paste0(key, "_unprec_band_hi")]] <- u$unprecedented[u$t0 == T0_BAND[2]]
+    # the t0 the figure annotates for this scenario, and the lowest share inside the outer range
+    numbers[[paste0(key, "_unprec_annot")]] <- u$unprecedented[u$t0 == numbers[[paste0("ch_", ssp, "_t0_annot")]]]
+    numbers[[paste0(key, "_unprec_min_outer")]] <- min(u$unprecedented[u$t0 <= T0_OUTER[2]])
+  }
+  # sensitivities at the old edge of the core band (S7 Table carries the full grid)
+  sens <- ch_cov |> filter(scenario == lab, t0 == T0_BAND[2])
+  numbers[[paste0("ch_", ssp, "_raw_unprec_band_hi")]] <-
+    1 - sens$coverage[sens$version == "raw" & sens$axes == "primary" & sens$definition == "2 pooled hull"]
+  numbers[[paste0("ch_", ssp, "_bio18_unprec_band_hi")]] <-
+    1 - sens$coverage[sens$version == "delta" & sens$axes == "bio18" & sens$definition == "2 pooled hull"]
+  hd <- ch_pix |> filter(scenario == lab)
+  numbers[[paste0("ch_", ssp, "_exceedance_trace_t0_mid")]] <- median(hd$exceedance_bio10[hd$t0 == mean(T0_BAND)])
+  numbers[[paste0("ch_", ssp, "_exceedance_epoch2_t0_mid")]] <- median(hd$exceedance_bio10_epoch2[hd$t0 == mean(T0_BAND)])
+  numbers[[paste0("ch_", ssp, "_ref_hull")]] <- ch_ref$coverage[ch_ref$scenario == lab & ch_ref$definition == "2 pooled hull"]
+}
+
 ## Fig 3 and Table 4: skill against warming beyond the training bogs ####
 
 ep <- readRDS("output/pl2/error_profiles.rds")
