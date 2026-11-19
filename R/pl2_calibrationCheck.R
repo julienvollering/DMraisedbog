@@ -24,6 +24,16 @@
 # is substituted for the current-climate value ("oob" below); the plain projection is kept
 # alongside ("projection") so the size of the effect is visible. Future values are always
 # the projection: no training row carries future climate.
+#
+# REFERENCE FIT. The production forest draws 3 x n_bog rows per tree without replacement
+# at equal class weight, so each tree takes ~98% of the bog rows and a bog row is OOB in
+# only ~1.5% of its 1,000 trees. OOB P(bog) at the mapped bogs then rests on a handful of
+# trees, and the 10th percentile used as the strict loss cut is coarse (0.556 = 5/9 on
+# 2026-10-07). The OOB values here come instead from a sidecar fit: the same call as
+# pl2_predict.R (same frame, same make.wt / make.size / swor recipe) with many more trees,
+# so it is the same estimator with the Monte-Carlo noise taken out. It is used only for
+# OOB values at training cells; the projection is still the production forest's.
+# plan_calibration_check.md, "Note 2026-11-19".
 
 library(readr)
 library(dplyr)
@@ -32,6 +42,7 @@ library(purrr)
 library(ggplot2)
 library(sf)
 library(terra)
+library(randomForestSRC)
 
 source("R/functions.R")
 source("R/config.R")
@@ -54,6 +65,17 @@ SWEEP <- c(0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 # Bins of balanced P(bog) for the reliability diagram.
 REL_BREAKS <- seq(0, 1, by = 0.1)
 
+# Cuts on balanced P(bog) for the persistence sweep in step C: how the share of present
+# bog that stays suitable depends on where the strict cut is put.
+PERSIST_CUTS <- seq(0.30, 0.70, by = 0.05)
+
+# Sidecar reference fit (see REFERENCE FIT above). At ~1.5% OOB per bog row, 13,000 trees
+# leave each bog row OOB in ~200. The diagnostic fit counts the actual OOB rate from the
+# in-bag record, which the production fit did not keep.
+REF_NTREE <- 13000
+REF_SEED <- -4242
+DIAG_NTREE <- 200
+
 record_settings(
   "R/pl2_calibrationCheck.R",
   otherpeat_min_artype60 = OTHERPEAT_MIN,
@@ -62,8 +84,12 @@ record_settings(
   odds_retained = ODDS_RETAINED,
   threshold_sweep = SWEEP,
   reliability_breaks = REL_BREAKS,
+  persistence_cuts = PERSIST_CUTS,
   prior_source = "Lyngstad footprint: bog share; non-bog split otherpeat:nonpeat by labelled counts",
-  current_probabilities = "OOB at Norwegian training cells, projection elsewhere"
+  current_probabilities = "OOB of the sidecar reference fit at Norwegian training cells, production projection elsewhere",
+  reference_ntree = REF_NTREE,
+  reference_seed = REF_SEED,
+  diagnostic_ntree = DIAG_NTREE
 )
 
 ## Load predictions ####
@@ -105,14 +131,68 @@ argmax <- function(M) {
 mf <- read_csv("output/pl2/modeling_frame_regional.csv", show_col_types = FALSE) |>
   filter(scenario == "current")
 model <- readRDS("output/pl2/model_production_brf.rds")
-oob <- model$predicted.oob[, RESPONSE_LEVELS]
+oob_prod <- model$predicted.oob[, RESPONSE_LEVELS]
+prod_xvars <- model$xvar.names
 # pl2_predict.R fits on the current rows of the frame in file order, so OOB rows line up.
 stopifnot(
-  nrow(oob) == nrow(mf),
+  nrow(oob_prod) == nrow(mf),
   identical(as.character(model$yvar), mf$response)
 )
 rm(model)
 gc()
+
+# The training frame exactly as pl2_predict.R builds it.
+train_df <- mf |>
+  select(-scenario, -x, -y) |>
+  mutate(response = factor(response, levels = RESPONSE_LEVELS)) |>
+  as.data.frame()
+predictor_names <- setdiff(names(train_df), c("response", "dataset"))
+train_df <- train_df[, c("response", predictor_names)]
+stopifnot(setequal(predictor_names, prod_xvars))
+
+fit_reference <- function(ntree, seed, membership = FALSE) {
+  rfsrc(
+    formula = response ~ .,
+    data = train_df,
+    ntree = ntree,
+    case.wt = randomForestSRC:::make.wt(train_df$response),
+    sampsize = randomForestSRC:::make.size(train_df$response),
+    importance = FALSE,
+    forest = FALSE,
+    membership = membership,
+    seed = seed
+  )
+}
+
+# Diagnostic: share of trees in which a row is OOB, by class, from the in-bag record.
+diag_fit <- fit_reference(DIAG_NTREE, REF_SEED - 1, membership = TRUE)
+oob_rate <- rowMeans(diag_fit$inbag == 0)
+rm(diag_fit)
+gc()
+
+t_ref <- Sys.time()
+ref_fit <- fit_reference(REF_NTREE, REF_SEED)
+cat(
+  "Reference fit,", REF_NTREE, "trees:",
+  round(as.numeric(difftime(Sys.time(), t_ref, units = "mins")), 1), "min\n"
+)
+oob <- ref_fit$predicted.oob[, RESPONSE_LEVELS]
+rm(ref_fit)
+gc()
+stopifnot(nrow(oob) == nrow(mf), !anyNA(oob))
+
+oob_trees <- tibble(response = train_df$response, oob_rate = oob_rate) |>
+  group_by(response) |>
+  summarise(
+    n_rows = n(),
+    oob_rate_mean = mean(oob_rate),
+    oob_rate_min = min(oob_rate),
+    oob_trees_production = oob_rate_mean * 1000,
+    oob_trees_reference = oob_rate_mean * REF_NTREE,
+    .groups = "drop"
+  )
+cat("\nShare of trees in which a training row is OOB (diagnostic fit):\n")
+print(as.data.frame(oob_trees), row.names = FALSE, digits = 3)
 
 no_rows <- which(mf$dataset == "NO")
 train_cell <- cellFromXY(pred, as.matrix(mf[no_rows, c("x", "y")]))
@@ -359,6 +439,32 @@ odds <- function(p) p / (1 - p)
 cat("\nC. Reference at mapped bog (OOB):\n")
 print(signif(ref, 4))
 
+# The same reference from the production forest's own OOB (~15 trees per bog row), to
+# show how much of the 2026-10-07 value was Monte-Carlo noise.
+fp_train_idx <- no_rows[match(fp$cell[at_mapped], train_cell)]
+stopifnot(!anyNA(fp_train_idx))
+ref_pbal_prod <- oob_prod[fp_train_idx, "bog"]
+ref_q <- c(0, 0.05, REF_PERCENTILE, 0.25, 0.5)
+bog_oob_rate <- oob_trees$oob_rate_mean[oob_trees$response == "bog"]
+ref_row <- function(source, ntree, pbog) {
+  tibble(
+    source = source,
+    ntree = ntree,
+    n_mapped_bog = length(pbog),
+    oob_trees_per_bog_row = bog_oob_rate * ntree,
+    !!!set_names(as.list(quantile(pbog, ref_q, names = FALSE)), paste0("q", ref_q * 100)),
+    share_at_1 = mean(pbog == 1)
+  )
+}
+reference_tbl <- bind_rows(
+  ref_row("reference fit", REF_NTREE, ref_pbal),
+  ref_row("production fit", 1000, ref_pbal_prod)
+)
+cat("\nOOB balanced P(bog) at mapped bogs, reference vs production fit:\n")
+print(as.data.frame(reference_tbl), row.names = FALSE, digits = 3)
+write_csv(oob_trees, "output/pl2/calibration_oob_trees.csv", append = FALSE)
+write_csv(reference_tbl, "output/pl2/calibration_reference.csv", append = FALSE)
+
 # Criteria, each a function of a probability matrix (rows = cells).
 criteria <- list(
   "class flip (argmax bog)" = function(M) argmax(M) == "bog",
@@ -464,6 +570,34 @@ agreement <- expand_grid(
 cat("\nAgreement between criteria (TRUE = still suitable):\n")
 print(as.data.frame(agreement), row.names = FALSE, digits = 4)
 write_csv(agreement, "output/pl2/scenario_comparison_criteria_agreement.csv", append = FALSE)
+
+# Persistence against the cut. Under SSP1-2.6 the share of present bog kept falls steeply
+# between cuts of 0.4 and 0.5 (notebook 2026-11-19), so the strict bound is quoted with
+# the sweep, not on the reference P10 alone.
+sweep_tbl <- expand_grid(population = names(pop_rows), scenario = SCEN$scenario) |>
+  pmap_dfr(function(population, scenario) {
+    rows <- pop_rows[[population]]
+    pb <- values_for(population, scenario, rows)[, "bog"]
+    tibble(
+      population = population,
+      scenario = scenario,
+      cut = c(PERSIST_CUTS, ref[["pbal_p"]]),
+      is_reference = c(rep(FALSE, length(PERSIST_CUTS)), TRUE),
+      n_population = length(rows),
+      cells_suitable = map_int(cut, ~ sum(pb >= .x)),
+      km2_suitable = cells_suitable * cell_km2,
+      pct_suitable = 100 * cells_suitable / length(rows),
+      max_pbog = max(pb)
+    )
+  })
+cat("\nShare of present-day bog with balanced P(bog) >= cut:\n")
+sweep_tbl |>
+  select(population, scenario, cut, pct_suitable) |>
+  mutate(cut = round(cut, 3)) |>
+  pivot_wider(names_from = cut, values_from = pct_suitable) |>
+  as.data.frame() |>
+  print(row.names = FALSE, digits = 3)
+write_csv(sweep_tbl, "output/pl2/scenario_comparison_criteria_sweep.csv", append = FALSE)
 
 # sessionInfo ####
 
