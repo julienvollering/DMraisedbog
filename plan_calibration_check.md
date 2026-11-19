@@ -155,3 +155,92 @@ rfsrc's sampler on the real class counts). So the prior shift's 1/3 holds. Each 
 of the bog rows, though, so a bog row is OOB in ~1.5% of trees (~15 of 1,000; estimate). The
 OOB reference at mapped bogs is coarse (quantiles 3/7, 5/9) and the P10 cut is noisy.
 `samptype = "swr"` or a smaller per-class sample would fix it; needs a refit, not done.
+
+## Note 2026-11-19: does the noisy P10 matter, and what a refit would cost
+
+**Sensitivity (read-only on the projections, no refit; throwaway script, not in the
+pipeline).** Share of today's argmax-bog cells over Norway (191,888) whose future balanced
+P(bog) is at or above a cut:
+
+| cut | 0.30 | 0.35 | 0.40 | 0.45 | 0.50 | 0.556 (P10) | 0.60 |
+|---|---|---|---|---|---|---|---|
+| SSP1-2.6 (%) | 34.4 | 18.9 | 10.6 | 3.9 | 0.44 | 0.005 | 0 |
+| SSP3-7.0 (%) | 0.58 | 0.03 | 0.002 | 0 | 0 | 0 | 0 |
+
+Under SSP1-2.6 the largest future P(bog) at any of these cells is 0.577 (99th percentile 0.488).
+So SSP3-7.0 is ~0 at every cut, and the SSP1-2.6 strict bound is ~0 for any reference cut above
+0.5. It moves only if the stable P10 lands in 0.40-0.50 (it would be 10.6% at 0.40, about the
+class-flip 12.8%). The current reference quantiles are q5 = 0.429 (3/7) and q10 = 0.556 (5/9),
+so the 10th percentile is computed from about 9 OOB trees, and that range is plausible.
+
+**Three ways to stabilise the reference, and what each touches.**
+
+1. *Sidecar fit for the reference only (recommended).* Same call as `pl2_predict.R` (same
+   `make.wt` / `make.size` / `swor`, same frame) with ntree ~13,000 (bog rows then OOB in ~200
+   trees), `importance = FALSE`, `forest = FALSE` (only `predicted.oob` is needed, which keeps
+   memory down), inside `pl2_calibrationCheck.R`. It is the same estimator as the production
+   forest, so its OOB P at bog rows is what the 1,000-tree forest would give with enough trees.
+   It touches only `pl2_calibrationCheck.R` and its outputs, plus the P10 rows in the ms. The
+   production model, maps, transitions, CV, ruler and AOA are unchanged. Cost: one fit, est.
+   tens of minutes.
+2. *Refit production with `samptype = "swr"`* (or a per-class sample of ~0.63 n_bog, `swor`).
+   Bog rows OOB in ~37% of trees. The in-bag prior stays equal (1/3 holds), but the learner
+   changes: each tree sees ~63% of the distinct bog rows, so the projection changes too.
+   Ripple: `pl2_predict.R` (~1.5 h) -> `pl2_interpret.R`, `pl2_compareScenarios.R`,
+   `pl2_calibrationCheck.R`, `ms/make_figures.R` (projection and scenario figures, domain
+   shares, VI figure) and every projection number in the ms (transitions, 104 polygons,
+   areas, S6 Table). For the CV skill and the ruler to describe the same learner, the recipe
+   would also have to change in `pl2_weightFeaturesDataPartitioning.R` (-> `pl2_freezeDIRuler.R`
+   -> DI / AOA) and `pl2_evaluate.R` (-> `pl2_fitErrorProfiles.R` -> `pl2_mapReliability.R`).
+   In effect all of pl2 except the modelling frame, the occupancy grid and the partitions
+   (pinned to bio10). Not worth it for one reference number.
+3. *Spatially held-out reference* (e.g. leave-one-Lyngstad-region-out with the production
+   recipe). Also removes the neighbour optimism that neither 1 nor 2 touches (a quarter of
+   mapped bogs have OOB P = 1 because neighbouring bog cells are in-bag). But the result is the
+   score of models that never saw the region, which is lower and partly an extrapolation score.
+   It would be a different quantity from the projection it thresholds. Possible as a
+   sensitivity row, not as the reference.
+
+Not affected by any option: pl0, the modelling frame, the partitions, the model-free occupancy
+grid.
+
+## Manuscript placement (prepared 2026-11-19, not yet written)
+
+The branch is merged with main (098c629), so `ms/ms.qmd` is current. Numbers to be read in the
+setup chunk from `output/pl2/scenario_comparison_criteria.csv` and
+`output/pl2/calibration_footprint.csv` (as `sc_cells` already is), never typed.
+
+1. **Methods, "The model"** (the paragraph on the rebalanced prior): add one sentence with the
+   footprint check. Inside the survey footprint, where raised bog is mapped completely
+   (prevalence 0.07%), the cells predicted raised bog cover ~137x the mapped area (precision
+   0.7%, recall 0.93, OOB at training cells). Hence argmax area is an area of bog-like
+   climate, not bog extent.
+2. **Methods, "Projection and reliability mapping"**: after "To compare the scenarios we
+   followed ...", define the strict criterion. A cell stays suitable if its future raised-bog
+   score is at least the 10th percentile of the OOB score at the mapped raised bogs today (a
+   percentile training-presence threshold), alongside the class-flip criterion. Cite Pearson
+   et al. 2007 / Radosavljevic & Anderson 2014 (verify; not yet in the .bib).
+3. **Results, "A milder scenario"**: after the polygon sentence, the bracket. Of today's
+   raised-bog cells, 12.8% stay raised bog by class under SSP1-2.6, and ~0% stay above the
+   strict cut. Under SSP3-7.0 none do by either criterion. Add one clause on cut sensitivity
+   (the SSP1-2.6 strict bound is ~0 for any cut above 0.5 and reaches the class-flip value only
+   near 0.40).
+4. **S6 Table caption**: replace "over-calls raised bog relative to its prevalence" with the
+   footprint ratio. Add a row "Of today's raised-bog cells, score >= P10 of mapped bogs (km²)".
+5. **New S7 Table**: criteria x scenario for the two populations (mapped bog in the footprint,
+   argmax bog over Norway). Rows: class flip and P10, plus the cut sweep. The minimum-presence
+   row and the expected-area rows are dropped (vacuous / inverted, see Results 2026-10-07).
+   Built by `ms/make_figures.R` into `ms/tables/`. The cut sweep moves from the throwaway
+   script into `pl2_calibrationCheck.R`.
+6. **Setup-chunk guards**: the class-flip rows equal `scenario_comparison_persistence_cells.csv`;
+   P10 keeps no cell that class flip drops; no criterion keeps a cell under SSP3-7.0 (the
+   prose says so).
+7. **Discussion TODO (v)** and the abstract skeleton: "still stand a chance" becomes a bracket
+   (12.8% by class, ~0% by the strict cut, of today's bog-like cells; 19% of polygons by class).
+8. **Before rendering**: `pl2_calibrationCheck.R` has no entry in `output/run_manifest.csv`
+   (it was run by hand), so rerun it through a sliced RUNALL after the edits above. That
+   records it, refreshes its outputs, and lets the setup-chunk freshness guard cover it. Then
+   rerun `ms/make_figures.R`.
+
+Depends on the refit decision: only the P10 value and the P10 rows (items 2-5, 7). Nothing
+else in the list changes.
