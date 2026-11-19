@@ -32,7 +32,11 @@ CRS <- 3035
 # keeps the data frames behind geom_raster to ~100k rows.
 AGG <- 8
 
-CLASS_LAB <- c(nonpeat = "non-peat", otherpeat = "other peatland", bog = "raised bog")
+CLASS_LAB <- c(
+  nonpeat = "non-peat",
+  otherpeat = "other peatland",
+  bog = "raised bog"
+)
 CLASS_COL <- c(
   "non-peat" = "#b8b8b8",
   "other peatland" = "#7fa8c9",
@@ -59,8 +63,12 @@ theme_map <- theme_ms +
 
 save_fig <- function(p, name, w, h) {
   ggsave(
-    file.path(FIG_DIR, paste0(name, ".png")), p,
-    width = w, height = h, dpi = 300, bg = "white"
+    file.path(FIG_DIR, paste0(name, ".png")),
+    p,
+    width = w,
+    height = h,
+    dpi = 300,
+    bg = "white"
   )
   cat("wrote", file.path(FIG_DIR, paste0(name, ".png")), "\n")
 }
@@ -74,7 +82,8 @@ numbers <- list()
 ## Spatial layers ####
 
 countries <- st_read(
-  "data/ne_50m_admin_0_countries/ne_50m_admin_0_countries.shp", quiet = TRUE
+  "data/ne_50m_admin_0_countries/ne_50m_admin_0_countries.shp",
+  quiet = TRUE
 ) |>
   st_transform(CRS)
 norway <- countries |> filter(ADM0_A3 == "NOR")
@@ -104,9 +113,24 @@ numbers$eu_domain_km2 <- as.numeric(sum(st_area(domain))) / 1e6
 bb_a <- st_bbox(st_union(st_union(st_geometry(domain)), no_bbox))
 pad <- 150000
 p1a <- ggplot() +
-  geom_sf(data = countries, fill = "grey96", colour = "grey70", linewidth = 0.15) +
-  geom_sf(data = domain, fill = "#dbe7d8", colour = "#2b6a3f", linewidth = 0.25) +
-  geom_sf(data = footprint, fill = "#f6dccb", colour = "#c1462c", linewidth = 0.25) +
+  geom_sf(
+    data = countries,
+    fill = "grey96",
+    colour = "grey70",
+    linewidth = 0.15
+  ) +
+  geom_sf(
+    data = domain,
+    fill = "#dbe7d8",
+    colour = "#2b6a3f",
+    linewidth = 0.25
+  ) +
+  geom_sf(
+    data = footprint,
+    fill = "#f6dccb",
+    colour = "#c1462c",
+    linewidth = 0.25
+  ) +
   geom_sf(data = eu_pres, colour = "#2b6a3f", size = 0.35) +
   geom_sf(data = bog_pts, colour = "#c1462c", size = 0.35) +
   coord_sf(
@@ -137,7 +161,17 @@ save_fig(p1a + p1b + plot_layout(widths = c(1.1, 1)), "fig_studyarea", 7.5, 4.6)
 
 mf <- read_csv(
   "output/pl2/modeling_frame_regional.csv",
-  col_select = c("scenario", "response", "dataset", "x", "y", "bio10", "gsp", "elevation", "slope"),
+  col_select = c(
+    "scenario",
+    "response",
+    "dataset",
+    "x",
+    "y",
+    "bio10",
+    "gsp",
+    "elevation",
+    "slope"
+  ),
   show_col_types = FALSE
 )
 train <- mf |> filter(scenario == "current")
@@ -151,7 +185,9 @@ future_xy <- mf |> filter(scenario == "future") |> select(x, y, bio10, gsp)
 # Same bound as MAX_PLAUSIBLE["gsp"] in R/config.R. The wettest real cells are ~6,000 mm.
 GSP_MAX_PLAUSIBLE <- 1e5
 numbers$gsp_nodata_rows_training <- sum(train$gsp > GSP_MAX_PLAUSIBLE)
-numbers$gsp_nodata_rows_training_bog <- sum(train$gsp > GSP_MAX_PLAUSIBLE & train$response == "bog")
+numbers$gsp_nodata_rows_training_bog <- sum(
+  train$gsp > GSP_MAX_PLAUSIBLE & train$response == "bog"
+)
 numbers$gsp_nodata_rows_future <- sum(future_xy$gsp > GSP_MAX_PLAUSIBLE)
 numbers$gsp_nodata_max_bio10 <- max(train$bio10[train$gsp > GSP_MAX_PLAUSIBLE])
 future_bog <- train |>
@@ -161,14 +197,28 @@ future_bog <- train |>
 
 # Frame-derived numbers quoted in the manuscript text.
 bog_tr <- train |> filter(response == "bog")
-bio10_summary <- function(d) c(min = min(d$bio10), med = median(d$bio10), max = max(d$bio10))
-numbers$no_bog_bio10_min <- bio10_summary(bog_tr |> filter(dataset == "NO"))[["min"]]
-numbers$no_bog_bio10_median <- bio10_summary(bog_tr |> filter(dataset == "NO"))[["med"]]
-numbers$no_bog_bio10_max <- bio10_summary(bog_tr |> filter(dataset == "NO"))[["max"]]
-numbers$eu_bog_bio10_min <- bio10_summary(bog_tr |> filter(dataset == "EU"))[["min"]]
-numbers$eu_bog_bio10_max <- bio10_summary(bog_tr |> filter(dataset == "EU"))[["max"]]
+bio10_summary <- function(d) {
+  c(min = min(d$bio10), med = median(d$bio10), max = max(d$bio10))
+}
+numbers$no_bog_bio10_min <- bio10_summary(bog_tr |> filter(dataset == "NO"))[[
+  "min"
+]]
+numbers$no_bog_bio10_median <- bio10_summary(
+  bog_tr |> filter(dataset == "NO")
+)[["med"]]
+numbers$no_bog_bio10_max <- bio10_summary(bog_tr |> filter(dataset == "NO"))[[
+  "max"
+]]
+numbers$eu_bog_bio10_min <- bio10_summary(bog_tr |> filter(dataset == "EU"))[[
+  "min"
+]]
+numbers$eu_bog_bio10_max <- bio10_summary(bog_tr |> filter(dataset == "EU"))[[
+  "max"
+]]
 numbers$no_train_bio10_max <- max(train$bio10[train$dataset == "NO"])
-numbers$eu_absence_bio10_max <- max(train$bio10[train$dataset == "EU" & train$response != "bog"])
+numbers$eu_absence_bio10_max <- max(train$bio10[
+  train$dataset == "EU" & train$response != "bog"
+])
 numbers$pooled_bog_bio10_max <- max(bog_tr$bio10)
 numbers$future_bog_bio10_min <- min(future_bog$bio10)
 numbers$future_bog_bio10_median <- median(future_bog$bio10)
@@ -180,8 +230,12 @@ numbers$warm18_n <- nrow(warm18)
 numbers$warm18_elevation_min <- min(warm18$elevation)
 numbers$warm18_elevation_max <- max(warm18$elevation)
 otherpeat <- train |> filter(response == "otherpeat")
-numbers$otherpeat_flat_share_NO <- mean(otherpeat$slope[otherpeat$dataset == "NO"] < 1)
-numbers$otherpeat_flat_share_EU <- mean(otherpeat$slope[otherpeat$dataset == "EU"] < 1)
+numbers$otherpeat_flat_share_NO <- mean(
+  otherpeat$slope[otherpeat$dataset == "NO"] < 1
+)
+numbers$otherpeat_flat_share_EU <- mean(
+  otherpeat$slope[otherpeat$dataset == "EU"] < 1
+)
 
 set.seed(42)
 bg <- train |>
@@ -202,17 +256,21 @@ pts <- bind_rows(
 p2a <- ggplot(pts, aes(bio10, gsp, colour = group)) +
   geom_point(
     data = ~ filter(.x, group %in% c("non-peat", "other peatland")),
-    size = 0.25, alpha = 0.25
+    size = 0.25,
+    alpha = 0.25
   ) +
   geom_point(
     data = ~ filter(.x, !group %in% c("non-peat", "other peatland")),
-    size = 0.45, alpha = 0.7
+    size = 0.45,
+    alpha = 0.7
   ) +
   geom_vline(xintercept = c(14, 16, 18), linetype = 3, colour = "grey40") +
   geom_hline(yintercept = c(500, 650), linetype = 3, colour = "grey40") +
   scale_colour_manual(values = CLASS_COL, name = NULL) +
   coord_cartesian(ylim = c(0, quantile(pts$gsp, 0.999))) +
-  guides(colour = guide_legend(override.aes = list(size = 2, alpha = 1), nrow = 2)) +
+  guides(
+    colour = guide_legend(override.aes = list(size = 2, alpha = 1), nrow = 2)
+  ) +
   labs(
     title = "A",
     x = "Mean temperature of the warmest quarter, bio10 (°C)",
@@ -234,17 +292,27 @@ occ <- read_csv("output/pl2/occupancy_grid.csv", show_col_types = FALSE) |>
 p2b <- ggplot(occ, aes(temp_band, moist_band)) +
   geom_tile(aes(fill = prevalence), colour = "white", linewidth = 0.8) +
   geom_text(
-    aes(label = sprintf(
-      "%.2f%% bog\n%d of %s\nfuture bogs: %.0f%%",
-      100 * prevalence, n_bog, format(n_train, big.mark = ","), pct_future_bog
-    )),
-    size = 2.4, lineheight = 0.9
+    aes(
+      label = sprintf(
+        "%.2f%% bog\n%d of %s\nfuture bogs: %.0f%%",
+        100 * prevalence,
+        n_bog,
+        format(n_train, big.mark = ","),
+        pct_future_bog
+      )
+    ),
+    size = 2.4,
+    lineheight = 0.9
   ) +
   scale_fill_gradient(
-    low = "#f7f7f7", high = "#2b6a3f", labels = scales::percent,
+    low = "#f7f7f7",
+    high = "#2b6a3f",
+    labels = scales::percent,
     name = "observed bog prevalence"
   ) +
-  guides(fill = guide_colourbar(title.position = "top", barwidth = unit(4, "cm"))) +
+  guides(
+    fill = guide_colourbar(title.position = "top", barwidth = unit(4, "cm"))
+  ) +
   labs(
     title = "B",
     x = "Mean temperature of the warmest quarter, bio10 (°C)",
@@ -253,13 +321,20 @@ p2b <- ggplot(occ, aes(temp_band, moist_band)) +
   theme_ms +
   theme(legend.position = "bottom")
 
-save_fig(p2a + p2b + plot_layout(widths = c(1.15, 1)), "fig_occupancy", 7.5, 4.4)
+save_fig(
+  p2a + p2b + plot_layout(widths = c(1.15, 1)),
+  "fig_occupancy",
+  7.5,
+  4.4
+)
 
 save_tbl(
   occ |>
     transmute(
-      bio10_band = temp_band, gsp_band = moist_band,
-      n_cells = n_train, n_bog = n_bog,
+      bio10_band = temp_band,
+      gsp_band = moist_band,
+      n_cells = n_train,
+      n_bog = n_bog,
       prevalence_pct = round(100 * prevalence, 2),
       share_eu_pct = round(100 * n_train_EU / n_train, 1),
       n_future_bog = n_future_bog,
@@ -290,18 +365,42 @@ SCEN_COL <- c("SSP3-7.0" = "#c1462c", "SSP1-2.6" = "#e39a3b")
 REC_LAB <- c(delta = "TraCE21k (model)", epoch2 = "EPOCH-2 (pollen)")
 REC_COL <- c(delta = "#2b6a3f", epoch2 = "#3b5f99")
 
-ch_series <- read_csv("output/pl2/climatehistory_series.csv", show_col_types = FALSE)
-ch_future <- read_csv("output/pl2/climatehistory_future.csv", show_col_types = FALSE) |>
+ch_series <- read_csv(
+  "output/pl2/climatehistory_series.csv",
+  show_col_types = FALSE
+)
+ch_future <- read_csv(
+  "output/pl2/climatehistory_future.csv",
+  show_col_types = FALSE
+) |>
   mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
-ch_cov <- read_csv("output/pl2/climatehistory_coverage.csv", show_col_types = FALSE) |>
+ch_cov <- read_csv(
+  "output/pl2/climatehistory_coverage.csv",
+  show_col_types = FALSE
+) |>
   mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
-ch_ref <- read_csv("output/pl2/climatehistory_reference.csv", show_col_types = FALSE) |>
+ch_ref <- read_csv(
+  "output/pl2/climatehistory_reference.csv",
+  show_col_types = FALSE
+) |>
   mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
-ch_pix <- read_csv("output/pl2/climatehistory_pixels.csv", show_col_types = FALSE) |>
+ch_pix <- read_csv(
+  "output/pl2/climatehistory_pixels.csv",
+  show_col_types = FALSE
+) |>
   mutate(scenario = factor(SCEN_LAB[scenario], levels = SCEN_LAB))
-ch_htm <- read_csv("output/pl2/climatehistory_htm_anomaly.csv", show_col_types = FALSE)
-ch_offset <- read_csv("output/pl2/climatehistory_offset.csv", show_col_types = FALSE)
-ch_baseline <- read_csv("output/pl2/climatehistory_baseline_offsets.csv", show_col_types = FALSE)
+ch_htm <- read_csv(
+  "output/pl2/climatehistory_htm_anomaly.csv",
+  show_col_types = FALSE
+)
+ch_offset <- read_csv(
+  "output/pl2/climatehistory_offset.csv",
+  show_col_types = FALSE
+)
+ch_baseline <- read_csv(
+  "output/pl2/climatehistory_baseline_offsets.csv",
+  show_col_types = FALSE
+)
 
 # Assumed bog age is shown as a white fog over the parts of an age axis that rest on
 # implausible bog ages, the same in both panels: full weight inside T0_BAND, fading to the
@@ -311,7 +410,8 @@ ch_weight <- function(t) {
   approx(
     c(0, T0_OUTER[1], T0_BAND[1], T0_BAND[2], T0_OUTER[2], 10),
     c(0.12, 0.35, 1, 1, 0.35, 0.12),
-    xout = t, rule = 2
+    xout = t,
+    rule = 2
   )$y
 }
 ch_fog <- function(from, to, step = 0.05) {
@@ -319,15 +419,25 @@ ch_fog <- function(from, to, step = 0.05) {
   w <- ch_weight(pmin(pmax(x0 + step / 2, 0), 10))
   annotate(
     "rect",
-    xmin = x0, xmax = x0 + step, ymin = -Inf, ymax = Inf,
-    fill = "white", alpha = 1 - w
+    xmin = x0,
+    xmax = x0 + step,
+    ymin = -Inf,
+    ymax = Inf,
+    fill = "white",
+    alpha = 1 - w
   )
 }
 ch_label <- function(x, y, label, colour = "grey45", fontface = "italic", ...) {
   annotate(
     "text",
-    x = x, y = y, label = label,
-    size = 2.4, colour = colour, fontface = fontface, lineheight = 0.9, ...
+    x = x,
+    y = y,
+    label = label,
+    size = 2.4,
+    colour = colour,
+    fontface = fontface,
+    lineheight = 0.9,
+    ...
   )
 }
 
@@ -340,7 +450,9 @@ ch_trace <- ch_series |> filter(record == "delta")
 ch_band <- ch_trace |>
   group_by(age_ka) |>
   summarise(
-    q05 = quantile(bio10, 0.05), med = median(bio10), q95 = quantile(bio10, 0.95),
+    q05 = quantile(bio10, 0.05),
+    med = median(bio10),
+    q95 = quantile(bio10, 0.95),
     .groups = "drop"
   )
 # EPOCH-2: per-slice median over the pixels, with the median of the pixels' own +/- 1 SE.
@@ -351,7 +463,9 @@ ch_epoch <- ch_series |>
 ch_fut_band <- ch_future |>
   group_by(scenario) |>
   summarise(
-    q05 = quantile(bio10, 0.05), med = median(bio10), q95 = quantile(bio10, 0.95),
+    q05 = quantile(bio10, 0.05),
+    med = median(bio10),
+    q95 = quantile(bio10, 0.95),
     .groups = "drop"
   ) |>
   mutate(x = c(-0.55, -1.15)[as.integer(scenario)])
@@ -360,42 +474,101 @@ ch_fut_band <- ch_future |>
 # each panel's data range (panel B runs 0-1).
 CH_LABEL_REL <- 0.68
 ch_a_range <- range(
-  ch_trace$bio10, ch_fut_band$q05, ch_fut_band$q95,
-  ch_epoch$med - ch_epoch$se, ch_epoch$med + ch_epoch$se
+  ch_trace$bio10,
+  ch_fut_band$q05,
+  ch_fut_band$q95,
+  ch_epoch$med - ch_epoch$se,
+  ch_epoch$med + ch_epoch$se
 )
 ch_a_label_y <- ch_a_range[1] + CH_LABEL_REL * diff(ch_a_range)
 
 p_ch_a <- ggplot() +
   geom_line(
-    data = ch_trace, aes(age_ka, bio10, group = pixel),
-    colour = REC_COL[["delta"]], alpha = 0.03, linewidth = 0.2
+    data = ch_trace,
+    aes(age_ka, bio10, group = pixel),
+    colour = REC_COL[["delta"]],
+    alpha = 0.03,
+    linewidth = 0.2
   ) +
-  geom_ribbon(data = ch_band, aes(age_ka, ymin = q05, ymax = q95), fill = REC_COL[["delta"]], alpha = 0.25) +
-  geom_line(data = ch_band, aes(age_ka, med), colour = REC_COL[["delta"]], linewidth = 0.7) +
-  geom_line(data = ch_epoch, aes(age_ka, med), colour = REC_COL[["epoch2"]], linewidth = 0.4, linetype = 2) +
+  geom_ribbon(
+    data = ch_band,
+    aes(age_ka, ymin = q05, ymax = q95),
+    fill = REC_COL[["delta"]],
+    alpha = 0.25
+  ) +
+  geom_line(
+    data = ch_band,
+    aes(age_ka, med),
+    colour = REC_COL[["delta"]],
+    linewidth = 0.7
+  ) +
+  geom_line(
+    data = ch_epoch,
+    aes(age_ka, med),
+    colour = REC_COL[["epoch2"]],
+    linewidth = 0.4,
+    linetype = 2
+  ) +
   geom_errorbar(
-    data = ch_epoch, aes(age_ka, ymin = med - se, ymax = med + se),
-    colour = REC_COL[["epoch2"]], width = 0.15, linewidth = 0.4
+    data = ch_epoch,
+    aes(age_ka, ymin = med - se, ymax = med + se),
+    colour = REC_COL[["epoch2"]],
+    width = 0.15,
+    linewidth = 0.4
   ) +
-  geom_point(data = ch_epoch, aes(age_ka, med), colour = REC_COL[["epoch2"]], shape = 17, size = 1.8) +
+  geom_point(
+    data = ch_epoch,
+    aes(age_ka, med),
+    colour = REC_COL[["epoch2"]],
+    shape = 17,
+    size = 1.8
+  ) +
   ch_fog(T0_BAND[2], 10.1) +
   ch_label(9, ch_a_label_y, "few bogs\nthis old") +
-  ch_label(4.5, min(ch_band$q05) - 0.45, REC_LAB[["delta"]], colour = REC_COL[["delta"]], fontface = "plain") +
   ch_label(
-    6.5, max(ch_epoch$med + ch_epoch$se) + 0.35, REC_LAB[["epoch2"]],
-    colour = REC_COL[["epoch2"]], fontface = "plain"
+    4.5,
+    min(ch_band$q05) - 0.45,
+    REC_LAB[["delta"]],
+    colour = REC_COL[["delta"]],
+    fontface = "plain"
+  ) +
+  ch_label(
+    6.5,
+    max(ch_epoch$med + ch_epoch$se) + 0.35,
+    REC_LAB[["epoch2"]],
+    colour = REC_COL[["epoch2"]],
+    fontface = "plain"
   ) +
   geom_linerange(
-    data = ch_fut_band, aes(x, ymin = q05, ymax = q95, colour = scenario),
-    linewidth = 1.6, show.legend = FALSE
+    data = ch_fut_band,
+    aes(x, ymin = q05, ymax = q95, colour = scenario),
+    linewidth = 1.6,
+    show.legend = FALSE
   ) +
-  geom_point(data = ch_fut_band, aes(x, med, colour = scenario), size = 1.6, show.legend = FALSE) +
-  annotate("text", x = -0.85, y = min(ch_fut_band$q05) - 0.35, label = "2071-\n2100", size = 2.3, lineheight = 0.85) +
-  scale_x_reverse(breaks = 0:10, limits = c(10.2, -1.45), expand = expansion(add = 0.1)) +
+  geom_point(
+    data = ch_fut_band,
+    aes(x, med, colour = scenario),
+    size = 1.6,
+    show.legend = FALSE
+  ) +
+  annotate(
+    "text",
+    x = -0.85,
+    y = min(ch_fut_band$q05) - 0.35,
+    label = "2071-\n2100",
+    size = 2.3,
+    lineheight = 0.85
+  ) +
+  scale_x_reverse(
+    breaks = 0:10,
+    limits = c(10.2, -1.45),
+    expand = expansion(add = 0.1)
+  ) +
   scale_colour_manual(values = SCEN_COL, name = NULL) +
   labs(
     title = "A",
-    x = "Time (ka)", y = "Mean temperature of the warmest quarter, bio10 (°C)"
+    x = "Time (ka)",
+    y = "Mean temperature of the warmest quarter, bio10 (°C)"
   ) +
   theme_ms +
   theme(legend.position = "bottom")
@@ -408,14 +581,20 @@ p_ch_a <- ggplot() +
 # the table. Points rather than lines: t0 is a grid of assumptions, not a time series. Both
 # ends are fogged here, because the x-axis IS the assumed bog age.
 ch_unprec <- ch_cov |>
-  filter(version %in% names(REC_LAB), axes == "primary", definition == "2 pooled hull") |>
+  filter(
+    version %in% names(REC_LAB),
+    axes == "primary",
+    definition == "2 pooled hull"
+  ) |>
   mutate(
     unprecedented = 1 - coverage,
     record = factor(REC_LAB[version], levels = REC_LAB)
   )
 
 ch_at <- function(scen, t0) {
-  ch_unprec |> filter(scenario == scen, .data$t0 == .env$t0) |> pull(unprecedented)
+  ch_unprec |>
+    filter(scenario == scen, .data$t0 == .env$t0) |>
+    pull(unprecedented)
 }
 ch_pct_range <- function(v) {
   r <- round(100 * range(v))
@@ -438,41 +617,65 @@ p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
   ch_label(0.5, CH_LABEL_REL, "few bogs\nthis young") +
   annotate(
     "segment",
-    x = ch_t0_370 - 1.7, xend = ch_t0_370 - 0.05,
-    y = 0.81, yend = min(ch_370) - 0.02,
-    linewidth = 0.3, arrow = arrow(length = unit(0.12, "cm"))
+    x = ch_t0_370 - 1.7,
+    xend = ch_t0_370 - 0.05,
+    y = 0.81,
+    yend = min(ch_370) - 0.02,
+    linewidth = 0.3,
+    arrow = arrow(length = unit(0.12, "cm"))
   ) +
   annotate(
     "text",
-    x = ch_t0_370 - 2.5, y = 0.80, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    x = ch_t0_370 - 2.5,
+    y = 0.80,
+    hjust = 0.5,
+    vjust = 1,
+    size = 2.4,
+    lineheight = 0.9,
     label = sprintf(
       "Under SSP3-7.0, %s of bogs\nface a climate unprecedented\nfor any bog in the last %d ka",
-      ch_pct_range(ch_370), ch_t0_370
+      ch_pct_range(ch_370),
+      ch_t0_370
     )
   ) +
   # Bracket: a vertical bar between the two records' points with ticks towards them, and a
   # leader to the label in the empty lower right.
   annotate(
     "segment",
-    x = ch_brk_x, xend = ch_brk_x, y = min(ch_126), yend = max(ch_126),
+    x = ch_brk_x,
+    xend = ch_brk_x,
+    y = min(ch_126),
+    yend = max(ch_126),
     linewidth = 0.3
   ) +
   annotate(
     "segment",
-    x = ch_brk_x, xend = ch_brk_x + ch_brk_tick, y = range(ch_126), yend = range(ch_126),
+    x = ch_brk_x,
+    xend = ch_brk_x + ch_brk_tick,
+    y = range(ch_126),
+    yend = range(ch_126),
     linewidth = 0.3
   ) +
   annotate(
     "segment",
-    x = ch_brk_x, xend = 3.75, y = mean(ch_126), yend = 0.245,
+    x = ch_brk_x,
+    xend = 3.75,
+    y = mean(ch_126),
+    yend = 0.245,
     linewidth = 0.3
   ) +
   annotate(
     "text",
-    x = 2.1, y = 0.225, hjust = 0.5, vjust = 1, size = 2.4, lineheight = 0.9,
+    x = 2.1,
+    y = 0.225,
+    hjust = 0.5,
+    vjust = 1,
+    size = 2.4,
+    lineheight = 0.9,
     label = sprintf(
       "Under SSP1-2.6, %s of bogs\nface a climate unprecedented\nfor any bog in the last %d ka",
-      ch_pct_range(ch_126), ch_t0_126
+      ch_pct_range(ch_126),
+      ch_t0_126
     )
   ) +
   scale_x_reverse(breaks = 0:10, expand = expansion(add = 0.3)) +
@@ -480,7 +683,10 @@ p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
   scale_colour_manual(values = SCEN_COL, name = NULL) +
   scale_shape_manual(values = c(16, 17), name = NULL) +
   guides(
-    colour = guide_legend(order = 1, override.aes = list(size = 2.5, shape = 15)),
+    colour = guide_legend(
+      order = 1,
+      override.aes = list(size = 2.5, shape = 15)
+    ),
     shape = guide_legend(order = 2, override.aes = list(size = 2))
   ) +
   labs(
@@ -492,27 +698,38 @@ p_ch_b <- ggplot(ch_unprec, aes(t0, unprecedented)) +
   theme(legend.position = "bottom")
 
 save_fig(
-  p_ch_a + p_ch_b +
+  p_ch_a +
+    p_ch_b +
     plot_layout(widths = c(1.15, 1), guides = "collect") &
     theme(legend.position = "bottom"),
-  "fig_climatehistory", 7.5, 4.2
+  "fig_climatehistory",
+  7.5,
+  4.2
 )
 
 ### Table: unprecedented share at the band edges ####
 
 # Same flip as panel B: % of bog pixels whose future climate lies outside the past range.
-ch_tbl_t0 <- c(0, T0_OUTER[1], T0_BAND[1], mean(T0_BAND), T0_BAND[2], T0_OUTER[2], 10)
+ch_tbl_t0 <- c(
+  0,
+  T0_OUTER[1],
+  T0_BAND[1],
+  mean(T0_BAND),
+  T0_BAND[2],
+  T0_OUTER[2],
+  10
+)
 ch_rows <- tribble(
-  ~version, ~axes, ~definition, ~measure,
-  "delta", "primary", "2 pooled hull", "TraCE21k: outside any bog's past (bio10 x bio12)",
-  "epoch2", "primary", "2 pooled hull", "EPOCH-2: outside any bog's past (bio10 x bio12)",
-  "delta", "primary", "1 own past", "TraCE21k: warmer than its own past (bio10)",
-  "epoch2", "primary", "1 own past", "EPOCH-2: warmer than its own past (bio10)",
-  "delta", "primary", "3 pooled density", "sensitivity, TraCE21k: outside 95% density region",
-  "epoch2", "primary", "3 pooled density", "sensitivity, EPOCH-2: outside 95% density region",
-  "delta", "bio18", "2 pooled hull", "sensitivity, TraCE21k: hull on bio10 x bio18",
-  "raw", "primary", "2 pooled hull", "sensitivity, raw TraCE21k: hull",
-  "delta", "bio06", "1 own past", "sensitivity, TraCE21k: winter (bio06) warmer than own past"
+  ~version , ~axes     , ~definition        , ~measure                                                     ,
+  "delta"  , "primary" , "2 pooled hull"    , "TraCE21k: outside any bog's past (bio10 x bio12)"           ,
+  "epoch2" , "primary" , "2 pooled hull"    , "EPOCH-2: outside any bog's past (bio10 x bio12)"            ,
+  "delta"  , "primary" , "1 own past"       , "TraCE21k: warmer than its own past (bio10)"                 ,
+  "epoch2" , "primary" , "1 own past"       , "EPOCH-2: warmer than its own past (bio10)"                  ,
+  "delta"  , "primary" , "3 pooled density" , "sensitivity, TraCE21k: outside 95% density region"          ,
+  "epoch2" , "primary" , "3 pooled density" , "sensitivity, EPOCH-2: outside 95% density region"           ,
+  "delta"  , "bio18"   , "2 pooled hull"    , "sensitivity, TraCE21k: hull on bio10 x bio18"               ,
+  "raw"    , "primary" , "2 pooled hull"    , "sensitivity, raw TraCE21k: hull"                            ,
+  "delta"  , "bio06"   , "1 own past"       , "sensitivity, TraCE21k: winter (bio06) warmer than own past"
 )
 ch_tbl_cov <- ch_cov |>
   inner_join(ch_rows, by = c("version", "axes", "definition")) |>
@@ -522,13 +739,24 @@ ch_tbl_exc <- ch_pix |>
   filter(t0 %in% ch_tbl_t0) |>
   group_by(scenario, t0) |>
   summarise(
-    `TraCE21k: median exceedance of warmest past slice, bio10 (°C)` = round(median(exceedance_bio10), 1),
-    `EPOCH-2: median exceedance of warmest past slice, bio10 (°C)` = round(median(exceedance_bio10_epoch2), 1),
+    `TraCE21k: median exceedance of warmest past slice, bio10 (°C)` = round(
+      median(exceedance_bio10),
+      1
+    ),
+    `EPOCH-2: median exceedance of warmest past slice, bio10 (°C)` = round(
+      median(exceedance_bio10_epoch2),
+      1
+    ),
     .groups = "drop"
   ) |>
   pivot_longer(-c(scenario, t0), names_to = "measure", values_to = "value")
 ch_tbl <- bind_rows(ch_tbl_cov, ch_tbl_exc) |>
-  mutate(measure = factor(measure, levels = c(ch_rows$measure, unique(ch_tbl_exc$measure)))) |>
+  mutate(
+    measure = factor(
+      measure,
+      levels = c(ch_rows$measure, unique(ch_tbl_exc$measure))
+    )
+  ) |>
   arrange(scenario, measure, t0) |>
   pivot_wider(names_from = t0, values_from = value, names_prefix = "t0_")
 save_tbl(ch_tbl, "tbl_climatehistory")
@@ -537,20 +765,38 @@ save_tbl(ch_tbl, "tbl_climatehistory")
 
 numbers$ch_n_pixels <- n_distinct(ch_pix$pixel)
 numbers$ch_n_gcm_cells <- n_distinct(ch_pix$gcm_cell)
-numbers$ch_max_pixels_one_gcm_cell <- max(table(distinct(ch_pix, pixel, gcm_cell)$gcm_cell))
-numbers$ch_n_low_elevation <- sum(distinct(ch_pix, pixel, low_elevation)$low_elevation)
-numbers$ch_n_no_icefree <- sum(distinct(ch_pix, pixel, icefree_ka)$icefree_ka == 0)
+numbers$ch_max_pixels_one_gcm_cell <- max(table(
+  distinct(ch_pix, pixel, gcm_cell)$gcm_cell
+))
+numbers$ch_n_low_elevation <- sum(
+  distinct(ch_pix, pixel, low_elevation)$low_elevation
+)
+numbers$ch_n_no_icefree <- sum(
+  distinct(ch_pix, pixel, icefree_ka)$icefree_ka == 0
+)
 numbers$ch_t0_band_lo <- T0_BAND[1]
 numbers$ch_t0_band_hi <- T0_BAND[2]
 numbers$ch_t0_outer_lo <- T0_OUTER[1]
 numbers$ch_t0_outer_hi <- T0_OUTER[2]
 numbers$ch_ssp126_t0_annot <- ch_t0_126
 numbers$ch_ssp370_t0_annot <- ch_t0_370
-numbers$ch_htm_trace_bio10_max <- ch_htm$median_htm_max_minus_t20[ch_htm$variable == "bio10"]
-numbers$ch_htm_trace_bio10_mean <- ch_htm$median_htm_mean_minus_t20[ch_htm$variable == "bio10"]
-numbers$ch_htm_epoch2_jja_max <- ch_htm$median_htm_max_minus_t20[grepl("EPOCH-2", ch_htm$variable)]
-numbers$ch_htm_epoch2_jja_mean <- ch_htm$median_htm_mean_minus_t20[grepl("EPOCH-2", ch_htm$variable)]
-numbers$ch_offset_bio12_ratio <- ch_offset$median_ratio_trace_over_chelsa[ch_offset$variable == "bio12"]
+numbers$ch_htm_trace_bio10_max <- ch_htm$median_htm_max_minus_t20[
+  ch_htm$variable == "bio10"
+]
+numbers$ch_htm_trace_bio10_mean <- ch_htm$median_htm_mean_minus_t20[
+  ch_htm$variable == "bio10"
+]
+numbers$ch_htm_epoch2_jja_max <- ch_htm$median_htm_max_minus_t20[grepl(
+  "EPOCH-2",
+  ch_htm$variable
+)]
+numbers$ch_htm_epoch2_jja_mean <- ch_htm$median_htm_mean_minus_t20[grepl(
+  "EPOCH-2",
+  ch_htm$variable
+)]
+numbers$ch_offset_bio12_ratio <- ch_offset$median_ratio_trace_over_chelsa[
+  ch_offset$variable == "bio12"
+]
 numbers$ch_D_epoch2_median <- median(ch_baseline$D_epoch2)
 numbers$ch_D_trace_median <- median(ch_baseline$D_trace)
 for (ssp in names(SCEN_LAB)) {
@@ -558,23 +804,53 @@ for (ssp in names(SCEN_LAB)) {
   for (rec in names(REC_LAB)) {
     u <- ch_unprec |> filter(scenario == lab, version == rec)
     key <- paste0("ch_", ssp, "_", rec)
-    numbers[[paste0(key, "_unprec_band_lo")]] <- u$unprecedented[u$t0 == T0_BAND[1]]
-    numbers[[paste0(key, "_unprec_band_mid")]] <- u$unprecedented[u$t0 == mean(T0_BAND)]
-    numbers[[paste0(key, "_unprec_band_hi")]] <- u$unprecedented[u$t0 == T0_BAND[2]]
+    numbers[[paste0(key, "_unprec_band_lo")]] <- u$unprecedented[
+      u$t0 == T0_BAND[1]
+    ]
+    numbers[[paste0(key, "_unprec_band_mid")]] <- u$unprecedented[
+      u$t0 == mean(T0_BAND)
+    ]
+    numbers[[paste0(key, "_unprec_band_hi")]] <- u$unprecedented[
+      u$t0 == T0_BAND[2]
+    ]
     # the t0 the figure annotates for this scenario, and the lowest share inside the outer range
-    numbers[[paste0(key, "_unprec_annot")]] <- u$unprecedented[u$t0 == numbers[[paste0("ch_", ssp, "_t0_annot")]]]
-    numbers[[paste0(key, "_unprec_min_outer")]] <- min(u$unprecedented[u$t0 <= T0_OUTER[2]])
+    numbers[[paste0(key, "_unprec_annot")]] <- u$unprecedented[
+      u$t0 == numbers[[paste0("ch_", ssp, "_t0_annot")]]
+    ]
+    numbers[[paste0(key, "_unprec_min_outer")]] <- min(u$unprecedented[
+      u$t0 <= T0_OUTER[2]
+    ])
   }
   # sensitivities at the old edge of the core band (S7 Table carries the full grid)
   sens <- ch_cov |> filter(scenario == lab, t0 == T0_BAND[2])
   numbers[[paste0("ch_", ssp, "_raw_unprec_band_hi")]] <-
-    1 - sens$coverage[sens$version == "raw" & sens$axes == "primary" & sens$definition == "2 pooled hull"]
+    1 -
+    sens$coverage[
+      sens$version == "raw" &
+        sens$axes == "primary" &
+        sens$definition == "2 pooled hull"
+    ]
   numbers[[paste0("ch_", ssp, "_bio18_unprec_band_hi")]] <-
-    1 - sens$coverage[sens$version == "delta" & sens$axes == "bio18" & sens$definition == "2 pooled hull"]
+    1 -
+    sens$coverage[
+      sens$version == "delta" &
+        sens$axes == "bio18" &
+        sens$definition == "2 pooled hull"
+    ]
   hd <- ch_pix |> filter(scenario == lab)
-  numbers[[paste0("ch_", ssp, "_exceedance_trace_t0_mid")]] <- median(hd$exceedance_bio10[hd$t0 == mean(T0_BAND)])
-  numbers[[paste0("ch_", ssp, "_exceedance_epoch2_t0_mid")]] <- median(hd$exceedance_bio10_epoch2[hd$t0 == mean(T0_BAND)])
-  numbers[[paste0("ch_", ssp, "_ref_hull")]] <- ch_ref$coverage[ch_ref$scenario == lab & ch_ref$definition == "2 pooled hull"]
+  numbers[[paste0(
+    "ch_",
+    ssp,
+    "_exceedance_trace_t0_mid"
+  )]] <- median(hd$exceedance_bio10[hd$t0 == mean(T0_BAND)])
+  numbers[[paste0(
+    "ch_",
+    ssp,
+    "_exceedance_epoch2_t0_mid"
+  )]] <- median(hd$exceedance_bio10_epoch2[hd$t0 == mean(T0_BAND)])
+  numbers[[paste0("ch_", ssp, "_ref_hull")]] <- ch_ref$coverage[
+    ch_ref$scenario == lab & ch_ref$definition == "2 pooled hull"
+  ]
 }
 
 ## Fig 3 and Table 4: skill against warming beyond the training bogs ####
@@ -591,11 +867,26 @@ stopifnot(
   as.numeric(global(rel_fut[["offset"]], "notNA")) > 0,
   as.numeric(global(rel_cur[["offset"]], "notNA")) > 0
 )
-lyng_off_fut <- terra::extract(rel_fut[["offset"]], vect(bogs), fun = mean, na.rm = TRUE)$offset
-lyng_off_cur <- terra::extract(rel_cur[["offset"]], vect(bogs), fun = mean, na.rm = TRUE)$offset
+lyng_off_fut <- terra::extract(
+  rel_fut[["offset"]],
+  vect(bogs),
+  fun = mean,
+  na.rm = TRUE
+)$offset
+lyng_off_cur <- terra::extract(
+  rel_cur[["offset"]],
+  vect(bogs),
+  fun = mean,
+  na.rm = TRUE
+)$offset
 rel_mild <- rast("output/pl2/reliability_future_ssp126.tif")
 stopifnot(as.numeric(global(rel_mild[["offset"]], "notNA")) > 0)
-lyng_off_mild <- terra::extract(rel_mild[["offset"]], vect(bogs), fun = mean, na.rm = TRUE)$offset
+lyng_off_mild <- terra::extract(
+  rel_mild[["offset"]],
+  vect(bogs),
+  fun = mean,
+  na.rm = TRUE
+)$offset
 
 numbers$axis_ref_bio10 <- axis_ref
 numbers$bog_edge_offset <- bog_edge
@@ -603,11 +894,17 @@ numbers$lyngstad_offset_future_q10 <- quantile(lyng_off_fut, 0.10, na.rm = TRUE)
 numbers$lyngstad_offset_future_median <- median(lyng_off_fut, na.rm = TRUE)
 numbers$lyngstad_offset_future_q90 <- quantile(lyng_off_fut, 0.90, na.rm = TRUE)
 numbers$lyngstad_offset_current_median <- median(lyng_off_cur, na.rm = TRUE)
-numbers$lyngstad_share_beyond_bog_edge <- mean(lyng_off_fut > bog_edge, na.rm = TRUE)
+numbers$lyngstad_share_beyond_bog_edge <- mean(
+  lyng_off_fut > bog_edge,
+  na.rm = TRUE
+)
 numbers$lyngstad_offset_mild_q10 <- quantile(lyng_off_mild, 0.10, na.rm = TRUE)
 numbers$lyngstad_offset_mild_median <- median(lyng_off_mild, na.rm = TRUE)
 numbers$lyngstad_offset_mild_q90 <- quantile(lyng_off_mild, 0.90, na.rm = TRUE)
-numbers$lyngstad_share_beyond_bog_edge_mild <- mean(lyng_off_mild > bog_edge, na.rm = TRUE)
+numbers$lyngstad_share_beyond_bog_edge_mild <- mean(
+  lyng_off_mild > bog_edge,
+  na.rm = TRUE
+)
 numbers$aoa_threshold <- ep$aoa_threshold
 
 metric_lab <- c(
@@ -633,27 +930,45 @@ offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
     filter(metric %in% metrics) |>
     mutate(metric = factor(metric_lab[metric], levels = metric_lab[metrics]))
   ggplot(d, aes(axis_median, estimate, colour = metric, fill = metric)) +
-    annotate("rect",
+    annotate(
+      "rect",
       xmin = quantile(lyng_off_fut, 0.1, na.rm = TRUE),
       xmax = quantile(lyng_off_fut, 0.9, na.rm = TRUE),
-      ymin = -Inf, ymax = Inf, fill = SCEN_COL[["SSP3-7.0"]], alpha = 0.18
+      ymin = -Inf,
+      ymax = Inf,
+      fill = SCEN_COL[["SSP3-7.0"]],
+      alpha = 0.18
     ) +
-    annotate("rect",
+    annotate(
+      "rect",
       xmin = quantile(lyng_off_mild, 0.1, na.rm = TRUE),
       xmax = quantile(lyng_off_mild, 0.9, na.rm = TRUE),
-      ymin = -Inf, ymax = Inf, fill = SCEN_COL[["SSP1-2.6"]], alpha = 0.25
+      ymin = -Inf,
+      ymax = Inf,
+      fill = SCEN_COL[["SSP1-2.6"]],
+      alpha = 0.25
     ) +
-    annotate("text",
+    annotate(
+      "text",
       x = mean(quantile(lyng_off_fut, c(0.1, 0.9), na.rm = TRUE)),
       y = ylim[1] + 0.01 * diff(ylim),
-      label = "mapped bogs\nSSP3-7.0", hjust = 0.5, vjust = 0,
-      size = 2.1, lineheight = 0.9, colour = "grey25"
+      label = "mapped bogs\nSSP3-7.0",
+      hjust = 0.5,
+      vjust = 0,
+      size = 2.1,
+      lineheight = 0.9,
+      colour = "grey25"
     ) +
-    annotate("text",
+    annotate(
+      "text",
       x = mean(quantile(lyng_off_mild, c(0.1, 0.9), na.rm = TRUE)),
       y = ylim[1] + 0.01 * diff(ylim),
-      label = "mapped bogs\nSSP1-2.6", hjust = 0.5, vjust = 0,
-      size = 2.1, lineheight = 0.9, colour = "grey25"
+      label = "mapped bogs\nSSP1-2.6",
+      hjust = 0.5,
+      vjust = 0,
+      size = 2.1,
+      lineheight = 0.9,
+      colour = "grey25"
     ) +
     geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, colour = NA) +
     geom_line(linewidth = 0.7) +
@@ -673,13 +988,18 @@ offset_panel <- function(metrics, title, ylab, ylim = c(0, 1)) {
     theme(legend.position = "bottom")
 }
 
-p3a <- offset_panel(c("recall_bog", "fpr_bog"), "A", "proportion of held-out cells called raised bog")
+p3a <- offset_panel(
+  c("recall_bog", "fpr_bog"),
+  "A",
+  "proportion of held-out cells called raised bog"
+)
 p3b <- offset_panel(c("auc_bog", "macro_auc"), "B", "AUC", ylim = c(0.5, 1))
 save_fig(p3a + p3b, "fig_skill_offset", 7.5, 3.8)
 
 fmt_ci <- function(est, lo, hi) {
   ifelse(
-    is.na(lo), sprintf("%.2f", est),
+    is.na(lo),
+    sprintf("%.2f", est),
     sprintf("%.2f (%.2f-%.2f)", est, lo, hi)
   )
 }
@@ -692,8 +1012,18 @@ tbl_bins <- ci |>
     offset_range = sprintf("%+.1f to %+.1f", axis_lo, axis_hi),
     offset_median = sprintf("%+.2f", axis_median)
   ) |>
-  select(bin, offset_range, offset_median, n, n_bog, n_folds,
-         recall_bog, fpr_bog, auc_bog, macro_auc)
+  select(
+    bin,
+    offset_range,
+    offset_median,
+    n,
+    n_bog,
+    n_folds,
+    recall_bog,
+    fpr_bog,
+    auc_bog,
+    macro_auc
+  )
 save_tbl(tbl_bins, "tbl_offset_bins")
 
 ## Fig 4: projected class probabilities over Norway ####
@@ -703,10 +1033,16 @@ pred <- rast("output/pl2/rf_local_pred_brf.tif") |>
 pred_df <- as.data.frame(pred, xy = TRUE) |>
   mutate(
     current_class = c("nonpeat", "otherpeat", "bog")[
-      max.col(cbind(current_nonpeat, current_otherpeat, current_bog), ties.method = "first")
+      max.col(
+        cbind(current_nonpeat, current_otherpeat, current_bog),
+        ties.method = "first"
+      )
     ],
     future_class = c("nonpeat", "otherpeat", "bog")[
-      max.col(cbind(future_nonpeat, future_otherpeat, future_bog), ties.method = "first")
+      max.col(
+        cbind(future_nonpeat, future_otherpeat, future_bog),
+        ties.method = "first"
+      )
     ],
     current_class = factor(CLASS_LAB[current_class], levels = CLASS_LAB),
     future_class = factor(CLASS_LAB[future_class], levels = CLASS_LAB)
@@ -724,15 +1060,21 @@ prob_map <- function(col, title) {
 class_map <- function(col, title) {
   ggplot() +
     geom_raster(data = pred_df, aes(x, y, fill = .data[[col]])) +
-    scale_fill_manual(values = CLASS_COL, name = "majority class", drop = FALSE) +
+    scale_fill_manual(
+      values = CLASS_COL,
+      name = "majority class",
+      drop = FALSE
+    ) +
     geom_sf(data = footprint, fill = NA, colour = "black", linewidth = 0.2) +
     coord_sf(expand = FALSE) +
     labs(title = title) +
     theme_map
 }
 
-p4 <- (prob_map("current_bog", "A  1981-2010") | prob_map("future_bog", "B  2071-2100")) /
-  (class_map("current_class", "C  1981-2010") | class_map("future_class", "D  2071-2100")) +
+p4 <- (prob_map("current_bog", "A  1981-2010") |
+  prob_map("future_bog", "B  2071-2100")) /
+  (class_map("current_class", "C  1981-2010") |
+    class_map("future_class", "D  2071-2100")) +
   plot_layout(guides = "collect") &
   theme(legend.position = "right")
 save_fig(p4, "fig_projection", 7.5, 8.2)
@@ -747,7 +1089,11 @@ class_share <- bind_rows(lapply(c("current", "future"), function(scn) {
   tibble(
     scenario = scn,
     class = c("nonpeat", "otherpeat", "bog"),
-    mean_probability = unname(unlist(global(pred250[[lyr]], "mean", na.rm = TRUE))),
+    mean_probability = unname(unlist(global(
+      pred250[[lyr]],
+      "mean",
+      na.rm = TRUE
+    ))),
     majority_share = n$count[match(1:3, n$value)] / sum(n$count)
   )
 })) |>
@@ -756,7 +1102,11 @@ save_tbl(class_share, "tbl_domain_class_share")
 
 ## Fig 5 and Table 5: change at the Lyngstad raised bogs ####
 
-lyng_pred <- st_read("output/pl2/lyngstad_predictions.gpkg", layer = "brf", quiet = TRUE)
+lyng_pred <- st_read(
+  "output/pl2/lyngstad_predictions.gpkg",
+  layer = "brf",
+  quiet = TRUE
+)
 lyng_pts <- lyng_pred |>
   mutate(geom = st_centroid(st_geometry(lyng_pred))) |>
   st_set_geometry("geom")
@@ -774,18 +1124,34 @@ p5a <- ggplot(lyng_pred, aes(prob_bog_current, prob_bog_future)) +
 
 norway_crop <- st_crop(norway, st_bbox(no_grid))
 p5b <- ggplot() +
-  geom_sf(data = norway_crop, fill = "grey95", colour = "grey60", linewidth = 0.2) +
+  geom_sf(
+    data = norway_crop,
+    fill = "grey95",
+    colour = "grey60",
+    linewidth = 0.2
+  ) +
   geom_sf(data = footprint, fill = NA, colour = "grey30", linewidth = 0.2) +
   geom_sf(data = lyng_pts, aes(colour = prob_bog_future), size = 0.8) +
   scale_colour_viridis_c(limits = c(0, 1), name = "P(raised bog)\n2071-2100") +
   coord_sf(
-    xlim = c(st_bbox(footprint)["xmin"] - 50000, st_bbox(footprint)["xmax"] + 50000),
-    ylim = c(st_bbox(footprint)["ymin"] - 50000, st_bbox(footprint)["ymax"] + 50000),
+    xlim = c(
+      st_bbox(footprint)["xmin"] - 50000,
+      st_bbox(footprint)["xmax"] + 50000
+    ),
+    ylim = c(
+      st_bbox(footprint)["ymin"] - 50000,
+      st_bbox(footprint)["ymax"] + 50000
+    ),
     expand = FALSE
   ) +
   labs(title = "B") +
   theme_map
-save_fig(p5a + p5b + plot_layout(widths = c(1, 1.1)), "fig_lyngstad_change", 7.5, 4.2)
+save_fig(
+  p5a + p5b + plot_layout(widths = c(1, 1.1)),
+  "fig_lyngstad_change",
+  7.5,
+  4.2
+)
 
 tbl_trans <- lyng_pred |>
   st_drop_geometry() |>
@@ -806,12 +1172,19 @@ numbers$lyngstad_pbog_change_median <- median(pb$change_bog, na.rm = TRUE)
 numbers$lyngstad_pbog_change_q05 <- quantile(pb$change_bog, 0.05, na.rm = TRUE)
 numbers$lyngstad_pbog_change_q95 <- quantile(pb$change_bog, 0.95, na.rm = TRUE)
 numbers$lyngstad_share_declining <- mean(pb$change_bog < 0, na.rm = TRUE)
-numbers$lyngstad_future_pbog_above_0.5 <- mean(pb$prob_bog_future > 0.5, na.rm = TRUE)
+numbers$lyngstad_future_pbog_above_0.5 <- mean(
+  pb$prob_bog_future > 0.5,
+  na.rm = TRUE
+)
 
 ## Fig 6: reliability layers over the future domain ####
 
-rel_agg <- aggregate(rel_fut[[c("offset", "DI", "exp_recall_bog", "exp_fpr_bog")]],
-                     fact = AGG, fun = "mean", na.rm = TRUE)
+rel_agg <- aggregate(
+  rel_fut[[c("offset", "DI", "exp_recall_bog", "exp_fpr_bog")]],
+  fact = AGG,
+  fun = "mean",
+  na.rm = TRUE
+)
 rel_df <- as.data.frame(rel_agg, xy = TRUE)
 
 # The dissimilarity index is an applicability mask, not a panel: cells beyond the AOA
@@ -821,7 +1194,10 @@ rel_df$exp_recall_bog[rel_df$DI > ep$aoa_threshold] <- NA
 p6a <- ggplot() +
   geom_raster(data = rel_df, aes(x, y, fill = offset)) +
   scale_fill_gradient2(
-    low = "#2166ac", mid = "grey95", high = "#b2182b", midpoint = 0,
+    low = "#2166ac",
+    mid = "grey95",
+    high = "#b2182b",
+    midpoint = 0,
     name = "bio10 offset (°C)"
   ) +
   geom_sf(data = footprint, fill = NA, colour = "black", linewidth = 0.2) +
@@ -831,7 +1207,9 @@ p6a <- ggplot() +
 p6b <- ggplot() +
   geom_raster(data = rel_df, aes(x, y, fill = exp_recall_bog)) +
   scale_fill_viridis_c(
-    limits = c(0, 1), name = "expected recall\nof raised bog", na.value = "grey85"
+    limits = c(0, 1),
+    name = "expected recall\nof raised bog",
+    na.value = "grey85"
   ) +
   geom_sf(data = footprint, fill = NA, colour = "white", linewidth = 0.2) +
   coord_sf(expand = FALSE) +
@@ -844,7 +1222,10 @@ save_fig(p6a + p6b, "fig_reliability", 7.5, 3.6)
 # Polygon-level comparison written by pl2_compareScenarios.R (ID = row of the Lyngstad
 # layer). The SSP3-7.0 classes must be the ones pl2_interpret.R wrote, or the two legs
 # are not comparable.
-poly_sc <- read_csv("output/pl2/scenario_comparison_polygons.csv", show_col_types = FALSE)
+poly_sc <- read_csv(
+  "output/pl2/scenario_comparison_polygons.csv",
+  show_col_types = FALSE
+)
 stopifnot(
   nrow(lyng_pred) == nrow(bogs),
   identical(lyng_pred$class_future[poly_sc$ID], poly_sc$class_harsh),
@@ -861,26 +1242,40 @@ outcome <- bind_rows(
   mutate(share = n / sum(n)) |>
   ungroup() |>
   mutate(
-    outcome = factor(CLASS_LAB[outcome], levels = CLASS_LAB[c("bog", "otherpeat", "nonpeat")]),
+    outcome = factor(
+      CLASS_LAB[outcome],
+      levels = CLASS_LAB[c("bog", "otherpeat", "nonpeat")]
+    ),
     scenario = factor(scenario, levels = c("SSP3-7.0", "SSP1-2.6"))
   )
 p7a <- ggplot(outcome, aes(share, scenario, fill = outcome)) +
   geom_col(width = 0.6, position = position_stack(reverse = TRUE)) +
   geom_text(
     data = filter(outcome, share >= 0.04),
-    aes(label = n), position = position_stack(vjust = 0.5, reverse = TRUE),
-    size = 2.6, colour = "white"
+    aes(label = n),
+    position = position_stack(vjust = 0.5, reverse = TRUE),
+    size = 2.6,
+    colour = "white"
   ) +
-  scale_fill_manual(values = CLASS_COL, name = "predicted class\nin 2071-2100") +
+  scale_fill_manual(
+    values = CLASS_COL,
+    name = "predicted class\nin 2071-2100"
+  ) +
   scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
   labs(
     title = "A",
-    x = sprintf("share of the %d polygons predicted raised bog today", nrow(today_bog)),
+    x = sprintf(
+      "share of the %d polygons predicted raised bog today",
+      nrow(today_bog)
+    ),
     y = NULL
   ) +
   theme_ms +
   theme(
-    axis.text.y = element_text(colour = SCEN_COL[c("SSP3-7.0", "SSP1-2.6")], face = "bold"),
+    axis.text.y = element_text(
+      colour = SCEN_COL[c("SSP3-7.0", "SSP1-2.6")],
+      face = "bold"
+    ),
     legend.position = "bottom"
   ) +
   guides(fill = guide_legend(nrow = 3))
@@ -910,24 +1305,41 @@ map_sc <- lyng_pts |>
   arrange(desc(persist)) # kept polygons are drawn last, on top
 stopifnot(!anyNA(map_sc$persist)) # "SSP3-7.0 only" is not a class this figure draws
 p7b <- ggplot() +
-  geom_sf(data = norway_crop, fill = "grey95", colour = "grey60", linewidth = 0.2) +
+  geom_sf(
+    data = norway_crop,
+    fill = "grey95",
+    colour = "grey60",
+    linewidth = 0.2
+  ) +
   geom_sf(data = footprint, fill = NA, colour = "grey30", linewidth = 0.2) +
   geom_sf(data = map_sc, aes(colour = persist), size = 0.9, alpha = 0.8) +
   scale_colour_manual(
     values = c(
-      "#2b6a3f", SCEN_COL[["SSP1-2.6"]], SCEN_COL[["SSP3-7.0"]]
-    ) |> setNames(persist_lab),
-    name = "polygons predicted raised\nbog today", drop = TRUE
+      "#2b6a3f",
+      SCEN_COL[["SSP1-2.6"]],
+      SCEN_COL[["SSP3-7.0"]]
+    ) |>
+      setNames(persist_lab),
+    name = "polygons predicted raised\nbog today",
+    drop = TRUE
   ) +
   coord_sf(
-    xlim = c(st_bbox(footprint)["xmin"] - 50000, st_bbox(footprint)["xmax"] + 50000),
-    ylim = c(st_bbox(footprint)["ymin"] - 50000, st_bbox(footprint)["ymax"] + 50000),
+    xlim = c(
+      st_bbox(footprint)["xmin"] - 50000,
+      st_bbox(footprint)["xmax"] + 50000
+    ),
+    ylim = c(
+      st_bbox(footprint)["ymin"] - 50000,
+      st_bbox(footprint)["ymax"] + 50000
+    ),
     expand = FALSE
   ) +
   labs(title = "B") +
   theme_map +
   theme(legend.position = "bottom") +
-  guides(colour = guide_legend(nrow = 3, override.aes = list(size = 2, alpha = 1)))
+  guides(
+    colour = guide_legend(nrow = 3, override.aes = list(size = 2, alpha = 1))
+  )
 save_fig(p7a + p7b + plot_layout(widths = c(1, 1.1)), "fig_scenarios", 7.5, 4.6)
 
 # The transition table with the two scenarios side by side, one row per
@@ -936,14 +1348,19 @@ sc_n <- function(col) {
   poly_sc |> count(class_current, class_future = .data[[col]], name = "n")
 }
 tbl_sc <- full_join(
-  sc_n("class_mild"), sc_n("class_harsh"),
-  by = c("class_current", "class_future"), suffix = c("_ssp126", "_ssp370")
+  sc_n("class_mild"),
+  sc_n("class_harsh"),
+  by = c("class_current", "class_future"),
+  suffix = c("_ssp126", "_ssp370")
 ) |>
   mutate(
     across(starts_with("n_"), ~ replace_na(.x, 0L)),
     share_ssp126 = round(100 * n_ssp126 / nrow(poly_sc), 1),
     share_ssp370 = round(100 * n_ssp370 / nrow(poly_sc), 1),
-    class_current = factor(CLASS_LAB[class_current], levels = CLASS_LAB[c("bog", "otherpeat", "nonpeat")]),
+    class_current = factor(
+      CLASS_LAB[class_current],
+      levels = CLASS_LAB[c("bog", "otherpeat", "nonpeat")]
+    ),
     class_future = CLASS_LAB[class_future]
   ) |>
   arrange(class_current, desc(n_ssp126 + n_ssp370)) |>
@@ -959,18 +1376,33 @@ numbers$n_polygons_scenario <- nrow(poly_sc)
 numbers$n_bog_today_polygons <- nrow(today_bog)
 numbers$n_bog_kept_mild <- sum(today_bog$class_mild == "bog")
 numbers$n_bog_kept_harsh <- sum(today_bog$class_harsh == "bog")
-numbers$kept_bio10_current_median <- median(kept_cmp$bio10_current[kept_cmp$kept])
-numbers$lost_bio10_current_median <- median(kept_cmp$bio10_current[!kept_cmp$kept])
+numbers$kept_bio10_current_median <- median(kept_cmp$bio10_current[
+  kept_cmp$kept
+])
+numbers$lost_bio10_current_median <- median(kept_cmp$bio10_current[
+  !kept_cmp$kept
+])
 numbers$kept_lat_median <- median(kept_cmp$lat[kept_cmp$kept])
 numbers$lost_lat_median <- median(kept_cmp$lat[!kept_cmp$kept])
-numbers$polygon_pbog_change_mean_mild <- mean(poly_sc$pbog_mild - poly_sc$pbog_current)
-numbers$polygon_pbog_change_mean_harsh <- mean(poly_sc$pbog_harsh - poly_sc$pbog_current)
-numbers$polygon_share_declining_mild <- mean(poly_sc$pbog_mild < poly_sc$pbog_current)
-numbers$polygon_share_declining_harsh <- mean(poly_sc$pbog_harsh < poly_sc$pbog_current)
+numbers$polygon_pbog_change_mean_mild <- mean(
+  poly_sc$pbog_mild - poly_sc$pbog_current
+)
+numbers$polygon_pbog_change_mean_harsh <- mean(
+  poly_sc$pbog_harsh - poly_sc$pbog_current
+)
+numbers$polygon_share_declining_mild <- mean(
+  poly_sc$pbog_mild < poly_sc$pbog_current
+)
+numbers$polygon_share_declining_harsh <- mean(
+  poly_sc$pbog_harsh < poly_sc$pbog_current
+)
 
 ## Table 1: training frame ####
 
-frame <- read_csv("output/pl2/modeling_frame_summary.csv", show_col_types = FALSE) |>
+frame <- read_csv(
+  "output/pl2/modeling_frame_summary.csv",
+  show_col_types = FALSE
+) |>
   filter(scenario == "current") |>
   mutate(
     response = CLASS_LAB[response],
@@ -986,15 +1418,25 @@ save_tbl(frame, "tbl_frame")
 # The partition axis is the top-VI predictor among the materially shifting ones
 # (pl2_partitionDataByTopFeature.R rule), so it is recovered from the weights file rather
 # than assumed to be bio10.
-w_axis <- read_csv("output/pl2/weights_feature_data_partitioning.csv", show_col_types = FALSE) |>
+w_axis <- read_csv(
+  "output/pl2/weights_feature_data_partitioning.csv",
+  show_col_types = FALSE
+) |>
   filter(method == "Balanced Random Forest", material)
 PART_AXIS <- w_axis$feature[which.max(w_axis$median)]
 
 part <- read_csv(
   "output/pl2/modeling_frame_regional_partitioned_topfeature.csv",
   col_select = c(
-    "scenario", "partition", "envelope_side", "response", "dataset", "x", "y",
-    "bio10", all_of(PART_AXIS)
+    "scenario",
+    "partition",
+    "envelope_side",
+    "response",
+    "dataset",
+    "x",
+    "y",
+    "bio10",
+    all_of(PART_AXIS)
   ),
   show_col_types = FALSE
 ) |>
@@ -1033,9 +1475,13 @@ cvp <- read_csv(
   show_col_types = FALSE
 ) |>
   filter(response == "bog") |>
-  left_join(part |> select(x, y, dataset, bio10), by = c("x", "y", "dataset")) |>
   left_join(
-    ep$fold_ref |> mutate(train_partition = as.character(train_partition)) |>
+    part |> select(x, y, dataset, bio10),
+    by = c("x", "y", "dataset")
+  ) |>
+  left_join(
+    ep$fold_ref |>
+      mutate(train_partition = as.character(train_partition)) |>
       distinct(arm, train_partition, ref),
     by = c("arm", "train_partition")
   ) |>
@@ -1070,14 +1516,20 @@ tbl_cv <- met |>
     .groups = "drop"
   ) |>
   mutate(
-    slice = factor(slice, levels = c("all", "NO", "EU", "inside", "below", "above")),
+    slice = factor(
+      slice,
+      levels = c("all", "NO", "EU", "inside", "below", "above")
+    ),
     arm = factor(arm, levels = c("lopo", "pairwise"))
   ) |>
   arrange(arm, slice) |>
   mutate(across(c(macro_auc:fpr_bog), ~ round(.x, 3)))
 save_tbl(tbl_cv, "tbl_cv")
 
-conf <- read_csv("output/pl2/confusion_cv_topfeature.csv", show_col_types = FALSE) |>
+conf <- read_csv(
+  "output/pl2/confusion_cv_topfeature.csv",
+  show_col_types = FALSE
+) |>
   filter(arm == "lopo") |>
   group_by(Actual, Predicted) |>
   summarise(n = sum(Freq), .groups = "drop") |>
@@ -1092,28 +1544,40 @@ save_tbl(conf, "tbl_confusion_lopo")
 ## S1 Table: predictors ####
 
 pred_desc <- c(
-  bio01 = "Annual mean temperature", bio02 = "Mean diurnal temperature range",
-  bio03 = "Isothermality", bio04 = "Temperature seasonality",
+  bio01 = "Annual mean temperature",
+  bio02 = "Mean diurnal temperature range",
+  bio03 = "Isothermality",
+  bio04 = "Temperature seasonality",
   bio05 = "Maximum temperature of the warmest month",
-  bio06 = "Minimum temperature of the coldest month", bio07 = "Annual temperature range",
+  bio06 = "Minimum temperature of the coldest month",
+  bio07 = "Annual temperature range",
   bio08 = "Mean temperature of the wettest quarter",
   bio09 = "Mean temperature of the driest quarter",
   bio10 = "Mean temperature of the warmest quarter",
-  bio11 = "Mean temperature of the coldest quarter", bio12 = "Annual precipitation",
-  bio13 = "Precipitation of the wettest month", bio14 = "Precipitation of the driest month",
-  bio15 = "Precipitation seasonality", bio16 = "Precipitation of the wettest quarter",
+  bio11 = "Mean temperature of the coldest quarter",
+  bio12 = "Annual precipitation",
+  bio13 = "Precipitation of the wettest month",
+  bio14 = "Precipitation of the driest month",
+  bio15 = "Precipitation seasonality",
+  bio16 = "Precipitation of the wettest quarter",
   bio17 = "Precipitation of the driest quarter",
   bio18 = "Precipitation of the warmest quarter",
   bio19 = "Precipitation of the coldest quarter",
-  fcf = "Frost change frequency", gdd0 = "Growing degree days above 0 °C",
-  gdd5 = "Growing degree days above 5 °C", gdd10 = "Growing degree days above 10 °C",
-  gsl = "Growing season length", gsp = "Growing season precipitation",
-  gst = "Growing season mean temperature", ngd0 = "Days with mean temperature above 0 °C",
+  fcf = "Frost change frequency",
+  gdd0 = "Growing degree days above 0 °C",
+  gdd5 = "Growing degree days above 5 °C",
+  gdd10 = "Growing degree days above 10 °C",
+  gsl = "Growing season length",
+  gsp = "Growing season precipitation",
+  gst = "Growing season mean temperature",
+  ngd0 = "Days with mean temperature above 0 °C",
   ngd5 = "Days with mean temperature above 5 °C",
   ngd10 = "Days with mean temperature above 10 °C",
-  npp = "Potential net primary productivity", scd = "Snow cover days",
+  npp = "Potential net primary productivity",
+  scd = "Snow cover days",
   swe = "Snow water equivalent",
-  elevation = "Elevation", slope = "Slope",
+  elevation = "Elevation",
+  slope = "Slope",
   paleo_years_icefreeland = "Years as ice-free land (last 16 ka)",
   paleo_bio01_mean_icefree = "Mean annual temperature over the ice-free period",
   paleo_bio01_sum_icefree = "Summed annual temperature over the ice-free period",
@@ -1127,13 +1591,20 @@ pred_desc <- c(
 pred_source <- function(f) {
   case_when(
     grepl("^paleo_", f) ~ "CHELSA-TraCE21k, derived",
-    f %in% c("elevation", "slope") ~ "DTM50 (Norway); AWS terrain tiles via elevatr (Europe)",
+    f %in%
+      c(
+        "elevation",
+        "slope"
+      ) ~ "DTM50 (Norway); AWS terrain tiles via elevatr (Europe)",
     grepl("^bio", f) ~ "CHELSA V2.1 bioclim",
     TRUE ~ "CHELSA V2.1 bioclim+"
   )
 }
 
-w <- read_csv("output/pl2/weights_feature_data_partitioning.csv", show_col_types = FALSE) |>
+w <- read_csv(
+  "output/pl2/weights_feature_data_partitioning.csv",
+  show_col_types = FALSE
+) |>
   filter(method == "Balanced Random Forest")
 vi <- read_csv("output/pl2/variable_importance_brf.csv", show_col_types = FALSE)
 

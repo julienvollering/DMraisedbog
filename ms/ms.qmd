@@ -297,16 +297,22 @@ POP_MAP <- "mapped bog (footprint)"
 FLIP <- "class flip (argmax bog)"
 P10 <- "balanced P(bog) >= reference P10"
 cr <- function(pop, s, crit_name, col = "pct_suitable") {
-  crit[[col]][crit$population == pop & crit$scenario == s & crit$criterion == crit_name]
+  crit[[col]][
+    crit$population == pop & crit$scenario == s & crit$criterion == crit_name
+  ]
 }
 ref_p10 <- cr(POP_ARG, "current", P10, "threshold")
 crit_sweep <- rd(OUT, "pl2", "scenario_comparison_criteria_sweep.csv")
 swp <- function(pop, s, cut, col = "pct_suitable") {
-  ok <- crit_sweep$population == pop & crit_sweep$scenario == s & !crit_sweep$is_reference
+  ok <- crit_sweep$population == pop &
+    crit_sweep$scenario == s &
+    !crit_sweep$is_reference
   crit_sweep[[col]][ok & abs(crit_sweep$cut - cut) < 1e-9]
 }
 max_pbog <- function(pop, s) {
-  crit_sweep$max_pbog[crit_sweep$population == pop & crit_sweep$scenario == s][1]
+  crit_sweep$max_pbog[crit_sweep$population == pop & crit_sweep$scenario == s][
+    1
+  ]
 }
 crit_agree <- rd(OUT, "pl2", "scenario_comparison_criteria_agreement.csv")
 cal_fp <- rd(OUT, "pl2", "calibration_footprint.csv") |>
@@ -318,18 +324,28 @@ bog_oob_rate <- cal_trees$oob_rate_mean[cal_trees$response == "bog"]
 stopifnot(
   # GUARDS: claims the loss-criterion prose relies on
   "class-flip persistence no longer reproduces pl2_compareScenarios.R" = cr(
-    POP_ARG, MILD, FLIP, "cells_suitable"
+    POP_ARG,
+    MILD,
+    FLIP,
+    "cells_suitable"
   ) ==
     sc_cells$cells[sc_cells$persist == "bog under ssp126 only"],
   "the strict criterion keeps a cell that the class criterion drops" = !any(
     crit_agree$p10 & !crit_agree$flip
   ),
   "a raised-bog cell passes a loss criterion under SSP3-7.0 (the prose says none)" = all(
-    c(cr(POP_ARG, HARSH, FLIP), cr(POP_ARG, HARSH, P10),
-      cr(POP_MAP, HARSH, FLIP), cr(POP_MAP, HARSH, P10)) == 0
+    c(
+      cr(POP_ARG, HARSH, FLIP),
+      cr(POP_ARG, HARSH, P10),
+      cr(POP_MAP, HARSH, FLIP),
+      cr(POP_MAP, HARSH, P10)
+    ) ==
+      0
   ),
   "the strict criterion keeps 1% or more under SSP1-2.6 (the prose says practically none)" = cr(
-    POP_ARG, MILD, P10
+    POP_ARG,
+    MILD,
+    P10
   ) <
     1 &&
     cr(POP_MAP, MILD, P10) < 1,
@@ -1390,15 +1406,18 @@ bind_rows(
   ),
   tibble(
     Quantity = sprintf(
-      "Of today's raised-bog cells, raised-bog score at least %s (km²)", f2(ref_p10)
+      "Of today's raised-bog cells, raised-bog score at least %s (km²)",
+      f2(ref_p10)
     ),
     Current = "–",
     `SSP1-2.6` = sprintf(
-      "%s (%s%%)", f1(cr(POP_ARG, MILD, P10, "km2_suitable"), 2),
+      "%s (%s%%)",
+      f1(cr(POP_ARG, MILD, P10, "km2_suitable"), 2),
       f1(cr(POP_ARG, MILD, P10), 3)
     ),
     `SSP3-7.0` = sprintf(
-      "%s (%s%%)", n0(cr(POP_ARG, HARSH, P10, "km2_suitable")),
+      "%s (%s%%)",
+      n0(cr(POP_ARG, HARSH, P10, "km2_suitable")),
       f1(cr(POP_ARG, HARSH, P10))
     )
   ),
@@ -1457,12 +1476,22 @@ other cuts show how the result depends on where the cut is put.
 ```{r}
 #| label: tbl-criteria
 #| echo: false
-pct_cell <- function(x) if (x == 0) "0" else if (x < 0.01) "< 0.01" else fp(x)
+pct_cell <- function(x) {
+  if (x == 0) {
+    "0"
+  } else if (x < 0.01) {
+    "< 0.01"
+  } else {
+    fp(x)
+  }
+}
 crit_row <- function(label, f) {
   tibble(
     Criterion = label,
-    `Mapped, SSP1-2.6` = f(POP_MAP, MILD), `Mapped, SSP3-7.0` = f(POP_MAP, HARSH),
-    `Predicted, SSP1-2.6` = f(POP_ARG, MILD), `Predicted, SSP3-7.0` = f(POP_ARG, HARSH)
+    `Mapped, SSP1-2.6` = f(POP_MAP, MILD),
+    `Mapped, SSP3-7.0` = f(POP_MAP, HARSH),
+    `Predicted, SSP1-2.6` = f(POP_ARG, MILD),
+    `Predicted, SSP3-7.0` = f(POP_ARG, HARSH)
   )
 }
 cuts <- sort(unique(crit_sweep$cut[!crit_sweep$is_reference]))
@@ -1473,7 +1502,9 @@ bind_rows(
     function(p, s) pct_cell(cr(p, s, P10))
   ),
   bind_rows(lapply(cuts, function(k) {
-    crit_row(sprintf("Score at least %s", f2(k)), function(p, s) pct_cell(swp(p, s, k)))
+    crit_row(sprintf("Score at least %s", f2(k)), function(p, s) {
+      pct_cell(swp(p, s, k))
+    })
   }))
 ) |>
   kable(align = "lrrrr")
