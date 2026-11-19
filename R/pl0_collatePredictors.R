@@ -324,9 +324,13 @@ for (ssp in setdiff(FUTURE_SCENARIOS, FUTURE_SCENARIO)) {
     gdal = c("COMPRESS=LZW", "TILED=YES")
   )
   cat("  -", ssp_file, "\n")
-  stopifnot(identical(
-    global(predictors_ssp, "notNA")$notNA, global(predictors_future, "notNA")$notNA
-  ))
+  # Coverage may differ slightly between scenarios: the threshold layers (swe, gdd10, ...)
+  # are positive-only, so a cell near zero can be NA in one climate and not in another
+  # (swe: 167 of 5.29M cells for ssp126 against ssp370, 2026-10-06). A real break -- an
+  # empty or mis-masked layer -- is orders of magnitude larger.
+  cover_ssp <- global(predictors_ssp, "notNA")$notNA
+  cover_ref <- global(predictors_future, "notNA")$notNA
+  stopifnot(max(abs(cover_ssp - cover_ref)) < 0.001 * max(cover_ref))
   rm(chelsa_ssp, predictors_ssp)
 }
 

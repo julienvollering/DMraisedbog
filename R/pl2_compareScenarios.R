@@ -198,16 +198,32 @@ zone_class <- function(prefix) {
 }
 zc <- set_names(map(SCEN$prefix, zone_class), SCEN$scenario)
 
-poly <- tibble(
+# Polygon-mean bio10 under each scenario, to say what the polygons that keep the class
+# have in common (the stacks are the ones the model projected on).
+zone_bio10 <- map(SCEN$stack, function(p) {
+  terra::extract(rast(p)[[AXIS]], lyngstad, fun = mean, na.rm = TRUE)[[AXIS]]
+})
+names(zone_bio10) <- SCEN$scenario
+
+poly_all <- tibble(
   ID = zonal$ID,
   class_current = zc[["current"]],
   class_mild = zc[[MILD]],
   class_harsh = zc[[HARSH]],
   pbog_current = zonal[[paste0(SCEN$prefix[1], "bog")]],
   pbog_mild = zonal[[paste0(SCEN$prefix[SCEN$scenario == MILD], "bog")]],
-  pbog_harsh = zonal[[paste0(SCEN$prefix[SCEN$scenario == HARSH], "bog")]]
-) |>
+  pbog_harsh = zonal[[paste0(SCEN$prefix[SCEN$scenario == HARSH], "bog")]],
+  bio10_current = zone_bio10[["current"]],
+  bio10_mild = zone_bio10[[MILD]],
+  bio10_harsh = zone_bio10[[HARSH]]
+)
+poly <- poly_all |>
   filter(!is.na(class_current), !is.na(class_mild), !is.na(class_harsh))
+
+# One row per classified polygon, ID = row of the lyngstad-MTYPE_A layer (the order
+# pl2_interpret.R binds its predictions in). ms/make_figures.R draws the scenario figure
+# and the transition table from this file.
+write_csv(poly, "output/pl2/scenario_comparison_polygons.csv", append = FALSE)
 
 polygons_tbl <- poly |>
   mutate(
@@ -244,11 +260,18 @@ persist_map <- rast(pred[[1]])
 values(persist_map) <- codes
 levels(persist_map) <- data.frame(id = seq_along(persist_levels), persistence = persist_levels)
 
-png("output/pl2/scenario_comparison_persistence.png", width = 900, height = 1100, res = 120)
+# Colours are tied to the class id: only the classes that occur are drawn, and a bare
+# `col` vector would then be matched by position rather than by class.
+coltab(persist_map) <- data.frame(
+  value = seq_along(persist_levels),
+  col = c("#2b6a3f", "#e0a030", "#8a8a8a", "#c1462c")
+)
+
+png("output/pl2/scenario_comparison_persistence.png", width = 1100, height = 1100, res = 120)
 plot(
   persist_map,
-  col = c("#2b6a3f", "#e0a030", "#8a8a8a", "#c1462c"),
-  main = "Present-day predicted bog: persistence under the two scenarios"
+  main = "Present-day predicted bog: persistence under the two scenarios",
+  mar = c(3, 3, 3, 14), plg = list(cex = 0.8)
 )
 dev.off()
 

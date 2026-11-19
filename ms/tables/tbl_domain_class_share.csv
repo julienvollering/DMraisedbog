@@ -1,5 +1,5 @@
 scenario,class,mean_probability,majority_share
-current,nonpeat,0.613,0.7064
+current,nonpeat,0.6131,0.7064
 current,otherpeat,0.3188,0.2573
 current,bog,0.0682,0.0362
 future,nonpeat,0.5678,0.8232
