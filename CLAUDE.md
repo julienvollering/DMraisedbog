@@ -131,13 +131,17 @@ predictor. The hierarchical `rf_global` covariate was retired — see
 Several agents may work on this repository at once. `main` is an integration branch that
 only JV touches; everything else happens on task branches.
 
-- **Branch and worktree per task.** Work on a branch in a git worktree (`EnterWorktree`),
-  never directly on `main` in the main checkout. One task per branch; name it after the
-  task, not the date.
-- **Small tasks reuse the scratch worktree** (`.claude/worktrees/scratch`, `EnterWorktree`
-  with `path`) instead of making a new one: start each task with
-  `git switch -c <task> main`, commit before stopping, and leave the worktree on a clean
-  branch. One agent at a time there; use a separate worktree for parallel work.
+- **One task per branch**, named after the task, not the date. Never commit on `main`.
+- **Default to the scratch worktree** (`.claude/worktrees/scratch`, `EnterWorktree` with
+  `path`). Start each task with `git switch -c <task> main` from a clean tree, and end it
+  committed and clean.
+- **Check before you switch.** Run `git worktree list; git branch -vv --no-merged main`
+  first. If scratch has uncommitted changes or another session is using it, don't switch
+  it. Switching scratch hides the previous branch's files; they are safe in git, but say
+  in your report which branch they are on.
+- **A new worktree only for parallel or long-running work**: another agent is active in
+  scratch, or the task (e.g. a pipeline run) would tie scratch up for hours. Name it after
+  the task, and remove it with `tools/Remove-Worktree.ps1` once its branch is merged.
 - **Commit before stopping.** A session can end at any moment, and an uncommitted change
   is invisible to everyone else. Small commits, each a complete step, with a message that
   says what changed and why. Do not leave work only in the working tree.
