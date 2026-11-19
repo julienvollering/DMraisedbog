@@ -18,20 +18,14 @@ and extrapolation (area-of-applicability) analysis.
 
 - **Language**: R (prefer the native pipe `|>`)
 - **IDE**: Positron (https///posit.co/products/positron/)
-- **Coordinate systems**: EPSG:25833 (UTM 33N) for Norwegian data; EPSG:3035 for modelling
-- Core install: `install.packages(c('tidyverse', 'sf', 'terra'))`
 
 ## Key Dependencies
 
-- **Spatial analysis**: `sf`, `terra`, `rnaturalearth`, `units`
-- **Data manipulation**: `tidyverse` (readr, dplyr, tidyr, purrr, tibble, stringr, forcats), `foreign`
 - **Learner**: `randomForestSRC` (production); `randomForest` and `glmnet` only as
   cross-implementation checks on the variable-importance ruler; `MIAmaxent` for FOP plots
 - **Distances**: `FNN` (nearest neighbours behind the dissimilarity index; the metric
   itself is implemented in `R/functions.R`, not taken from `CAST`)
 - **Elevation (outside Norway)**: `elevatr`
-- **Visualization**: `ggplot2`, `ggrepel`, `scales`, `patchwork` (manuscript figures only)
-- **Run infrastructure**: `rmarkdown` (RUNALL knits), `sessioninfo`, `tictoc`
 - **Retired (scripts in `R/archive/`)**: `sabinaNSDM`, `biomod2`, `GeoThinneR`, `cluster`,
   `dbscan`, `RANN`, `ROCR`, `twosamples`, `furrr`
 
@@ -75,9 +69,6 @@ pl2/pl3 names are kept so existing references in `notebook.md` and
 - Global data: EPSG:4326 (WGS84) — transformed as needed
 
 ### Spatial Data Patterns
-- Extensive use of `st_union()`, `st_intersection()`, `st_transform()`
-- Polygon validation with `st_make_valid()` / `st_is_valid()`
-- Area calculations with `st_area()` and explicit unit conversions
 - Attribute filtering (e.g. `M_TYPE` containing "A" for raised bogs)
 
 ## Machine Learning Modeling Framework
@@ -102,24 +93,10 @@ predictor. The hierarchical `rf_global` covariate was retired — see
 - **Learner**: `randomForestSRC::rfsrc()`, balanced 3-class via `make.wt` / `make.size`
 - **Distance metric**: VI-weighted Euclidean DI over *projection-dynamic predictors only*
   — static axes (terrain, paleo) cannot register projected change and would only dilute it
-- **Parallelization**: `furrr` (multi-core)
 
 ## Working with This Codebase
 
-### Data File Locations
-- Large datasets in `data/` (gitignored); outputs in `output/` (gitignored)
-- Processed spatial data consolidated in `data/DMraisedbog.gpkg`
-
-### Common Operations
-- Reading shapefiles: `st_read()` with explicit CRS handling
-- Processing multiple files: `map()` over file lists
-- Spatial filtering: combine attribute filters with spatial operations
-- Writing outputs: `st_write()` with append options for GeoPackage layers
-
 ### Data Quality Considerations
-- Validate geometries before spatial operations
-- Handle CRS mismatches explicitly
-- Check for spatial overlaps and duplicates in polygon datasets
 - Apply appropriate quality filters (e.g. `DATAQUALITY == "G"` for Natura 2000)
 - **Absence sampling**: both blocks draw absences by the same climate-stratified rule
   (`draw_stratified_absences()` in `R/functions.R`) and pass the same land-use / water
@@ -128,13 +105,7 @@ predictor. The hierarchical `rf_global` covariate was retired — see
 
 ## File Patterns to Recognize
 
-- `pl0_`/`pl2_`/`pl3_` prefixes: pipeline stage (see `R/RUNALL.R`); no `pl1_` — retired
-- `R/archive/`: retired or exploratory scripts, deliberately outside the pipeline
 - Scripts prefixed `collate*`: data integration and standardization
-- `.Rproj`: RStudio project configuration
-- `.gpkg`: GeoPackage spatial database
-- `.tif`: raster data (climate, terrain, predictions)
-- `.dbf/.shp`: legacy shapefiles requiring CRS handling
 
 ## Code Style and Conventions
 
@@ -187,16 +158,3 @@ only JV touches; everything else happens on task branches.
 - Spatial CLI tools (e.g. `ogrinfo`) are available in bash.
 - When running R from the CLI, use `Rscript --vanilla` (startup otherwise auto-loads
   mcptools and halts).
-
-## Known Issues
-
-**randomForestSRC + Positron crash with `do.trace`**
-- **Problem**: R crashes (exit code -1073740791) when `randomForestSRC::imbalanced()` is
-  called with `do.trace = TRUE` (or any numeric value) inside functions wrapped with
-  `purrr::map_dfr()` in the Positron IDE.
-- **Symptom**: "R exited unexpectedly" / "Error refreshing variables: The language runtime
-  exited before RPC completed".
-- **Solution**: always use `do.trace = FALSE` when calling `imbalanced()` inside functions
-  or loops.
-- **Root cause**: console trace output conflicts with Positron's variable-refresh
-  mechanism in nested function contexts.
