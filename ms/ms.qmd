@@ -340,7 +340,7 @@ absence candidate if its centre fell inside the survey footprint but not inside 
 ### Europe: raised-bog records from the typical raised bog region
 
 European raised-bog presences were taken from the Natura 2000 habitat inventory
-[TODO cite: Natura 2000 end-2021 spatial dataset], habitat types 7110 (active raised bogs)
+[TODO cite: Natura 2000 (vector) version 2021 rev. 1, EEA 2022, doi:10.5281/zenodo.23167201 -- check revision used], habitat types 7110 (active raised bogs)
 and 7120 (degraded raised bogs still capable of regeneration), within the typical raised
 bog region of Europe (region IV of @tannebergerMiresEuropeRegional2021, @fig-studyarea
 (A)). Natura 2000 sites often contain a raised bog as one part of a larger complex, so a
@@ -380,13 +380,13 @@ three labels were built on both blocks, from different sources but by the same l
 ### Labels, land-use screen and absence draw
 
 *Norway.* Absence candidates were labelled from the peatland class (class 60, myr) of the
-AR50 land-resource map [TODO cite: NIBIO AR50, version], rasterised at 50 m and aggregated
+AR50 land-resource map [TODO cite: NIBIO AR50, version -- no DOI found; JV to supply], rasterised at 50 m and aggregated
 to the fraction of each 250 m cell mapped as peatland. Cells with a peatland fraction of at
 least 0.5 were *other peatland*; cells with a fraction below 0.1 were *non-peat*; cells in
 between and cells without an AR50 value were excluded rather than assigned to either class.
 
 *Europe.* Absence candidates were labelled from the European Peatland Map 2025
-[@tannebergerPeatlandMapEurope2017; TODO cite: EPM2025 technical description], a
+[@tannebergerPeatlandMapEurope2017; @Tegetmeyer2025], a
 compilation of national peatland maps, resampled by majority to the 250 m grid. Map
 category 0 (no peatland) became *non-peat* and category 1 (peat-dominated) became *other
 peatland*; category 2 (peat in a soil mosaic) was excluded, exactly as Norway's mixed
@@ -402,7 +402,7 @@ presence became unlabelled rather than a false absence.
 carry no information about whether climate can support peat, and their inclusion as
 non-peat would charge drainage, cultivation and the sea to warming. Every candidate cell
 of every class on both blocks was therefore screened with one rule built from the 10 m ESA
-WorldCover map for 2021 [TODO cite: Zanaga et al.]: a cell was dropped if more than 50% of
+WorldCover map for 2021 [TODO cite: Zanaga et al. 2022, doi:10.5281/zenodo.7254221]: a cell was dropped if more than 50% of
 its area was cropland plus built-up land, or more than 50% was water plus unmapped. The
 screen removed about 2% of Norwegian and 5% of European raised-bog cells. It removed more
 absence candidates, mostly water in Norway and human land cover in Europe, which is why it
@@ -433,9 +433,9 @@ SSP3-7.0, a high-warming pathway that is the focus of the analysis, and SSP1-2.6
 strong-mitigation pathway that shows how sensitive the projected loss is to the degree of
 warming. Two
 terrain variables (elevation and slope at 250 m) came from the Norwegian 50 m terrain model
-[TODO cite: Kartverket DTM50] for Norway and from AWS terrain tiles via the elevatr
-package for Europe [TODO cite]. Nine variables summarising time since deglaciation and
-long-term climate history came from the CHELSA-TraCE21k palaeoclimate series [TODO cite]
+[TODO cite: Kartverket DTM50 -- no DOI found; JV to supply] for Norway and from AWS terrain tiles via the elevatr
+package for Europe [TODO cite: Hollister, elevatr, doi:10.32614/CRAN.package.elevatr]. Nine variables summarising time since deglaciation and
+long-term climate history came from the CHELSA-TraCE21k palaeoclimate series [@kargerCHELSATraCE21kHighresolution1thinspkm2023]
 and were the same in every scenario. Both blocks are bilinear samples of the same native
 climate grids at a 250 m cell centre (S1 Text).
 
@@ -464,7 +464,7 @@ moisture the future brings, not at today's.
 ## The model
 
 We fitted one random forest to the pooled three-class frame with the randomForestSRC
-package [TODO cite: Ishwaran & Kogalur], using its balanced-sampling recipe for imbalanced
+package [TODO cite: Ishwaran & Kogalur, randomForestSRC, doi:10.32614/CRAN.package.randomForestSRC], using its balanced-sampling recipe for imbalanced
 classes [@chenUsingRandomForest]: each of 1,000 trees was grown on a class-balanced
 bootstrap sample, so that the `r pc(fr("raised bog") / n_all)` of cells that are raised bogs count as much as either
 abundant class. The predicted class of a cell was the most probable of the three (argmax),
@@ -560,8 +560,8 @@ cells beyond the applicability threshold are flagged.
 
 ## Software
 
-All analyses were run in R [TODO cite: R version] with the packages sf and terra for
-spatial data [TODO cite], randomForestSRC for the forest, and the tidyverse for data
+All analyses were run in R [TODO cite: R Core Team, R 4.6.x (no DOI); version as in the pipeline sessionInfo] with the packages sf and terra for
+spatial data [TODO cite: Pebesma 2018, doi:10.32614/RJ-2018-009; Hijmans, terra, doi:10.32614/CRAN.package.terra], randomForestSRC for the forest, and the tidyverse for data
 handling. The full pipeline is available at <https://github.com/julienvollering/DMraisedbog>.
 TODO(JV): archive a release (Zenodo) and cite it.
 

@@ -1,0 +1,118 @@
+openalex_id,relevance,claims,role,reason
+W2166970014,3,I3;D8;M1,comparison,Ecosystem-level distribution model of a mire ecosystem under future climates: the closest design analogue
+W2605789684,3,I3;D8,comparison,Single- and multi-species models of Sphagnum peatland distribution in North America under climate change
+W3047336581,3,I1,support,Climatic drivers of Sphagnum species' distributional limits in Europe
+W4415426337,3,I2;D3;D8,comparison,Climatic indicators of mire resilience along a subarctic-temperate gradient in Norway
+W3199672238,3,D3,support,Forest-peatland bistability and resilience of European peatland carbon stores
+W1955556093,3,D3,support,Review of hydrological feedbacks that make northern peatlands self-regulating
+W2982649473,3,I4,support,Rapid Sphagnum decline in an experimentally warmed bog (SPRUCE)
+W2100206421,3,I6,support,Regional-data SDMs misrepresent potential distributions without global data
+W4404073152,3,I6,support,Untruncated (Europe-wide) data change projected climate-suitability shifts in an alpine country
+W2560136348,3,M3,method,Cross-validation strategies for structured data incl. environmental blocking
+W2156182980,3,M3,method,Transferability as an underappreciated aspect of validation
+W2089316943,3,M2,method,Down-sampling in random forests for unbalanced prevalence in tree species distributions
+W1526319989,3,M5,method,How and where to select pseudo-absences: environmental stratification and number
+W2152042241,3,D4,support,Space can substitute for time in predicting climate-change effects (test with fossil pollen)
+W4385688205,3,D4,support,Review of space-for-time substitution in climate change ecology
+W4412760359,3,D4,contrast,Reconsidering space-for-time substitution: when it fails
+W2128827287,3,D5,support,Uncertainty in ensemble forecasting: GCM and scenario among the sources
+W2033888620,3,D5,support,GCM choice as a source of uncertainty in species distribution projections
+W2148184827,2,I3;D8,comparison,The future of cool temperate bogs: review of threats incl. climate
+W2023171854,2,D8,comparison,Projected loss of palsa-mire climate space in Fennoscandia
+W2074955809,2,I3;D5,method,Methods and uncertainties in bioclimatic envelope modelling
+W3014876061,2,I3;D8,comparison,Sphagnum bogs in China projected with bioclimatic models
+W2967217720,2,D8,comparison,Potential carbon loss from Scottish peatlands under climate change (envelope-based)
+W4409250805,2,D9;I5,support,Restoration can mitigate warming effects on red-listed boreal peatland plants
+W2161110837,2,I1,support,Climatic influence on peatland formation in sub-arctic Fennoscandia
+W2528576052,2,I1;D3,support,Holocene fen-bog transitions in Finland and future perspectives
+W1498739605,2,I2,support,Regional patterns of Finnish mires and their controls
+W186646209,2,I4,support,Increased decomposition of subsurface peat in Swedish raised bogs since the 1970s
+W3094137563,2,I4,support,Expert assessment of future vulnerability of the peatland carbon sink
+W3001998153,2,I4,support,Climate-induced drying of two southern boreal bogs over recent centuries
+W3212304590,2,I4,support,Peatland water table and summer temperature in northern Poland
+W7140123014,2,I4;D4,support,Hydro-ecological impacts of climate change on a Massif Central peatland (where our warm evidence sits)
+W3158249553,2,I4,contrast,Boreal fen: accelerated succession but no hydrological change over 20 years
+W4366289267,2,D3;I4,contrast,Fen-to-bog succession inferred from aapa-mire chronosequence: bogs expanding
+W2246953143,2,D3,support,Peatlands and global change: response and resilience (review)
+W2173416087,2,D3,support,Autogenic vs climatic signals in long-term peatland development
+W1973925238,2,D3,support,Mechanisms of peatland carbon response to climate change
+W2562424070,2,D3,support,Hydrological self-regulation in peatland models changes drought projections
+W4407082294,2,D3;D8,support,Peatland resilience and presence along national climate gradients (Ireland)
+W3029118621,2,D9,support,Climate-change refugia in boreal North America incl. peatlands
+W4213031936,2,D9,support,Peatland microclimate and microrefugia (Central Europe)
+W4309619210,2,D9,support,Refugial peatlands in the Northern Apennines at their warm limit
+W2792295284,2,I6,contrast,Range-wide data may not improve regional SDMs under biased sampling
+W4398168917,2,I6,support,Nested SDMs overcome niche truncation in national studies
+W4405737168,2,I6,support,Local data models suffer from niche truncation
+W2164772977,2,I6,contrast,Local models predict more persistence than continental models
+W2100533358,2,I6;D2,support,The art of modelling range-shifting species: extrapolation caveats
+W4297107051,2,M1;M2,method,Multi-class imbalanced problems in ecology
+W4406851452,2,M2,contrast,Harms of class imbalance corrections for calibration in ML prediction
+W2952516441,2,M3,method,blockCV: spatially or environmentally separated folds
+W4229048457,2,M3,contrast,Clustered samples and map-accuracy cross-validation
+W7214703643,2,M4,contrast,Inside the area of applicability failures can still occur
+W1500255874,2,M4;D2,method,Tools for visualising model behaviour in new environments
+W4390141360,2,D2,support,Evaluating the extrapolation potential of random forest
+W2042783301,2,D2;M3,support,Interpolation accuracy vs transferability of SDMs
+W2144751252,2,D2,support,Projecting acacias into novel climates: correlative model behaviour
+W4396992306,2,M5,method,Sensitivity of SDMs to background selection strategies
+W2410390527,2,M7,support,Shared Socioeconomic Pathways overview
+W4389567085,2,M7,support,Influence of hot CMIP6 models in impact studies
+W4404629308,2,D5;M7,support,Climate model choice drives variation in SDM projections
+W2132105901,2,D5,support,Incorporating climate-model advances into distribution projections
+W2149329191,2,D5,support,Choice of climate models and scenarios in conservation planning
+W1944947505,2,D7,support,Prevalence effects on SDM predictive performance (simulation)
+W2074074333,2,D7,support,Prevalence and thresholds in presence-absence models
+W2950941919,2,D7,support,Discrimination metrics misleading without quality presence-absence data
+W4212896015,2,D7,method,Uniform AUC for the representativeness effect
+W3028206189,2,D4,contrast,Limits of space-for-time in tree-ring projections
+W4412137131,2,D4,support,Correcting environmental sampling bias improves transferability
+W4391137086,2,I5,support,Peatland restoration in Norway: national plan and monitoring
+W2996371250,2,I5,support,Threats to Natura 2000 peatland habitats in Central Europe
+W2166485029,1,D6,support,Grain of climate projections changes SDM outcomes
+W1850670663,1,D6,support,High-resolution DEM-derived variables in ecology
+W2086111164,1,D6,support,Very-high-resolution predictors in SDMs
+W2164948525,1,D4,support,Space-for-time across domains for data-poor ecosystems
+W4390583928,1,D1,support,Climate analogs to evaluate ecosystem impacts
+W4393443552,1,D1,support,Climate analog approach to vegetation transitions
+W2075785321,1,D7,support,Prevalence and sample size in SDM reliability
+W3133663514,1,D7,support,Prevalence affects evaluation of discrimination
+W2832707927,1,M5;D7,method,Sample size of presences and pseudo-absences
+W4410381511,1,M5,method,Optimising background points for current and future projections
+W1504194060,1,D5,support,Predictor choice as uncertainty source
+W2296197122,1,M7,support,Baseline climate data choice affects projections
+W4362580731,1,D2,method,Overfitting in ML vs statistical SDMs
+W2770031733,1,D2,method,Ecologically realistic cross-time predictions
+W769592261,1,M3,method,Cross-temporal transferability of Maxent
+W7165751084,1,M3,method,ML spatial extrapolation and local data
+W4307956187,1,M4,method,Extrapolation of RF vs kriging
+W4409986031,1,M4,method,AOA applied to soil moisture upscaling
+W4312501514,1,M2,method,RF variable ranking with unbalanced data
+W4244773498,1,M2,method,Ensemble random forests for rare occurrences
+W2124141597,1,M1,method,Plant traits in habitat distribution models
+W2910713426,1,I6,method,Standards for distribution models in biodiversity assessments
+W1918112046,1,I6,support,Multi-temporal niche reduces truncation (13000 years)
+W7204722801,1,I6,method,Optimising SDMs for extrapolation
+W138441285,1,I2,support,Raised-bog development in southern Finland
+W2060261815,1,I2,support,Wetness dynamics in a southern boreal raised bog
+W4406339211,1,I5,support,Rewetting three raised bogs in Norway
+W2512643886,1,I5,support,Peatland restoration progress in Western Europe
+W7156987940,1,I5,support,Priority research questions in peatland science
+W3172225241,1,I5,support,High-latitude Habitats Directive species at risk from climate change
+W3180029866,1,D9;I5,support,Opportunity cost of delaying climate action for peatland restoration
+W644697758,1,I1,support,Drivers of Holocene peatland carbon accumulation across a climate gradient
+W2155210817,1,I1,support,Bog formation in central Sweden: development and climate
+W2000426727,1,I1,support,Climatic control of blanket mire development
+W4386562928,1,I1,support,Topographic and climatic controls of peatland distribution (Tibet)
+W3034975206,1,I3,support,Palsa climate envelopes through the Holocene
+W4388129026,1,D8,comparison,Future distribution of rare bryophytes in Scotland
+W2138740173,1,D3,support,Climate-driven Holocene expansion of blanket bogs
+W2108273927,1,D3,support,The limits to peat bog growth
+W2060835324,1,D3,method,DigiBog peatland development model
+W1515400949,1,D3,support,Ecohydrological feedbacks confound peat-based climate reconstructions
+W3033060452,1,D3,support,Drainage reduces resilience of a boreal peatland
+W3131402213,1,I4,support,Divergent responses of permafrost peatlands
+W4292315861,1,I4,support,Lowering water table reduces peatland C sink
+W3214459481,1,I4,support,Climate manipulation on a Welsh ombrotrophic peatland
+W3183731634,1,I4,support,Water-level drawdown and plant traits
+W4400430538,1,I4,support,Pyrenean mountain peatland under drought
