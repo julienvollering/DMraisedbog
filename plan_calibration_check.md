@@ -204,6 +204,35 @@ so the 10th percentile is computed from about 9 OOB trees, and that range is pla
 Not affected by any option: pl0, the modelling frame, the partitions, the model-free occupancy
 grid.
 
+## Results 2026-11-19: sidecar reference fit (option 1, JV)
+
+`pl2_calibrationCheck.R` now fits a sidecar forest: the production recipe with 13,000 trees,
+`forest = FALSE`, seed -4242. Its OOB values replace the production OOB at the Norwegian
+training cells. Run through a one-script copy of RUNALL (manifest: ok, 6.9 min; the 13k-tree
+fit itself takes a few minutes). All upstream summary files are unchanged. New outputs:
+`calibration_oob_trees.csv`, `calibration_reference.csv`,
+`scenario_comparison_criteria_sweep.csv`.
+
+- **OOB rate measured** (200-tree in-bag record): a bog row is OOB in 1.55% of trees, i.e.
+  15.5 of the production forest's 1,000 and ~201 of the sidecar's 13,000. Absence rows: 96%.
+- **Reference at the 1,137 mapped bogs:** P10 = **0.568** (was 0.556). The coarse value was
+  close. Share at OOB P = 1: 9.3% (was 41%, which was a few-tree artefact).
+- **Strict criterion unchanged in substance.** SSP1-2.6: 1 of 191,888 argmax-bog cells
+  (0.0005%), 0 of the mapped bogs; SSP3-7.0: 0. Class flip: 12.8% (1,530 km2) and 13.6% of
+  mapped bogs under SSP1-2.6, 0 under SSP3-7.0 (reproduces `pl2_compareScenarios.R`).
+- **Cut sweep, SSP1-2.6** (argmax bog today / mapped bog): 0.40 -> 10.6% / 13.5%;
+  0.45 -> 3.9% / 8.5%; 0.50 -> 0.4% / 2.1%; >= 0.55 -> ~0. Max future P(bog) 0.577 / 0.559.
+  SSP3-7.0 max 0.41: ~0 at every cut. The stable P10 is well above the steep 0.40-0.50 range,
+  so the strict bound of ~0 is robust.
+- **What moved, because the current-climate OOB values are now less noisy:**
+  - Commission: argmax 156,025 cells, 137x mapped area, precision 0.70%, recall 0.956.
+  - Area-matched cut 0.976: precision/recall 0.29 (was 0.41/0.43).
+  - Calibrated P(bog) at mapped bogs: median 0.030 (was 0.115); share > 0.5 17% (was 41%).
+  - Reliability: the prior shift now tracks the observed share within ~1.5x for balanced P
+    > 0.3 (top bin 0.080 vs 0.087 observed). Below 0.3 it still overstates, by 5-10x.
+  - Calibrated expected area (still inverted, still not to be quoted): 103 / 75 / 47 km2.
+- Minimum-presence cut still vacuous (reference minimum 0.007, every cell passes): drop it.
+
 ## Manuscript placement (prepared 2026-11-19, not yet written)
 
 The branch is merged with main (098c629), so `ms/ms.qmd` is current. Numbers to be read in the

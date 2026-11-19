@@ -440,10 +440,16 @@ cat("\nC. Reference at mapped bog (OOB):\n")
 print(signif(ref, 4))
 
 # The same reference from the production forest's own OOB (~15 trees per bog row), to
-# show how much of the 2026-10-07 value was Monte-Carlo noise.
-fp_train_idx <- no_rows[match(fp$cell[at_mapped], train_cell)]
-stopifnot(!anyNA(fp_train_idx))
-ref_pbal_prod <- oob_prod[fp_train_idx, "bog"]
+# show how much of the 2026-10-07 value was Monte-Carlo noise. Built like P_cur_oob: OOB
+# at training cells, projection at the mapped-bog cells that are not training rows.
+P_cur_oob_prod <- P[["current"]]
+P_cur_oob_prod[train_row, ] <- oob_prod[no_rows, ]
+ref_pbal_prod <- P_cur_oob_prod[fp$row[at_mapped], "bog"]
+rm(P_cur_oob_prod)
+cat(
+  "Mapped bog cells in the footprint that are training rows:",
+  sum(fp$cell[at_mapped] %in% train_cell), "of", sum(at_mapped), "\n"
+)
 ref_q <- c(0, 0.05, REF_PERCENTILE, 0.25, 0.5)
 bog_oob_rate <- oob_trees$oob_rate_mean[oob_trees$response == "bog"]
 ref_row <- function(source, ntree, pbog) {
