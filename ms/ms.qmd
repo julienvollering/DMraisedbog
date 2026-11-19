@@ -48,7 +48,9 @@ abstract: |
   raised bogs stop on the warm side; (3) a three-class model (raised bog, other peatland,
   non-peat) projects that 96% of mapped Norwegian raised bogs lose climatic suitability by
   2071-2100 under SSP3-7.0, and a milder scenario (SSP1-2.6) shows how much of that loss
-  is avoided and which bogs keep their climate; (4) the same conclusion follows without any model, from the
+  is avoided and which bogs keep their climate (a range: 13% of today's raised-bog-like cells
+  by class, practically none by the score of the mapped bogs; none under SSP3-7.0 by
+  either); (4) the same conclusion follows without any model, from the
   observed prevalence of raised bogs in the climates the future brings; (5) cross-validation
   organised along the warming axis shows how far the model can be trusted and where it
   cannot.
@@ -239,6 +241,52 @@ stopifnot(
   "SSP1-2.6 has more cells outside the applicability threshold than SSP3-7.0" = rl(
     "future_ssp126", "pct_outside_aoa"
   ) <= rl("future", "pct_outside_aoa")
+)
+## Loss criteria and the footprint check (pl2_calibrationCheck.R)
+crit <- rd(OUT, "pl2", "scenario_comparison_criteria.csv")
+POP_ARG <- "argmax bog today (Norway)"
+POP_MAP <- "mapped bog (footprint)"
+FLIP <- "class flip (argmax bog)"
+P10 <- "balanced P(bog) >= reference P10"
+cr <- function(pop, s, crit_name, col = "pct_suitable") {
+  crit[[col]][crit$population == pop & crit$scenario == s & crit$criterion == crit_name]
+}
+ref_p10 <- cr(POP_ARG, "current", P10, "threshold")
+crit_sweep <- rd(OUT, "pl2", "scenario_comparison_criteria_sweep.csv")
+swp <- function(pop, s, cut, col = "pct_suitable") {
+  ok <- crit_sweep$population == pop & crit_sweep$scenario == s & !crit_sweep$is_reference
+  crit_sweep[[col]][ok & abs(crit_sweep$cut - cut) < 1e-9]
+}
+max_pbog <- function(pop, s) {
+  crit_sweep$max_pbog[crit_sweep$population == pop & crit_sweep$scenario == s][1]
+}
+crit_agree <- rd(OUT, "pl2", "scenario_comparison_criteria_agreement.csv")
+cal_fp <- rd(OUT, "pl2", "calibration_footprint.csv") |>
+  filter(population == "footprint", probabilities == "oob", rule == "argmax")
+cal_ref <- rd(OUT, "pl2", "calibration_reference.csv") |>
+  filter(source == "reference fit")
+cal_trees <- rd(OUT, "pl2", "calibration_oob_trees.csv")
+bog_oob_rate <- cal_trees$oob_rate_mean[cal_trees$response == "bog"]
+stopifnot(
+  # GUARDS: claims the loss-criterion prose relies on
+  "class-flip persistence no longer reproduces pl2_compareScenarios.R" = cr(
+    POP_ARG, MILD, FLIP, "cells_suitable"
+  ) ==
+    sc_cells$cells[sc_cells$persist == "bog under ssp126 only"],
+  "the strict criterion keeps a cell that the class criterion drops" = !any(
+    crit_agree$p10 & !crit_agree$flip
+  ),
+  "a raised-bog cell passes a loss criterion under SSP3-7.0 (the prose says none)" = all(
+    c(cr(POP_ARG, HARSH, FLIP), cr(POP_ARG, HARSH, P10),
+      cr(POP_MAP, HARSH, FLIP), cr(POP_MAP, HARSH, P10)) == 0
+  ),
+  "the strict criterion keeps 1% or more under SSP1-2.6 (the prose says practically none)" = cr(
+    POP_ARG, MILD, P10
+  ) <
+    1 &&
+    cr(POP_MAP, MILD, P10) < 1,
+  "the strict cut is below 0.5 (the prose places it above the steep part of the sweep)" = ref_p10 >
+    0.5
 )
 part <- rd("tables", "tbl_partitions.csv")
 wts <- rd(OUT, "pl2", "weights_feature_data_partitioning.csv") |>
@@ -554,7 +602,25 @@ projections differ only in the climate they are given. Change at the mapped rais
 was summarised per polygon as the mean of each layer over the polygon's cells, the
 predicted class before and after, and the change in the raised-bog score. To compare the
 scenarios we followed the polygons predicted raised bog today (and, in S6 Table, the 250 m
-cells) to their predicted class under each. For every projected cell, under each scenario,
+cells) to their predicted class under each.
+
+A change of predicted class is a lenient criterion for loss. The class is decided at equal
+priors, so a cell stays raised bog as long as its raised-bog score beats the two others, and
+that can happen at scores below those of most mapped raised bogs. We therefore also applied
+a strict criterion, in the manner of a percentile training-presence threshold
+[TODO cite: Pearson et al. 2007, doi:10.1111/j.1365-2699.2006.01594.x; Radosavljevic & Anderson 2014, doi:10.1111/jbi.12227 -- verify]:
+a cell counts as still suitable if its future raised-bog score is at least the 10th
+percentile of the score at the mapped raised bogs under current climate
+(`r f2(ref_p10)`). Every Norwegian raised-bog cell is a training cell, so these reference scores
+were out-of-bag. The balanced sample takes nearly every raised-bog cell into every tree, and a
+raised-bog cell is out of bag in only `r pc(bog_oob_rate, 1)` of the trees. The out-of-bag scores were therefore
+taken from a second forest with the same data and settings and `r n0(cal_ref$ntree)` trees (about
+`r n0(cal_ref$oob_trees_per_bog_row)` out-of-bag trees per raised-bog cell), which differs from the production forest
+only by Monte-Carlo error. The same out-of-bag scores were used to compare the present-day
+map with the survey footprint, where raised bog is mapped completely. Persistence under both
+criteria, and its dependence on the cut, is in S7 Table.
+
+For every projected cell, under each scenario,
 we also computed its signed bio10 offset
 from the production model's training bogs (median `r f2(S("axis_ref_bio10"))` °C), its dissimilarity index, and
 the cross-validated recall and false-positive rate for raised bog interpolated from the
@@ -742,6 +808,11 @@ point of the three-class response: the mapped raised bogs are not projected to b
 kinds of mire but to leave the peat-supporting climate altogether. Over mainland Norway as a
 whole, the share of 250 m cells whose majority class is raised bog falls from `r pc(sh("current", "bog"), 1)` to
 `r pc(sh("future", "bog"), 1)`, and other peatland from `r pc(sh("current", "otherpeat"))` to `r pc(sh("future", "otherpeat"))`.
+These are areas of raised-bog-like climate, not of raised bog. Inside the survey footprint,
+where `r fp(100 * cal_fp$prevalence)` of the 250 m cells are mapped raised bog, the cells predicted raised bog today
+cover `r f1(cal_fp$pred_to_mapped_ratio, 0)` times the mapped area (`r n0(cal_fp$n_pred_bog)` against `r n0(cal_fp$n_mapped_bog)` cells) and include `r pc(cal_fp$recall)` of
+the mapped raised-bog cells (out-of-bag). The map says where the climate resembles that of
+raised bogs; the other controls on where a raised bog forms are not in the model.
 
 <!-- TODO(JV): whether to report "newly suitable" area at all; notebook 2026-06-05 frames
 the cold-flank transition (other peatland warming into the bog window) as a second
@@ -783,6 +854,19 @@ against `r f1(S("lost_lat_median"))` °N), but the two groups overlap (the map i
 `r pc(S("polygon_share_declining_mild"))` of all polygons (mean change `r f2(S("polygon_pbog_change_mean_mild"))`, against `r f2(S("polygon_pbog_change_mean_harsh"))` under SSP3-7.0), so
 the milder scenario moves most polygons less far but not out of decline. Cell-level areas
 and the climate shift under each scenario are in S6 Table.
+
+How much persists under SSP1-2.6 depends on the criterion for loss, and the predicted class
+is the lenient one. Of the 250 m cells predicted raised bog today, `r fp(cr(POP_ARG, MILD, FLIP))` (`r n0(cr(POP_ARG, MILD, FLIP, "km2_suitable"))` km²) are
+still predicted raised bog under SSP1-2.6, but only `r n0(cr(POP_ARG, MILD, P10, "cells_suitable"))` of the `r n0(cr(POP_ARG, MILD, P10, "n_population"))` cells keeps a raised-bog
+score at or above the strict cut (`r f2(ref_p10)`). Of the mapped raised-bog cells in the survey
+footprint, `r fp(cr(POP_MAP, MILD, FLIP))` keep the class and `r if (cr(POP_MAP, MILD, P10, "cells_suitable") == 0) "none" else n0(cr(POP_MAP, MILD, P10, "cells_suitable"))` keep the score (S7 Table). The strict result does not
+hinge on the exact cut. Under SSP1-2.6 no cell predicted raised bog today reaches a score
+above `r f2(max_pbog(POP_ARG, MILD))`, and the share kept approaches the class value only if the cut is lowered to
+0.40 (`r fp(swp(POP_ARG, MILD, 0.4))`; at 0.50, `r fp(swp(POP_ARG, MILD, 0.5))`). Under SSP3-7.0 no cell is kept by either criterion,
+and the highest score at today's raised-bog cells is `r f2(max_pbog(POP_ARG, HARSH))`. Under SSP1-2.6, persistence of
+raised-bog climate is therefore a range, from `r fp(cr(POP_ARG, MILD, FLIP))` of today's raised-bog cells by
+class to practically none by the score of the mapped bogs; under SSP3-7.0 there is none
+by either.
 
 ![**What the two scenarios do to the mapped raised bogs.** (A) Predicted class in 2071--2100 of
 the `r n0(S("n_bog_today_polygons"))` polygons predicted raised bog today, under SSP1-2.6 and SSP3-7.0
@@ -828,8 +912,13 @@ says which climates maintain raised bogs today, existing bogs are landforms with
 self-maintaining hydrology, so the projection is a loss of climatic suitability as currently
 expressed, not a disappearance date (notebook 2026-08-21; @joostenMiresPeatlandsEurope2017
 p. 135); (iv) the warm evidence is European, southern and geographically clustered; (v) one
-climate model (two scenarios; the milder one keeps about a fifth of the polygons in the
-raised-bog class, which is what to discuss as "still stand a chance"); (vi) the other-peatland weakness in Norway is a terrain-source
+climate model (two scenarios). Under the milder one, "still stand a chance" is a range: about
+a fifth of the polygons and `r fp(cr(POP_ARG, MILD, FLIP))` of today's raised-bog cells keep the class, but practically
+none keep a score as high as most mapped bogs have today (S7 Table). The class is the lenient
+end, and the strict end is likely too strict for persistence (existing bogs persist outside
+the climates where they form; see iii). Under SSP3-7.0 both criteria give none. Also say that
+the predicted class over-calls raised bog about `r f1(cal_fp$pred_to_mapped_ratio, 0)`-fold in the footprint, so areas are of
+raised-bog-like climate (plan_calibration_check.md); (vi) the other-peatland weakness in Norway is a terrain-source
 confound, not a climatic one; (vii) the absence-draw stratification on temperature shapes
 observed prevalence across temperature bins (notebook 2026-10-05).
 
@@ -1007,7 +1096,8 @@ ci |>
 The two scenarios over mainland Norway (250 m cells, argmax class). The bio10 rows refer to the
 cells predicted raised bog today. Areas are areas of cells *predicted* to be each class, not estimates of raised-bog extent: the
 forest is fitted under a rebalanced prior and over-calls raised bog relative to its prevalence
-in the landscape (see the description of the model). The comparison between scenarios, not the
+in the landscape (inside the survey footprint the cells predicted raised bog cover
+`r f1(cal_fp$pred_to_mapped_ratio, 0)` times the mapped area). The comparison between scenarios, not the
 level, is the result.
 Percentages in parentheses are changes against current climate.
 
@@ -1044,6 +1134,20 @@ bind_rows(
     `SSP3-7.0` = "0 (0.0%)"
   ),
   tibble(
+    Quantity = sprintf(
+      "Of today's raised-bog cells, raised-bog score at least %s (km²)", f2(ref_p10)
+    ),
+    Current = "–",
+    `SSP1-2.6` = sprintf(
+      "%s (%s%%)", f1(cr(POP_ARG, MILD, P10, "km2_suitable"), 2),
+      f1(cr(POP_ARG, MILD, P10), 3)
+    ),
+    `SSP3-7.0` = sprintf(
+      "%s (%s%%)", n0(cr(POP_ARG, HARSH, P10, "km2_suitable")),
+      f1(cr(POP_ARG, HARSH, P10))
+    )
+  ),
+  tibble(
     Quantity = "Cells beyond the applicability threshold (%)",
     Current = f1(rl("current", "pct_outside_aoa")),
     `SSP1-2.6` = f1(rl("future_ssp126", "pct_outside_aoa")),
@@ -1051,6 +1155,43 @@ bind_rows(
   )
 ) |>
   kable(align = "lrrr")
+```
+:::
+
+::: {.supp}
+## S7 Table. {#s7-table}
+
+Present-day raised bog that stays suitable in 2071--2100, by criterion. Two populations: the
+`r n0(cr(POP_MAP, "current", FLIP, "n_population"))` mapped raised-bog cells in the survey footprint, and the `r n0(cr(POP_ARG, "current", FLIP, "n_population"))` cells over mainland
+Norway predicted raised bog today. Values are percentages of each population. *Class*: still
+predicted raised bog. *Score at least cut*: raised-bog score at or above the cut; the reference cut
+(`r f2(ref_p10)`) is the 10th percentile of the out-of-bag score at the mapped raised bogs under
+current climate, from a `r n0(cal_ref$ntree)`-tree forest with the production settings (Methods). The
+other cuts show how the result depends on where the cut is put.
+
+```{r}
+#| label: tbl-criteria
+#| echo: false
+pct_cell <- function(x) if (x == 0) "0" else if (x < 0.01) "< 0.01" else fp(x)
+crit_row <- function(label, f) {
+  tibble(
+    Criterion = label,
+    `Mapped, SSP1-2.6` = f(POP_MAP, MILD), `Mapped, SSP3-7.0` = f(POP_MAP, HARSH),
+    `Predicted, SSP1-2.6` = f(POP_ARG, MILD), `Predicted, SSP3-7.0` = f(POP_ARG, HARSH)
+  )
+}
+cuts <- sort(unique(crit_sweep$cut[!crit_sweep$is_reference]))
+bind_rows(
+  crit_row("Class", function(p, s) pct_cell(cr(p, s, FLIP))),
+  crit_row(
+    sprintf("Score at least %s (reference)", f2(ref_p10)),
+    function(p, s) pct_cell(cr(p, s, P10))
+  ),
+  bind_rows(lapply(cuts, function(k) {
+    crit_row(sprintf("Score at least %s", f2(k)), function(p, s) pct_cell(swp(p, s, k)))
+  }))
+) |>
+  kable(align = "lrrrr")
 ```
 :::
 

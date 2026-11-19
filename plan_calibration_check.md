@@ -233,7 +233,11 @@ fit itself takes a few minutes). All upstream summary files are unchanged. New o
   - Calibrated expected area (still inverted, still not to be quoted): 103 / 75 / 47 km2.
 - Minimum-presence cut still vacuous (reference minimum 0.007, every cell passes): drop it.
 
-## Manuscript placement (prepared 2026-11-19, not yet written)
+## Manuscript placement (prepared 2026-11-19; written into ms/ms.qmd the same day)
+
+As written: numbers are read in the setup chunk directly from the output CSVs (no new
+ms/tables file). S7 is rendered in ms.qmd, not by make_figures.R. Calibrated P is not in the
+ms. Citations for the percentile threshold are TODO markers (not in the .bib).
 
 The branch is merged with main (098c629), so `ms/ms.qmd` is current. Numbers to be read in the
 setup chunk from `output/pl2/scenario_comparison_criteria.csv` and
